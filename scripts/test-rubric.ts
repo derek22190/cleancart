@@ -9467,6 +9467,85 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const fsNode = await import("node:fs");
+    const dietaryMod = await import("../lib/dietary");
+    const hasAlert = (prefs: string[], title: string, ing: string, id: string) =>
+      dietaryMod.evaluateDietaryAlerts(prefs, title, ing).some((a) => a.id === id);
+
+    // Positive detections for newly added allergens
+    const positives = [
+      hasAlert(["wheat_gluten"], "Artisan Bread", "Flour, Water, Sea Salt, Yeast", "wheat_gluten"),
+      hasAlert(["wheat_gluten"], "Crispy Chicken", "Chicken Breast, Panko Breadcrumbs, Salt", "wheat_gluten"),
+      hasAlert(["wheat_gluten"], "Matzo Ball Mix", "Matzo Meal, Salt, Onion Powder", "wheat_gluten"),
+      hasAlert(["wheat_gluten"], "Passover Cake", "Matzah Meal, Eggs, Cane Sugar", "wheat_gluten"),
+      hasAlert(["wheat_gluten"], "Ancient Grain Pasta", "Organic Einkorn, Water", "wheat_gluten"),
+      hasAlert(["egg"], "Meringue Cookies", "Cane Sugar, Dried Albumen, Vanilla", "egg"),
+      hasAlert(["dairy"], "Palak Paneer", "Spinach, Paneer, Tomato, Spices", "dairy"),
+      hasAlert(["dairy"], "Cheese Curds Snack", "Cultured Curds, Salt, Enzymes", "dairy"),
+      hasAlert(["soy"], "Fermented Bowl", "Brown Rice, Natto, Scallions", "soy"),
+      hasAlert(["soy"], "Ramen Broth", "Water, Shoyu, Kelp, Ginger", "soy"),
+      hasAlert(["shellfish_fish"], "Dashi Stock", "Water, Kombu, Bonito Flakes", "shellfish_fish"),
+      hasAlert(["shellfish_fish"], "California Roll", "Rice, Avocado, Surimi, Nori", "shellfish_fish"),
+      hasAlert(["shellfish_fish"], "Seafood Pasta", "Pasta, Langostino, Garlic, Olive Oil", "shellfish_fish"),
+      hasAlert(["peanuts_nuts"], "Roasted Snacks", "Chickpeas, Arachis Oil, Sea Salt", "peanuts_nuts"),
+      hasAlert(["peanuts_nuts"], "West African Stew", "Tomatoes, Groundnuts, Sweet Potato", "peanuts_nuts"),
+    ];
+
+    // Negative false-positive guards (non-wheat flours + bean curd)
+    const negatives = [
+      !hasAlert(["wheat_gluten"], "Simple Mills Crackers", "Almond Flour, Sunflower Seeds, Flax Seeds, Cassava Flour, Tapioca", "wheat_gluten"),
+      !hasAlert(["wheat_gluten"], "Gluten-Free Pasta", "Brown Rice Flour, Chickpea Flour, Water", "wheat_gluten"),
+      !hasAlert(["wheat_gluten"], "Baking Mix", "Gluten-Free All-Purpose Flour, Oat Flour, Potato Flour", "wheat_gluten"),
+      !hasAlert(["dairy"], "Organic Firm Tofu", "Water, Organic Soybeans, Bean Curd, Nigari", "dairy"),
+    ];
+
+    // Pesticide Watch 'and' conjunction bleed fix
+    const pesticideBleedFlagged = hasAlert(
+      ["pesticide_risk"],
+      "Sweet Biscuits",
+      "Organic cane sugar and wheat flour, sea salt",
+      "pesticide_risk",
+    );
+    const pesticideAmpFlagged = hasAlert(
+      ["pesticide_risk"],
+      "Sweet Biscuits",
+      "Organic cane sugar & wheat flour, sea salt",
+      "pesticide_risk",
+    );
+    const pesticideBothOrganicSafe = !hasAlert(
+      ["pesticide_risk"],
+      "Organic Sweet Biscuits",
+      "Organic cane sugar and organic wheat flour, sea salt",
+      "pesticide_risk",
+    );
+
+    const scanApiKtP15 = fsNode.readFileSync(
+      "android-app/app/src/main/java/com/cleancart/overlay/ScanApi.kt",
+      "utf8",
+    );
+    const androidHasAllTerms =
+      scanApiKtP15.includes("paneer|curds?") &&
+      scanApiKtP15.includes("(?:bean|soy|tofu)\\\\s+curds?") &&
+      scanApiKtP15.includes("matz[ao]h?\\\\s+meal|panko|einkorn") &&
+      scanApiKtP15.includes("|flour)") &&
+      scanApiKtP15.includes("arachis\\\\s+oil|groundnuts?") &&
+      scanApiKtP15.includes("shoyu|natto") &&
+      scanApiKtP15.includes("albumen|albumin") &&
+      scanApiKtP15.includes("langostino") &&
+      scanApiKtP15.includes("bonito(?:\\\\s+flakes)?|surimi");
+
+    check(
+      "P1-5 Expanded allergen lexicon (server + Android) catches flour/panko/matzo/einkorn/albumen/curds/paneer/natto/shoyu/bonito/surimi/langostino/arachis/groundnut without non-wheat/bean-curd FPs, and fixes pesticide 'and' bleed",
+      positives.every(Boolean) &&
+        negatives.every(Boolean) &&
+        pesticideBleedFlagged &&
+        pesticideAmpFlagged &&
+        pesticideBothOrganicSafe &&
+        androidHasAllTerms,
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

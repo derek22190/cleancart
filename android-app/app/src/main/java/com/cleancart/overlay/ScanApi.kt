@@ -725,6 +725,13 @@ object ScanApi {
         return text
             .replace(
                 Regex(
+                    "\\b(?:gluten|wheat)[\\s-]*free(?:\\s+(?:all[\\s-]*purpose|baking|blend|1[\\s-]*to[\\s-]*1|measure[\\s-]*for[\\s-]*measure))?\\s+flour\\b",
+                    RegexOption.IGNORE_CASE
+                ),
+                " "
+            )
+            .replace(
+                Regex(
                     "\\b(?:peanuts?|tree\\s+nuts?|nuts?|eggs?|dairy|milk|lactose|soy|sesame|wheat|gluten|grains?|shellfish|fish|allergens?)(?:\\s*(?:,|&|and|or|/)\\s*(?:peanuts?|tree\\s+nuts?|nuts?|eggs?|dairy|milk|lactose|soy|sesame|wheat|gluten|grains?|shellfish|fish|allergens?))*\\s*[\\s-]+free\\b",
                     RegexOption.IGNORE_CASE
                 ),
@@ -854,13 +861,13 @@ object ScanApi {
             if (dairySource.isNotBlank()) {
                 val cleanedDairyText = dairySource.replace(
                     Regex(
-                        "\\b(dairy[\\s-]*free|non[\\s-]*dairy|milk[\\s-]*free|lactose[\\s-]*free|butter[\\s-]*free|whey[\\s-]*free|casein[\\s-]*free|no\\s+(?:dairy|milk|lactose|butter|whey|casein)|plant\\s+(?:milk|butter|cream\\w*|cheese|yogurt)|vegan\\s+(?:milk|butter|cream\\w*|cheese|yogurt)|coconut\\s+milk|almond\\s+milk|oat\\s+milk|soy\\s+milk|soymilk|almondmilk|oatmilk|rice\\s+milk|cashew\\s*milk|walnut\\s*milk|hazelnut\\s*milk|pistachio\\s*milk|pecan\\s*milk|macadamia\\s*milk|hemp\\s*milk|pea\\s*milk|flax\\s*milk|banana\\s*milk|oat\\s+beverage|almond\\s+beverage|soy\\s+beverage|coconut\\s+beverage|milked\\s+\\w+|milk\\s+thistle|peanut\\s+butter|almond\\s+butter|cashew\\s+butter|hazelnut\\s+butter|walnut\\s+butter|pecan\\s+butter|pistachio\\s+butter|macadamia\\s+butter|sunflower\\s+(?:seed\\s+)?butter|sunbutter|pumpkin\\s+seed\\s+butter|sesame\\s+butter|cocoa\\s+butter|shea\\s+butter|mango\\s+butter|apple\\s+butter|pumpkin\\s+butter|cookie\\s+butter|fruit\\s+butter|butter\\s+beans?|butter\\s+lettuce|butter\\s+potato\\w*|butternut(?:\\s+squash)?|cream\\s+of\\s+(?:tartar|coconut|rice|wheat)|cream\\s+soda|coconut\\s+cream\\w*|oat\\s+cream\\w*|almond\\s+cream\\w*|soy\\s+cream\\w*|plant\\s+cream\\w*|lactic\\s+acid|calcium\\s+lactate|sodium\\s+lactate|sodium\\s+stearoyl\\s+lactylate)\\b",
+                        "\\b(dairy[\\s-]*free|non[\\s-]*dairy|milk[\\s-]*free|lactose[\\s-]*free|butter[\\s-]*free|whey[\\s-]*free|casein[\\s-]*free|no\\s+(?:dairy|milk|lactose|butter|whey|casein)|plant\\s+(?:milk|butter|cream\\w*|cheese|yogurt)|vegan\\s+(?:milk|butter|cream\\w*|cheese|yogurt)|coconut\\s+milk|almond\\s+milk|oat\\s+milk|soy\\s+milk|soymilk|almondmilk|oatmilk|rice\\s+milk|cashew\\s*milk|walnut\\s*milk|hazelnut\\s*milk|pistachio\\s*milk|pecan\\s*milk|macadamia\\s*milk|hemp\\s*milk|pea\\s*milk|flax\\s*milk|banana\\s*milk|oat\\s+beverage|almond\\s+beverage|soy\\s+beverage|coconut\\s+beverage|milked\\s+\\w+|milk\\s+thistle|peanut\\s+butter|almond\\s+butter|cashew\\s+butter|hazelnut\\s+butter|walnut\\s+butter|pecan\\s+butter|pistachio\\s+butter|macadamia\\s+butter|sunflower\\s+(?:seed\\s+)?butter|sunbutter|pumpkin\\s+seed\\s+butter|sesame\\s+butter|cocoa\\s+butter|shea\\s+butter|mango\\s+butter|apple\\s+butter|pumpkin\\s+butter|cookie\\s+butter|fruit\\s+butter|butter\\s+beans?|butter\\s+lettuce|butter\\s+potato\\w*|butternut(?:\\s+squash)?|cream\\s+of\\s+(?:tartar|coconut|rice|wheat)|cream\\s+soda|coconut\\s+cream\\w*|oat\\s+cream\\w*|almond\\s+cream\\w*|soy\\s+cream\\w*|plant\\s+cream\\w*|lactic\\s+acid|calcium\\s+lactate|sodium\\s+lactate|sodium\\s+stearoyl\\s+lactylate|(?:bean|soy|tofu)\\s+curds?)\\b",
                         RegexOption.IGNORE_CASE
                     ),
                     " "
                 )
                 val m = Regex(
-                    "\\b(buttermilk|sour\\s+cream|half\\s+and\\s+half|milk|milkfat|butterfat|butteroil|cream|butter|whey|casein|caseinate|sodium\\s+caseinate|calcium\\s+caseinate|lactose|cheese|cheddar|mozzarella|parmesan|provolone|gouda|swiss|ricotta|yogurt|ghee|lactalbumin|lactoglobulin)\\b",
+                    "\\b(buttermilk|sour\\s+cream|half\\s+and\\s+half|milk|milkfat|butterfat|butteroil|cream|butter|whey|casein|caseinate|sodium\\s+caseinate|calcium\\s+caseinate|lactose|cheese|cheddar|mozzarella|parmesan|provolone|gouda|swiss|ricotta|paneer|curds?|yogurt|ghee|lactalbumin|lactoglobulin)\\b",
                     RegexOption.IGNORE_CASE
                 ).find(cleanedDairyText)
                 if (m != null) {
@@ -883,15 +890,23 @@ object ScanApi {
             ).containsMatchIn(title)
             val glutenSource = if (titleClaimsGlutenFree) ing else text
             if (glutenSource.isNotBlank()) {
-                val cleanedGlutenText = glutenSource.replace(
-                    Regex(
-                        "\\b(buckwheat|wheat\\s*grass|wheat[\\s-]*free|gluten[\\s-]*free(?:\\s+oats?)?|no\\s+(?:wheat|gluten)|corn\\s+gluten)\\b",
-                        RegexOption.IGNORE_CASE
-                    ),
-                    " "
-                )
+                val cleanedGlutenText = glutenSource
+                    .replace(
+                        Regex(
+                            "\\b(?:(?:organic|whole\\s+grain|brown|white|sweet|yellow|blue|green|red|defatted|toasted|blanched|roasted|stone[\\s-]*ground|fine|superfine|sprouted|gluten[\\s-]*free)\\s+)*(?:almond|coconut|rice|oat|corn|masa|cassava|tapioca|chickpea|garbanzo(?:\\s+bean)?|potato|buckwheat|sorghum|quinoa|pea|peanut|soy|soya|hazelnut|chestnut|amaranth|teff|millet|banana|plantain|tiger\\s*nut|flax(?:\\s*seed)?|hemp|sunflower(?:\\s*seed)?|lupin|lupine|konjac|arrowroot|sesame|lentil|bean|fava\\s+bean|chia|mesquite|cauliflower|carob)\\s+flour\\b|\\bgluten[\\s-]*free(?:\\s+all[\\s-]*purpose|\\s+baking|\\s+blend)?\\s+flour\\b",
+                            RegexOption.IGNORE_CASE
+                        ),
+                        " "
+                    )
+                    .replace(
+                        Regex(
+                            "\\b(buckwheat|wheat\\s*grass|wheat[\\s-]*free|gluten[\\s-]*free(?:\\s+oats?)?|no\\s+(?:wheat|gluten)|corn\\s+gluten)\\b",
+                            RegexOption.IGNORE_CASE
+                        ),
+                        " "
+                    )
                 val m = Regex(
-                    "\\b(vital\\s+wheat\\s+gluten|graham\\s+flour|enriched\\s+flour|bleached\\s+flour|unbleached\\s+flour|wheat|durum|semolina|spelt|farro|kamut|bulgur|couscous|seitan|barley|malt|malted|rye|triticale)\\b",
+                    "\\b(vital\\s+wheat\\s+gluten|graham\\s+flour|enriched\\s+flour|bleached\\s+flour|unbleached\\s+flour|matz[ao]h?\\s+meal|panko|einkorn|wheat|durum|semolina|spelt|farro|kamut|bulgur|couscous|seitan|barley|malt|malted|rye|triticale|flour)\\b",
                     RegexOption.IGNORE_CASE
                 ).find(cleanedGlutenText)
                 if (m != null) {
@@ -915,13 +930,13 @@ object ScanApi {
             val nutSource = if (titleClaimsNutFree) ing else text
             val cleanedNutText = nutSource.replace(
                 Regex(
-                    "\\b(nutmeg|butternut|water\\s+chestnuts?|coconuts?|nut[\\s-]*free|peanut[\\s-]*free|tree[\\s-]*nut[\\s-]*free)\\b",
+                    "\\b(nutmeg|butternut|water\\s+chestnuts?|coconuts?|nut[\\s-]*free|peanut[\\s-]*free|tree\\s+nut[\\s-]*free)\\b",
                     RegexOption.IGNORE_CASE
                 ),
                 " "
             )
             val m = Regex(
-                "\\b(peanut\\s+butter|peanut\\s+oil|peanut\\s+flour|peanuts?|tree\\s+nuts?|almonds?|almondmilk|cashews?|cashewmilk|walnuts?|walnutmilk|pecans?|pecanmilk|hazelnuts?|hazelnutmilk|filberts?|pistachios?|pistachiomilk|macadamias?|macadamiamilk|chestnuts?|brazil\\s+nuts?|pine\\s+nuts?|praline|marzipan|nougat|gianduja)\\b",
+                "\\b(peanut\\s+butter|peanut\\s+oil|peanut\\s+flour|arachis\\s+oil|groundnuts?|peanuts?|tree\\s+nuts?|almonds?|almondmilk|cashews?|cashewmilk|walnuts?|walnutmilk|pecans?|pecanmilk|hazelnuts?|hazelnutmilk|filberts?|pistachios?|pistachiomilk|macadamias?|macadamiamilk|chestnuts?|brazil\\s+nuts?|pine\\s+nuts?|praline|marzipan|nougat|gianduja)\\b",
                 RegexOption.IGNORE_CASE
             ).find(cleanedNutText)
             if (m != null) {
@@ -945,7 +960,7 @@ object ScanApi {
                     " "
                 )
                 val m = Regex(
-                    "\\b(soybean\\s+oil|soy\\s+lecithin|soy\\s+protein|soy\\s+flour|soy\\s+sauce|textured\\s+vegetable\\s+protein|soybeans?|soymilk|soy|soya|tamari|tofu|tempeh|edamame|miso)\\b",
+                    "\\b(soybean\\s+oil|soy\\s+lecithin|soy\\s+protein|soy\\s+flour|soy\\s+sauce|textured\\s+vegetable\\s+protein|soybeans?|soymilk|soy|soya|tamari|shoyu|natto|tofu|tempeh|edamame|miso)\\b",
                     RegexOption.IGNORE_CASE
                 ).find(cleanedSoyText)
                 if (m != null) {
@@ -970,7 +985,7 @@ object ScanApi {
                     " "
                 )
                 val m = Regex(
-                    "\\b(egg\\s+whites?|egg\\s+yolks?|dried\\s+egg|powdered\\s+egg|eggs?|albumin|ovalbumin|ovomucoid|lysozyme|mayonnaise|aioli|meringue)\\b",
+                    "\\b(egg\\s+whites?|egg\\s+yolks?|dried\\s+egg|powdered\\s+egg|eggs?|albumen|albumin|ovalbumin|ovomucoid|lysozyme|mayonnaise|aioli|meringue)\\b",
                     RegexOption.IGNORE_CASE
                 ).find(cleanedEggText)
                 if (m != null) {
@@ -990,7 +1005,7 @@ object ScanApi {
             val titleClaimsFishFree = Regex("\\b(shellfish[\\s-]*free|fish[\\s-]*free|seafood[\\s-]*free|vegan)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)
             val fishSource = if (titleClaimsFishFree) ing else text
             val m = Regex(
-                "\\b((?:crustacean\\s+|molluscan\\s+)?shellfish|crustaceans?|mollusks?|molluscs?|shrimp|prawns?|crab|lobster|crawfish|crayfish|clams?|mussels?|oysters?|scallops?|calamari|squid|octopus|anchov(?:y|ies)|sardines?|salmon|tuna|cod|tilapia|halibut|haddock|trout|mahi|pollock|catfish|krill|fish\\s+sauce|fish\\s+oil)\\b",
+                "\\b((?:crustacean\\s+|molluscan\\s+)?shellfish|crustaceans?|mollusks?|molluscs?|shrimp|prawns?|crab|lobster|langostino|crawfish|crayfish|clams?|mussels?|oysters?|scallops?|calamari|squid|octopus|anchov(?:y|ies)|sardines?|salmon|tuna|cod|tilapia|halibut|haddock|trout|mahi|pollock|catfish|bonito(?:\\s+flakes)?|surimi|krill|fish\\s+sauce|fish\\s+oil)\\b",
                 RegexOption.IGNORE_CASE
             ).find(fishSource)
             if (m != null) {

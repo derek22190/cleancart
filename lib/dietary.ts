@@ -82,7 +82,7 @@ export function detectPesticideRisk(
   const stripOrganicAndFlavorNoise = (s: string) =>
     s
       .replace(
-        /(?<!\bnon[\s-]+)\b(?:100%\s+)?organic\s+[a-z0-9\s'’&-]+?(?=\s*(?:[,;():[\]]|\.|$|\bnon[\s-]+organic\b|\bconventional\b))/gi,
+        /(?<!\bnon[\s-]+)\b(?:100%\s+)?organic\s+[a-z0-9\s'’-]+?(?=\s*(?:[,;():[\]&]|\.|$|\band\b|\bnon[\s-]+organic\b|\bconventional\b))/gi,
         " ",
       )
       .replace(
@@ -138,6 +138,10 @@ export function evaluateDietaryAlerts(
   const stripCoordinatedFreeClaims = (s: string) =>
     s
       .replace(
+        /\b(?:gluten|wheat)[\s-]*free(?:\s+(?:all[\s-]*purpose|baking|blend|1[\s-]*to[\s-]*1|measure[\s-]*for[\s-]*measure))?\s+flour\b/gi,
+        " ",
+      )
+      .replace(
         /\b(?:peanuts?|tree\s+nuts?|nuts?|eggs?|dairy|milk|lactose|soy|sesame|wheat|gluten|grains?|shellfish|fish|allergens?)(?:\s*(?:,|&|and|or|\/)\s*(?:peanuts?|tree\s+nuts?|nuts?|eggs?|dairy|milk|lactose|soy|sesame|wheat|gluten|grains?|shellfish|fish|allergens?))*\s*[\s-]+free\b/gi,
         " ",
       )
@@ -190,11 +194,11 @@ export function evaluateDietaryAlerts(
     );
     const dairySource = titleClaimsDairyFree ? ing : text;
     const dairyCleaned = dairySource.replace(
-      /\b(dairy[\s-]*free|non[\s-]*dairy|milk[\s-]*free|lactose[\s-]*free|butter[\s-]*free|whey[\s-]*free|casein[\s-]*free|no\s+(?:dairy|milk|lactose|butter|whey|casein)|plant\s+(?:milk|butter|cream\w*|cheese|yogurt)|vegan\s+(?:milk|butter|cream\w*|cheese|yogurt)|coconut\s+milk|almond\s+milk|oat\s+milk|soy\s+milk|soymilk|almondmilk|oatmilk|rice\s+milk|cashew\s*milk|walnut\s*milk|hazelnut\s*milk|pistachio\s*milk|pecan\s*milk|macadamia\s*milk|hemp\s*milk|pea\s*milk|flax\s*milk|banana\s*milk|oat\s+beverage|almond\s+beverage|soy\s+beverage|coconut\s+beverage|milked\s+\w+|milk\s+thistle|peanut\s+butter|almond\s+butter|cashew\s+butter|hazelnut\s+butter|walnut\s+butter|pecan\s+butter|pistachio\s+butter|macadamia\s+butter|sunflower\s+(?:seed\s+)?butter|sunbutter|pumpkin\s+seed\s+butter|sesame\s+butter|cocoa\s+butter|shea\s+butter|mango\s+butter|apple\s+butter|pumpkin\s+butter|cookie\s+butter|fruit\s+butter|butter\s+beans?|butter\s+lettuce|butter\s+potato\w*|butternut(?:\s+squash)?|cream\s+of\s+(?:tartar|coconut|rice|wheat)|cream\s+soda|coconut\s+cream|oat\s+cream\w*|almond\s+cream\w*|soy\s+cream\w*|coconut\s+cream\w*|plant\s+cream\w*|lactic\s+acid|calcium\s+lactate|sodium\s+lactate|sodium\s+stearoyl\s+lactylate)\b/gi,
+      /\b(dairy[\s-]*free|non[\s-]*dairy|milk[\s-]*free|lactose[\s-]*free|butter[\s-]*free|whey[\s-]*free|casein[\s-]*free|no\s+(?:dairy|milk|lactose|butter|whey|casein)|plant\s+(?:milk|butter|cream\w*|cheese|yogurt)|vegan\s+(?:milk|butter|cream\w*|cheese|yogurt)|coconut\s+milk|almond\s+milk|oat\s+milk|soy\s+milk|soymilk|almondmilk|oatmilk|rice\s+milk|cashew\s*milk|walnut\s*milk|hazelnut\s*milk|pistachio\s*milk|pecan\s*milk|macadamia\s*milk|hemp\s*milk|pea\s*milk|flax\s*milk|banana\s*milk|oat\s+beverage|almond\s+beverage|soy\s+beverage|coconut\s+beverage|milked\s+\w+|milk\s+thistle|peanut\s+butter|almond\s+butter|cashew\s+butter|hazelnut\s+butter|walnut\s+butter|pecan\s+butter|pistachio\s+butter|macadamia\s+butter|sunflower\s+(?:seed\s+)?butter|sunbutter|pumpkin\s+seed\s+butter|sesame\s+butter|cocoa\s+butter|shea\s+butter|mango\s+butter|apple\s+butter|pumpkin\s+butter|cookie\s+butter|fruit\s+butter|butter\s+beans?|butter\s+lettuce|butter\s+potato\w*|butternut(?:\s+squash)?|cream\s+of\s+(?:tartar|coconut|rice|wheat)|cream\s+soda|coconut\s+cream|oat\s+cream\w*|almond\s+cream\w*|soy\s+cream\w*|coconut\s+cream\w*|plant\s+cream\w*|lactic\s+acid|calcium\s+lactate|sodium\s+lactate|sodium\s+stearoyl\s+lactylate|(?:bean|soy|tofu)\s+curds?)\b/gi,
       " ",
     );
     const m = dairyCleaned.match(
-      /\b(buttermilk|sour\s+cream|half\s+and\s+half|milk|milkfat|butterfat|butteroil|cream|butter|whey|casein|caseinate|lactose|cheese|cheddar|mozzarella|parmesan|provolone|gouda|swiss|ricotta|yogurt|ghee|lactalbumin)\b/i,
+      /\b(buttermilk|sour\s+cream|half\s+and\s+half|milk|milkfat|butterfat|butteroil|cream|butter|whey|casein|caseinate|lactose|cheese|cheddar|mozzarella|parmesan|provolone|gouda|swiss|ricotta|paneer|curds?|yogurt|ghee|lactalbumin)\b/i,
     );
     if (m) {
       alerts.push({
@@ -209,12 +213,17 @@ export function evaluateDietaryAlerts(
   if (selected.has("wheat_gluten")) {
     const titleClaimsGlutenFree = /\b(gluten[\s-]*free|grain[\s-]*free|wheat[\s-]*free|celiac)\b/i.test(productTitle);
     const wheatSource = titleClaimsGlutenFree ? ing : text;
-    const wheatCleaned = wheatSource.replace(
-      /\b(buckwheat|wheat\s*grass|wheat[\s-]*free|gluten[\s-]*free|no\s+(?:wheat|gluten)|corn\s+gluten)\b/gi,
-      " ",
-    );
+    const wheatCleaned = wheatSource
+      .replace(
+        /\b(?:(?:organic|whole\s+grain|brown|white|sweet|yellow|blue|green|red|defatted|toasted|blanched|roasted|stone[\s-]*ground|fine|superfine|sprouted|gluten[\s-]*free)\s+)*(?:almond|coconut|rice|oat|corn|masa|cassava|tapioca|chickpea|garbanzo(?:\s+bean)?|potato|buckwheat|sorghum|quinoa|pea|peanut|soy|soya|hazelnut|chestnut|amaranth|teff|millet|banana|plantain|tiger\s*nut|flax(?:\s*seed)?|hemp|sunflower(?:\s*seed)?|lupin|lupine|konjac|arrowroot|sesame|lentil|bean|fava\s+bean|chia|mesquite|cauliflower|carob)\s+flour\b|\bgluten[\s-]*free(?:\s+all[\s-]*purpose|\s+baking|\s+blend)?\s+flour\b/gi,
+        " ",
+      )
+      .replace(
+        /\b(buckwheat|wheat\s*grass|wheat[\s-]*free|gluten[\s-]*free|no\s+(?:wheat|gluten)|corn\s+gluten)\b/gi,
+        " ",
+      );
     const m = wheatCleaned.match(
-      /\b(vital\s+wheat\s+gluten|graham\s+flour|enriched\s+flour|bleached\s+flour|unbleached\s+flour|wheat|durum|semolina|spelt|farro|kamut|bulgur|couscous|seitan|barley|malt|malted|rye|triticale)\b/i,
+      /\b(vital\s+wheat\s+gluten|graham\s+flour|enriched\s+flour|bleached\s+flour|unbleached\s+flour|matz[ao]h?\s+meal|panko|einkorn|wheat|durum|semolina|spelt|farro|kamut|bulgur|couscous|seitan|barley|malt|malted|rye|triticale|flour)\b/i,
     );
     if (m) {
       alerts.push({
@@ -236,7 +245,7 @@ export function evaluateDietaryAlerts(
       " ",
     );
     const m = nutCleaned.match(
-      /\b(peanut\s+butter|peanut\s+oil|peanut\s+flour|peanuts?|tree\s+nuts?|almonds?|almondmilk|cashews?|cashewmilk|walnuts?|walnutmilk|pecans?|pecanmilk|hazelnuts?|hazelnutmilk|filberts?|pistachios?|pistachiomilk|macadamias?|macadamiamilk|chestnuts?|brazil\s+nuts?|pine\s+nuts?|praline|marzipan|nougat|gianduja)\b/i,
+      /\b(peanut\s+butter|peanut\s+oil|peanut\s+flour|arachis\s+oil|groundnuts?|peanuts?|tree\s+nuts?|almonds?|almondmilk|cashews?|cashewmilk|walnuts?|walnutmilk|pecans?|pecanmilk|hazelnuts?|hazelnutmilk|filberts?|pistachios?|pistachiomilk|macadamias?|macadamiamilk|chestnuts?|brazil\s+nuts?|pine\s+nuts?|praline|marzipan|nougat|gianduja)\b/i,
     );
     if (m) {
       alerts.push({
@@ -253,7 +262,7 @@ export function evaluateDietaryAlerts(
     const soySource = titleClaimsSoyFree ? ing : text;
     const soyCleaned = soySource.replace(/\b(soy[\s-]*free|no\s+soy(?:\s+lecithin)?|without\s+soy|free\s+of\s+soy)\b/gi, " ");
     const m = soyCleaned.match(
-      /\b(soybean\s+oil|soy\s+lecithin|soy\s+protein|soy\s+flour|soy\s+sauce|textured\s+vegetable\s+protein|soybeans?|soymilk|soy|soya|tamari|tofu|tempeh|edamame|miso)\b/i,
+      /\b(soybean\s+oil|soy\s+lecithin|soy\s+protein|soy\s+flour|soy\s+sauce|textured\s+vegetable\s+protein|soybeans?|soymilk|soy|soya|tamari|shoyu|natto|tofu|tempeh|edamame|miso)\b/i,
     );
     if (m) {
       alerts.push({
@@ -270,7 +279,7 @@ export function evaluateDietaryAlerts(
     const eggSource = titleClaimsEggFree ? ing : text;
     const eggCleaned = eggSource.replace(/\b(eggplants?|egg[\s-]*free|no\s+eggs?|vegan\s+mayo(?:nnaise)?)\b/gi, " ");
     const m = eggCleaned.match(
-      /\b(egg\s+whites?|egg\s+yolks?|dried\s+egg|powdered\s+egg|eggs?|albumin|ovalbumin|ovomucoid|lysozyme|mayonnaise|aioli|meringue)\b/i,
+      /\b(egg\s+whites?|egg\s+yolks?|dried\s+egg|powdered\s+egg|eggs?|albumen|albumin|ovalbumin|ovomucoid|lysozyme|mayonnaise|aioli|meringue)\b/i,
     );
     if (m) {
       alerts.push({
@@ -286,7 +295,7 @@ export function evaluateDietaryAlerts(
     const titleClaimsFishFree = /\b(shellfish[\s-]*free|fish[\s-]*free|seafood[\s-]*free|vegan)\b/i.test(productTitle);
     const fishSource = titleClaimsFishFree ? ing : text;
     const m = fishSource.match(
-      /\b((?:crustacean\s+|molluscan\s+)?shellfish|crustaceans?|mollusks?|molluscs?|shrimp|prawns?|crab|lobster|crawfish|crayfish|clams?|mussels?|oysters?|scallops?|calamari|squid|octopus|anchov(?:y|ies)|sardines?|salmon|tuna|cod|tilapia|halibut|haddock|trout|mahi|pollock|catfish|krill|fish\s+sauce|fish\s+oil)\b/i,
+      /\b((?:crustacean\s+|molluscan\s+)?shellfish|crustaceans?|mollusks?|molluscs?|shrimp|prawns?|crab|lobster|langostino|crawfish|crayfish|clams?|mussels?|oysters?|scallops?|calamari|squid|octopus|anchov(?:y|ies)|sardines?|salmon|tuna|cod|tilapia|halibut|haddock|trout|mahi|pollock|catfish|bonito(?:\s+flakes)?|surimi|krill|fish\s+sauce|fish\s+oil)\b/i,
     );
     if (m) {
       alerts.push({
