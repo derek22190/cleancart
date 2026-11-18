@@ -28,32 +28,35 @@ export default function PrivacyPage() {
       </p>
 
       <section style={{ marginTop: 28 }}>
-        <h2 style={{ fontSize: 20 }}>1. Android AccessibilityService API Prominent Disclosure</h2>
+        <h2 style={{ fontSize: 20 }}>1. Live Shop Browser &amp; Optional Direct-APK Android AccessibilityService Disclosure</h2>
         <p>
-          The HeyBroc Android application uses the Android <code>AccessibilityService</code> API solely to provide its core user-requested feature:
-          displaying a floating 0–100 ingredient score bubble and clean swap suggestions while you browse groceries inside 12 supported retail and
-          delivery apps (Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Shopping / Amazon Fresh / Whole Foods Market, Sam&apos;s Club, BJ&apos;s Wholesale,
-          Costco, and Shipt).
+          The <strong>Google Play Store edition</strong> of HeyBroc uses our built-in <strong>Live Shop</strong> browser and requests{" "}
+          <strong>zero Android AccessibilityService or system overlay permissions</strong>. Separately, the optional direct-download Android APK
+          distributed outside Google Play offers an opt-in Android <code>AccessibilityService</code> floating score bubble while you browse groceries
+          inside 12 supported retail and delivery apps (Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Shopping / Amazon Fresh /
+          Whole Foods Market, Sam&apos;s Club, BJ&apos;s Wholesale, Costco, and Shipt).
         </p>
         <ul>
           <li>
-            <strong>What screen content is accessed:</strong> When one of the 12 supported store apps is actively in the foreground and you have
-            explicitly accepted the in-app Accessibility Service disclosure, HeyBroc traverses visible, non-editable accessibility text nodes on device to:
+            <strong>What screen content is accessed (direct-download APK only):</strong> When one of the 12 supported store apps is actively in the
+            foreground and you have explicitly accepted the in-app Accessibility Service disclosure, HeyBroc traverses visible, non-editable accessibility
+            text nodes on device to:
             (a) detect when a grocery product page or product feed is open and extract candidate <strong>product titles</strong>,{" "}
             <strong>ingredient text</strong> (if expanded on screen), and active <strong>store identifier</strong>, and
             (b) extract visible <strong>cart item titles</strong> (up to 20 items when you view your Cart screen) and <em>&ldquo;in cart&rdquo;</em>{" "}
             badges so your Whole-Cart Health Check reflects the items currently in your cart.
           </li>
           <li>
-            <strong>Chrome Extension scope:</strong> On desktop browsers, the HeyBroc Chrome extension runs only on supported grocery retailer domains
-            and, on Amazon, restricts product scanning to pages categorized under <em>Grocery &amp; Gourmet Food</em>, <em>Amazon Fresh</em>,{" "}
-            <em>Whole Foods Market</em>, or pages containing an explicit <em>Ingredients</em> section.
+            <strong>Chrome &amp; Safari Extension scope:</strong> On desktop and mobile browsers, the HeyBroc extension runs only on supported grocery
+            retailer domains and, on Amazon, restricts product scanning to pages categorized under <em>Grocery &amp; Gourmet Food</em>,{" "}
+            <em>Amazon Fresh</em>, <em>Whole Foods Market</em>, or pages containing an explicit <em>Ingredients</em> section.
           </li>
           <li>
-            <strong>On-device filtering &amp; exclusions:</strong> HeyBroc restricts Android accessibility events by package name to the allowlisted
-            grocery apps above (including <code>com.amazon.mShop.android.shopping</code> and <code>com.wholefoods.wholefoodsmarket</code>), prunes password fields, editable text inputs, search boxes, payment/card containers, and chat/message/instruction
-            containers on device before extracting product candidates, and never reads hardware device identifiers (such as <code>ANDROID_ID</code> or
-            IMEI), contacts, system notifications, or SMS apps.
+            <strong>On-device filtering &amp; exclusions:</strong> On the optional direct-download APK, HeyBroc restricts Android accessibility events by
+            package name to the allowlisted grocery apps above (including <code>com.amazon.mShop.android.shopping</code> and{" "}
+            <code>com.wholefoods.wholefoodsmarket</code>), prunes password fields, editable text inputs, search boxes, payment/card containers, and
+            chat/message/instruction containers on device before extracting product candidates, and never reads hardware device identifiers (such as{" "}
+            <code>ANDROID_ID</code> or IMEI), contacts, system notifications, or SMS apps.
           </li>
           <li>
             <strong>How extracted product data is transmitted and used:</strong> Matched grocery product title candidates (including visible cart item titles
@@ -67,8 +70,10 @@ export default function PrivacyPage() {
             NIH Dietary Supplement Label Database (DSLD), Open Beauty Facts, Open Products Facts, and Open Pet Food Facts.
           </li>
           <li>
-            <strong>No autonomous actions:</strong> HeyBroc is a read-only ingredient grader (<code>isAccessibilityTool=&quot;false&quot;</code>). It never performs
-            automated clicks, gestures, cart modifications, or purchases on your behalf. Store swap links open only when you explicitly tap them.
+            <strong>User-initiated search only — no autonomous checkout or purchases:</strong> On the optional direct-download APK (
+            <code>isAccessibilityTool=&quot;false&quot;</code>), HeyBroc never performs autonomous cart modifications, checkout flows, or purchases on
+            your behalf. Solely when you explicitly tap a Clean Swap button (such as <em>&ldquo;Find in Store&rdquo;</em>), the optional direct-download
+            APK may open the retailer&apos;s swap search link or enter that replacement query into the active store&apos;s search bar on your behalf.
           </li>
           <li>
             <strong>Revoking consent at any time:</strong> Enabling the Android Accessibility toggle alone does not grant consent; you must accept the

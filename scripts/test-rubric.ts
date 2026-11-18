@@ -9967,6 +9967,26 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const fsNode = await import("node:fs");
+    const iosLive = fsNode.readFileSync("ios-app/App/LiveStoreBrowserViewController.swift", "utf8");
+    const androidLive = fsNode.readFileSync(
+      "android-app/app/src/main/java/com/cleancart/overlay/LiveStoreBrowserActivity.kt",
+      "utf8",
+    );
+    const privacySrc = fsNode.readFileSync("app/privacy/page.tsx", "utf8");
+    check(
+      "P1-13 native iOS & Android Live Shop inspect sheets show informational disclaimer linking to /independence, and /privacy aligns Play vs direct-APK Accessibility behavior",
+      iosLive.includes("Informational ingredient score, not medical advice · How we score →") &&
+        iosLive.includes("https://www.heybroc.com/independence") &&
+        androidLive.includes("Informational ingredient score, not medical advice · How we score →") &&
+        androidLive.includes("https://www.heybroc.com/independence") &&
+        privacySrc.includes("zero Android AccessibilityService or system overlay permissions") &&
+        privacySrc.includes("enter that replacement query into the active store&apos;s search bar on your behalf") &&
+        !privacySrc.includes("HeyBroc is a read-only ingredient grader"),
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

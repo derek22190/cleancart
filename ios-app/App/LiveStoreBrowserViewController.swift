@@ -4106,6 +4106,16 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
         actionsRow.addArrangedSubview(snapBtn)
         stack.addArrangedSubview(actionsRow)
 
+        let disclaimerBtn = HeyBrocPaddedButton(type: .system)
+        disclaimerBtn.setTitle("Informational ingredient score, not medical advice · How we score →", for: .normal)
+        disclaimerBtn.titleLabel?.font = UIFont.systemFont(ofSize: 11.5, weight: .medium)
+        disclaimerBtn.titleLabel?.numberOfLines = 0
+        disclaimerBtn.titleLabel?.textAlignment = .center
+        disclaimerBtn.setTitleColor(UIColor(red: 0.392, green: 0.455, blue: 0.545, alpha: 1.0), for: .normal)
+        disclaimerBtn.textPadding = UIEdgeInsets(top: 6, left: 6, bottom: 4, right: 6)
+        disclaimerBtn.addTarget(self, action: #selector(tapOpenMethodology), for: .touchUpInside)
+        stack.addArrangedSubview(disclaimerBtn)
+
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -4121,6 +4131,13 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
 
     @objc private func tapDone() {
         dismiss(animated: true)
+    }
+
+    @objc private func tapOpenMethodology() {
+        guard let url = URL(string: "https://www.heybroc.com/independence") else { return }
+        let safari = SFSafariViewController(url: url)
+        safari.modalPresentationStyle = .pageSheet
+        present(safari, animated: true)
     }
 
     @objc private func tapOpenSwap() {

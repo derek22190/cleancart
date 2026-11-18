@@ -2477,6 +2477,22 @@ class LiveStoreBrowserActivity : Activity() {
             })
         }
 
+        stack.addView(label(
+            "Informational ingredient score, not medical advice · How we score →",
+            11.5f,
+            0xFF64748B.toInt()
+        ).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(4), dp(14), dp(4), dp(6))
+            setOnClickListener {
+                runCatching {
+                    startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/independence"))
+                    )
+                }
+            }
+        })
+
         scroll.addView(stack)
         val maxSheetH = (resources.displayMetrics.heightPixels * 0.72f).toInt()
         outer.addView(scroll, LinearLayout.LayoutParams(
