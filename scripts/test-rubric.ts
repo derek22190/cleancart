@@ -10332,6 +10332,69 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const fsNode = await import("node:fs");
+    const suggestRouteMod = await import("../app/api/suggest/route");
+    const productImgMod = await import("../app/api/product-image/route");
+    const { resetLookupRuntimeForTests } = await import("../lib/lookup");
+
+    const suggestRes = await suggestRouteMod.GET(
+      new Request("https://www.heybroc.com/api/suggest?q=doritos", {
+        headers: { "x-forwarded-for": "198.51.100.28" },
+      }),
+    );
+    const suggestJson = (await suggestRes.json()) as { ok: boolean; suggestions: Array<{ title: string; score: number }> };
+    const suggestCc = suggestRes.headers.get("cache-control") || "";
+
+    resetLookupRuntimeForTests();
+    const prevFetchP28 = globalThis.fetch;
+    let placeholderStatus = 0;
+    let placeholderCc = "";
+    let placeholderRetry = "";
+    try {
+      globalThis.fetch = (async () => {
+        throw new Error("Simulated OFF outage for P2-8");
+      }) as typeof fetch;
+      const imgRes = await productImgMod.GET(
+        new Request("https://www.heybroc.com/api/product-image?q=Unlisted%20Zylphoric%20Noodles%20P28", {
+          headers: { "x-forwarded-for": "198.51.100.29" },
+        }),
+      );
+      placeholderStatus = imgRes.status;
+      placeholderCc = imgRes.headers.get("cache-control") || "";
+      placeholderRetry = imgRes.headers.get("x-image-retry") || "";
+    } finally {
+      globalThis.fetch = prevFetchP28;
+      resetLookupRuntimeForTests();
+    }
+
+    const prodImgSrc = fsNode.readFileSync("app/api/product-image/route.ts", "utf8");
+    const suggestSrc = fsNode.readFileSync("app/api/suggest/route.ts", "utf8");
+    const verifierSrc = fsNode.readFileSync("components/LabelAutoVerifierModal.tsx", "utf8");
+    const nextCfgSrc = fsNode.readFileSync("next.config.ts", "utf8");
+
+    check(
+      "P2-8 /api/product-image enforces 2.5s failover ceiling + 48MB byte cap + short-TTL placeholder fallback, /api/suggest precomputes scores with Edge cache, and LabelAutoVerifierModal uses local /tesseract assets",
+      suggestRes.status === 200 &&
+        suggestJson.ok === true &&
+        suggestJson.suggestions.some((s) => /doritos/i.test(s.title) && typeof s.score === "number") &&
+        suggestCc.includes("s-maxage=3600") &&
+        suggestCc.includes("stale-while-revalidate=86400") &&
+        placeholderStatus === 200 &&
+        placeholderCc.includes("s-maxage=60") &&
+        !placeholderCc.includes("no-store") &&
+        placeholderRetry === "1" &&
+        prodImgSrc.includes("const MAX_IMAGE_BYTES_CACHE_TOTAL = 48 * 1024 * 1024;") &&
+        prodImgSrc.includes("const OFF_IMAGE_SEARCH_DEADLINE_MS = 2500;") &&
+        prodImgSrc.includes("imageBytesCacheTotalBytes") &&
+        suggestSrc.includes("const PRECOMPUTED_INDEX:") &&
+        verifierSrc.includes('workerPath: "/tesseract/worker.min.js"') &&
+        verifierSrc.includes('corePath: "/tesseract"') &&
+        verifierSrc.includes('langPath: "/tesseract"') &&
+        nextCfgSrc.includes('source: "/tesseract/:path*"'),
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

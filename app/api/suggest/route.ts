@@ -451,77 +451,68 @@ const FULL_INDEX: SuggestEntry[] = (() => {
   return out;
 })();
 
-export async function GET(request: Request) {
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip") ||
-    "anon";
-  if (!checkRateLimit(`suggest:${ip}`, 120)) {
-    return NextResponse.json(
-      { ok: false, suggestions: [], error: "Rate limit exceeded" },
-      { status: 429, headers: { "Access-Control-Allow-Origin": "*" } }
-    );
-  }
-  const { searchParams } = new URL(request.url);
-  const q = (searchParams.get("q") || "").trim().toLowerCase();
-  if (!q) {
-    return NextResponse.json({ ok: true, suggestions: [] }, { headers: { "Access-Control-Allow-Origin": "*" } });
-  }
+interface PrecomputedSuggestPayload {
+  title: string;
+  brand: string;
+  barcode?: string;
+  category: string;
+  description: string;
+  ingredients: string;
+  nutrition?: NutritionInput;
+  isOrganic: boolean;
+  sourceUrl?: string;
+  verifiedAt?: string;
+  score: number;
+  rating: string;
+  color: string;
+  imageUrl: string;
+  imageKind: string;
+  categoryArtUrl?: string | null;
+}
 
-  const tokens = q.split(/[^a-z0-9]+/).filter(Boolean);
-  if (tokens.length === 0) {
-    return NextResponse.json({ ok: true, suggestions: [] }, { headers: { "Access-Control-Allow-Origin": "*" } });
-  }
-  const scored: Array<{ entry: SuggestEntry; rank: number }> = [];
+interface PrecomputedSuggestEntry {
+  entry: SuggestEntry;
+  titleLower: string;
+  brandLower: string;
+  kwLower: string;
+  hayWords: string[];
+  payload: PrecomputedSuggestPayload;
+}
 
-  for (const entry of FULL_INDEX) {
-    if (!isCatalogEntryFresh(entry.verifiedAt) || !passesVariantGuard(q, entry.title)) {
-      continue;
-    }
-    const titleLower = entry.title.toLowerCase();
-    const brandLower = entry.brand.toLowerCase();
-    const catLower = (entry.category || "").toLowerCase();
-    const kwLower = (entry.keywords || []).join(" ").toLowerCase();
-    const hay = `${titleLower} ${brandLower} ${catLower} ${kwLower}`;
-    const hayWords = hay.split(/[^a-z0-9]+/).filter(Boolean);
-
-    // Every query token must match a word prefix (or 4+ char substring) — prevents "red" in "red bull" from matching "reduced" or "cultured"
-    const matchedTokens = tokens.filter((t) =>
-      hayWords.some((w) => w.startsWith(t) || (t.length >= 4 && w.includes(t))),
-    );
-    if (matchedTokens.length < tokens.length) continue;
-
-    let rank = matchedTokens.length * 15;
-    if (titleLower.startsWith(q) || brandLower.startsWith(q)) rank += 40;
-    else if (titleLower.includes(q) || brandLower.includes(q)) rank += 25;
-    else if (kwLower.includes(q)) rank += 18;
-    if (hayWords.some((w) => w === tokens[0])) rank += 12;
-    scored.push({ entry, rank });
-  }
-
-  scored.sort((a, b) => b.rank - a.rank);
-
-  const suggestions = scored.slice(0, 10).map(({ entry }) => {
-    const isOrganic = Boolean(entry.isOrganic || entry.nutrition?.isOrganic);
-    const resolvedNutrition: NutritionInput | undefined = entry.nutrition
-      ? { ...entry.nutrition, isOrganic }
-      : isOrganic
-        ? { isOrganic: true }
-        : undefined;
-    const res = scoreProductYuka(entry.ingredients, {}, [], {
-      ...resolvedNutrition,
-      productTitle: entry.title,
-      isOrganic,
-    });
-    const media = resolveProductMediaFields({
-      title: entry.title,
-      brand: entry.brand,
-      explicitCategory: entry.category,
-      ingredients: entry.ingredients,
-      assetOrigin: "https://www.heybroc.com",
-    });
-    const resolvedImageUrl = media.imageUrl || media.categoryArtUrl || "";
-    return {
+const PRECOMPUTED_INDEX: PrecomputedSuggestEntry[] = FULL_INDEX.map((entry) => {
+  const titleLower = entry.title.toLowerCase();
+  const brandLower = entry.brand.toLowerCase();
+  const catLower = (entry.category || "").toLowerCase();
+  const kwLower = (entry.keywords || []).join(" ").toLowerCase();
+  const hayWords = `${titleLower} ${brandLower} ${catLower} ${kwLower}`
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+  const isOrganic = Boolean(entry.isOrganic || entry.nutrition?.isOrganic);
+  const resolvedNutrition: NutritionInput | undefined = entry.nutrition
+    ? { ...entry.nutrition, isOrganic }
+    : isOrganic
+      ? { isOrganic: true }
+      : undefined;
+  const res = scoreProductYuka(entry.ingredients, {}, [], {
+    ...resolvedNutrition,
+    productTitle: entry.title,
+    isOrganic,
+  });
+  const media = resolveProductMediaFields({
+    title: entry.title,
+    brand: entry.brand,
+    explicitCategory: entry.category,
+    ingredients: entry.ingredients,
+    assetOrigin: "https://www.heybroc.com",
+  });
+  const resolvedImageUrl = media.imageUrl || media.categoryArtUrl || "";
+  return {
+    entry,
+    titleLower,
+    brandLower,
+    kwLower,
+    hayWords,
+    payload: {
       title: entry.title,
       brand: entry.brand,
       barcode: media.barcode,
@@ -538,11 +529,64 @@ export async function GET(request: Request) {
       imageUrl: resolvedImageUrl,
       imageKind: media.imageKind,
       categoryArtUrl: media.categoryArtUrl,
-    };
-  });
+    },
+  };
+});
+
+const SUGGEST_CACHE_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Cache-Control": "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400",
+};
+
+export async function GET(request: Request) {
+  const ip =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    request.headers.get("x-real-ip") ||
+    "anon";
+  if (!checkRateLimit(`suggest:${ip}`, 120)) {
+    return NextResponse.json(
+      { ok: false, suggestions: [], error: "Rate limit exceeded" },
+      { status: 429, headers: { "Access-Control-Allow-Origin": "*", "Cache-Control": "no-store" } }
+    );
+  }
+  const { searchParams } = new URL(request.url);
+  const q = (searchParams.get("q") || "").trim().toLowerCase();
+  if (!q) {
+    return NextResponse.json({ ok: true, suggestions: [] }, { headers: SUGGEST_CACHE_HEADERS });
+  }
+
+  const tokens = q.split(/[^a-z0-9]+/).filter(Boolean);
+  if (tokens.length === 0) {
+    return NextResponse.json({ ok: true, suggestions: [] }, { headers: SUGGEST_CACHE_HEADERS });
+  }
+  const scored: Array<{ item: PrecomputedSuggestEntry; rank: number }> = [];
+
+  for (const item of PRECOMPUTED_INDEX) {
+    const { entry, titleLower, brandLower, kwLower, hayWords } = item;
+    if (!isCatalogEntryFresh(entry.verifiedAt) || !passesVariantGuard(q, entry.title)) {
+      continue;
+    }
+
+    // Every query token must match a word prefix (or 4+ char substring) — prevents "red" in "red bull" from matching "reduced" or "cultured"
+    const matchedTokens = tokens.filter((t) =>
+      hayWords.some((w) => w.startsWith(t) || (t.length >= 4 && w.includes(t))),
+    );
+    if (matchedTokens.length < tokens.length) continue;
+
+    let rank = matchedTokens.length * 15;
+    if (titleLower.startsWith(q) || brandLower.startsWith(q)) rank += 40;
+    else if (titleLower.includes(q) || brandLower.includes(q)) rank += 25;
+    else if (kwLower.includes(q)) rank += 18;
+    if (hayWords.some((w) => w === tokens[0])) rank += 12;
+    scored.push({ item, rank });
+  }
+
+  scored.sort((a, b) => b.rank - a.rank);
+
+  const suggestions = scored.slice(0, 10).map(({ item }) => item.payload);
 
   return NextResponse.json(
     { ok: true, suggestions },
-    { headers: { "Access-Control-Allow-Origin": "*" } },
+    { headers: SUGGEST_CACHE_HEADERS },
   );
 }

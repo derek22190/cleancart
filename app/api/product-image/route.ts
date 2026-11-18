@@ -20,9 +20,12 @@ export const dynamic = "force-dynamic";
 const imageUrlCache = new Map<string, string>();
 const confirmedMissCache = new Map<string, number>();
 const imageBytesCache = new Map<string, { bytes: ArrayBuffer; contentType: string; sourceUrl: string }>();
+let imageBytesCacheTotalBytes = 0;
 let trackedImgFetchRef: unknown = globalThis.fetch;
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const MAX_IMAGE_BYTES_CACHE_TOTAL = 48 * 1024 * 1024;
+const OFF_IMAGE_SEARCH_DEADLINE_MS = 2500;
 const CONFIRMED_MISS_TTL_SECONDS = 24 * 60 * 60;
 const ALLOWED_IMAGE_HOST_SUFFIXES = [".openfoodfacts.org", ".openfoodfacts.net"];
 const PLACEHOLDER_SVG_REL_PATH = "public/product-photo-unavailable.svg";
@@ -260,7 +263,7 @@ function headersForLocalAsset(
   const headers: Record<string, string> = {
     "Content-Type": contentType,
     "Cache-Control": isRetryable
-      ? "no-store, no-cache, must-revalidate"
+      ? "public, max-age=30, s-maxage=60, stale-while-revalidate=120"
       : "public, max-age=86400",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Expose-Headers": "X-Image-Source, X-Image-License, X-Image-Kind, X-Image-Retry",
@@ -274,6 +277,7 @@ function headersForLocalAsset(
   };
   if (isRetryable) {
     headers["X-Image-Retry"] = "1";
+    headers["Retry-After"] = "30";
   }
   return headers;
 }
@@ -309,6 +313,7 @@ const deadOffUrlSet = new Set<string>();
 function ensureImageCachesFreshForFetch(): void {
   if (process.env.NODE_ENV !== "production" && trackedImgFetchRef !== globalThis.fetch) {
     imageBytesCache.clear();
+    imageBytesCacheTotalBytes = 0;
     imageUrlCache.clear();
     confirmedMissCache.clear();
     deadOffUrlSet.clear();
@@ -819,6 +824,9 @@ async function resolveVerifiedProductMedia(
   const cacheKey = `${rawQuery.toLowerCase()}|${rawCode}|${rawBrand.toLowerCase()}`;
   const cachedBytes = imageBytesCache.get(cacheKey);
   if (cachedBytes) {
+    // Refresh LRU recency
+    imageBytesCache.delete(cacheKey);
+    imageBytesCache.set(cacheKey, cachedBytes);
     return { kind: "remote", ...cachedBytes };
   }
 
@@ -828,14 +836,27 @@ async function resolveVerifiedProductMedia(
   };
 
   const storeInBytesCache = (entry: { bytes: ArrayBuffer; contentType: string; sourceUrl: string }) => {
-    if (!imageBytesCache.has(cacheKey)) {
-      while (imageBytesCache.size >= 350) {
-        const oldest = imageBytesCache.keys().next().value;
-        if (oldest === undefined) break;
-        imageBytesCache.delete(oldest);
+    const entrySize = entry.bytes.byteLength;
+    if (entrySize > MAX_IMAGE_BYTES_CACHE_TOTAL) return;
+    const prev = imageBytesCache.get(cacheKey);
+    if (prev) {
+      imageBytesCacheTotalBytes = Math.max(0, imageBytesCacheTotalBytes - prev.bytes.byteLength);
+      imageBytesCache.delete(cacheKey);
+    }
+    while (
+      imageBytesCache.size >= 350 ||
+      imageBytesCacheTotalBytes + entrySize > MAX_IMAGE_BYTES_CACHE_TOTAL
+    ) {
+      const oldestKey = imageBytesCache.keys().next().value;
+      if (oldestKey === undefined) break;
+      const oldestVal = imageBytesCache.get(oldestKey);
+      if (oldestVal) {
+        imageBytesCacheTotalBytes = Math.max(0, imageBytesCacheTotalBytes - oldestVal.bytes.byteLength);
       }
+      imageBytesCache.delete(oldestKey);
     }
     imageBytesCache.set(cacheKey, entry);
+    imageBytesCacheTotalBytes += entrySize;
   };
 
   // 1. Curated verified matches (instant local swap studio photos or self-healing Open Food Facts URLs)
@@ -1052,9 +1073,15 @@ async function resolveVerifiedProductMedia(
     return null;
   };
 
-  // 5. Last-resort live Open Food Facts Search-a-licious v3 (single primary search to conserve <= 9/min budget)
+  // 5. Last-resort live Open Food Facts Search-a-licious v3 + CGI fallback within a single 2.5s ceiling
+  const searchDeadline = Date.now() + OFF_IMAGE_SEARCH_DEADLINE_MS;
   let searchV3Succeeded = false;
   for (const searchQ of queriesToTry.slice(0, 1)) {
+    const remainingMs = searchDeadline - Date.now();
+    if (remainingMs < 250) {
+      markFailure();
+      break;
+    }
     const offUrl = `https://search.openfoodfacts.org/search?q=${encodeURIComponent(searchQ)}&page_size=14&fields=code,product_name,product_name_en,brands,countries_tags,image_front_small_url,image_front_url,selected_images,images`;
     if (!(await consumeSharedOffBudget(offUrl))) {
       markFailure();
@@ -1063,7 +1090,7 @@ async function resolveVerifiedProductMedia(
     try {
       const res = await fetch(offUrl, {
         headers: { "User-Agent": "HeyBroc/2.1 (https://www.heybroc.com)" },
-        signal: AbortSignal.timeout(3800),
+        signal: AbortSignal.timeout(Math.min(1500, remainingMs)),
       });
       if (res.ok) {
         searchV3Succeeded = true;
@@ -1084,15 +1111,16 @@ async function resolveVerifiedProductMedia(
     }
   }
 
-  // Fallback to v2 CGI search ONLY if Search v3 failed operationally (not when Search v3 returned 200 with 0 matches)
+  // Fallback to v2 CGI search ONLY if Search v3 failed operationally AND >= 400ms remains in the 2.5s budget
   const cgiTerms = coreWithoutGenericCategory || conciseQuery;
-  if (!searchV3Succeeded && cgiTerms) {
+  const cgiRemainingMs = searchDeadline - Date.now();
+  if (!searchV3Succeeded && cgiTerms && cgiRemainingMs >= 400) {
     const cgiUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(cgiTerms)}&search_simple=1&action=process&json=1&page_size=14&fields=code,product_name,product_name_en,brands,countries_tags,image_front_small_url,image_front_url,selected_images,images`;
     if (await consumeSharedOffBudget(cgiUrl)) {
       try {
         const res = await fetch(cgiUrl, {
           headers: { "User-Agent": "HeyBroc/2.1 (https://www.heybroc.com)" },
-          signal: AbortSignal.timeout(3800),
+          signal: AbortSignal.timeout(cgiRemainingMs),
         });
         if (res.ok) {
           const data = (await res.json()) as { products?: OffImageProductRecord[] };
@@ -1144,6 +1172,8 @@ function missingStatusResponse(transientRetry: boolean, imageKind: "none" | "cat
   };
   if (transientRetry) {
     headers["X-Image-Retry"] = "1";
+    headers["Retry-After"] = "30";
+    headers["CDN-Cache-Control"] = "public, s-maxage=30";
   }
   return new NextResponse(null, { status: transientRetry ? 503 : 404, headers });
 }
