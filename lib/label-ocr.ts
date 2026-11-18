@@ -88,7 +88,7 @@ export function parseLabelOcrText(rawText: string): ParsedLabelOcr {
   if (ingHeaderMatch?.[1]) {
     const candidate = ingHeaderMatch[1]
       .split(
-        /(?:\r?\n|\.\s+)(?:contains\s*:?\s*(?:milk|wheat|soy|egg|peanut|tree\s+nut|fish|shellfish|sesame)|allergen\s+information|may\s+contain|(?:upc|ean|gtin|barcode|item\s*#?|sku)\s*[:#]?\s*\d{6,14}|manufactured\s+(?:in|for|by)|distributed\s+by|produced\s+for|packed\s+(?:by|for)|marketed\s+by|nutrition\s+facts|questions\s+or\s+comments|keep\s+refrigerated|best\s+if\s+used\s+by|store\s+in\s+a\s+cool)/i
+        /(?:\r?\n|\.\s+)(?:may\s+contain|(?:upc|ean|gtin|barcode|item\s*#?|sku)\s*[:#]?\s*\d{6,14}|manufactured\s+(?:in|for|by)|distributed\s+by|produced\s+for|packed\s+(?:by|for)|marketed\s+by|nutrition\s+facts|questions\s+or\s+comments|keep\s+refrigerated|best\s+if\s+used\s+by|store\s+in\s+a\s+cool)/i
       )[0]
       .replace(/\s+/g, " ")
       .trim();

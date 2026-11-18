@@ -9433,6 +9433,40 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const fsNode = await import("node:fs");
+    const ocrMod = await import("../lib/label-ocr");
+    const dietaryMod = await import("../lib/dietary");
+    const parsedOcr = ocrMod.parseLabelOcrText(
+      "Artisan Crackers\nINGREDIENTS: Enriched Flour, Sea Salt, Natural Flavors.\nContains: Milk, Wheat, Soy, Sesame.\nDistributed by Acme Foods, Austin TX",
+    );
+    const ocrAlerts = dietaryMod.evaluateDietaryAlerts(
+      ["dairy", "wheat_gluten", "soy", "sesame"],
+      parsedOcr.productTitle,
+      parsedOcr.rawIngredients,
+    );
+    const tracesAlerts = dietaryMod.evaluateDietaryAlerts(
+      ["peanuts_nuts"],
+      "Trail Snack",
+      "Dates, Raisins. Contains traces of peanuts.",
+    );
+    const scanApiKtP14 = fsNode.readFileSync(
+      "android-app/app/src/main/java/com/cleancart/overlay/ScanApi.kt",
+      "utf8",
+    );
+    check(
+      "P1-4 Android preserves 'Contains traces of' allergy alerts and OCR retains FDA 'Contains:' allergen statements",
+      parsedOcr.rawIngredients.includes("Contains: Milk, Wheat, Soy, Sesame") &&
+        !parsedOcr.rawIngredients.includes("Distributed by") &&
+        ocrAlerts.some((a) => a.id === "dairy") &&
+        ocrAlerts.some((a) => a.id === "wheat_gluten") &&
+        ocrAlerts.some((a) => a.id === "soy") &&
+        ocrAlerts.some((a) => a.id === "sesame") &&
+        tracesAlerts.some((a) => a.id === "peanuts_nuts") &&
+        !scanApiKtP14.includes("|(?:contain(?:s)?\\\\s+)?traces\\\\s+of"),
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

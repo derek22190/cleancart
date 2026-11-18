@@ -553,7 +553,7 @@ object ScanApi {
      * Returns an empty list when no boxes are checked (all unchecked by default).
      */
     private val PRECAUTIONARY_PREFIX_RE = Regex(
-        "\\b(?:may\\s+contain(?:\\s+traces\\s+of)?|(?:manufactured|processed|produced|packaged|made|prepared)\\s+(?:in|on)\\s+(?:a\\s+)?(?:facility|plant|bakery|kitchen|equipment|shared\\s+equipment|lines?|machinery)\\s+(?:that|which)\\s+(?:also\\s+)?(?:processes|handles|uses|manufactures|packages)|(?:(?:manufactured|processed|produced|packaged|made|prepared)\\s+(?:on|in)\\s+)?(?:shared\\s+equipment|(?:a\\s+)?(?:equipment|lines?|machinery|facility|plant)\\s+shared)\\s+with|facility\\s+that\\s+(?:also\\s+)?(?:processes|handles|uses|manufactures|packages)|(?:contain(?:s)?\\s+)?traces\\s+of)(?:\\s*:)?\\s+(?:traces\\s+of\\s+)?(?:the\\s+following\\s*:?\\s*)?",
+        "\\b(?:may\\s+contain(?:\\s+traces\\s+of)?|(?:manufactured|processed|produced|packaged|made|prepared)\\s+(?:in|on)\\s+(?:a\\s+)?(?:facility|plant|bakery|kitchen|equipment|shared\\s+equipment|lines?|machinery)\\s+(?:that|which)\\s+(?:also\\s+)?(?:processes|handles|uses|manufactures|packages)|(?:(?:manufactured|processed|produced|packaged|made|prepared)\\s+(?:on|in)\\s+)?(?:shared\\s+equipment|(?:a\\s+)?(?:equipment|lines?|machinery|facility|plant)\\s+shared)\\s+with|facility\\s+that\\s+(?:also\\s+)?(?:processes|handles|uses|manufactures|packages))(?:\\s*:)?\\s+(?:traces\\s+of\\s+)?(?:the\\s+following\\s*:?\\s*)?",
         RegexOption.IGNORE_CASE
     )
 
