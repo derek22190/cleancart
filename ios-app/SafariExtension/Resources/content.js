@@ -927,7 +927,29 @@
     requestAnimationFrame(step);
   }
 
-  /* ---------------- In-Stock Swap Verification & OOS Auto-Fallback ---------------- */
+  /* ---------------- Bounded LRU Map Helpers & In-Stock Swap Verification ---------------- */
+  const MAX_STOCK_CACHE = 250;
+  const MAX_PDP_SCAN_CACHE = 150;
+  const MAX_GRID_SCAN_CACHE = 400;
+
+  function lruGet(map, key) {
+    if (!map.has(key)) return undefined;
+    const val = map.get(key);
+    map.delete(key);
+    map.set(key, val);
+    return val;
+  }
+
+  function lruSet(map, key, val, maxEntries) {
+    if (map.has(key)) map.delete(key);
+    map.set(key, val);
+    while (map.size > maxEntries) {
+      const oldestKey = map.keys().next().value;
+      if (oldestKey === undefined) break;
+      map.delete(oldestKey);
+    }
+  }
+
   const stockCache = new Map(); // key: `${bucketKey}|${titleLower}` -> { inStock, verifiedUrl, ts, unverifiedSpa }
 
   const OOS_TEXT_RE =
@@ -1026,7 +1048,7 @@
   async function verifySingleCandidateStock(candidate, bKey) {
     if (!candidate?.webUrl) return { inStock: true, verifiedUrl: null, locked: true };
     const cacheKey = `${bKey}|${String(candidate.title || "").toLowerCase()}`;
-    const hit = stockCache.get(cacheKey);
+    const hit = lruGet(stockCache, cacheKey);
     if (hit && Date.now() - hit.ts < STOCK_CACHE_TTL_MS) {
       return hit;
     }
@@ -1037,7 +1059,7 @@
       // Only fetch same-origin URLs directly with store session cookies
       if (parsed.hostname.replace(/^www\./, "") !== HOST.replace(/^www\./, "")) {
         const result = { inStock: true, unverifiedSpa: true, verifiedUrl: candidate.webUrl, ts: Date.now() };
-        stockCache.set(cacheKey, result);
+        lruSet(stockCache, cacheKey, result, MAX_STOCK_CACHE);
         return result;
       }
       checkUrl = parsed.href;
@@ -1057,18 +1079,18 @@
       clearTimeout(tid);
       if (res.status === 404 || res.status === 410) {
         const out = { inStock: false, verifiedUrl: checkUrl, ts: Date.now() };
-        stockCache.set(cacheKey, out);
+        lruSet(stockCache, cacheKey, out, MAX_STOCK_CACHE);
         return out;
       }
       if (!res.ok) {
         const fallback = { inStock: true, unverifiedSpa: true, verifiedUrl: checkUrl, ts: Date.now() };
-        stockCache.set(cacheKey, fallback);
+        lruSet(stockCache, cacheKey, fallback, MAX_STOCK_CACHE);
         return fallback;
       }
       const html = await res.text();
       const analyzed = analyzeFetchedStoreHtml(html, candidate, checkUrl);
       const out = { ...analyzed, ts: Date.now() };
-      stockCache.set(cacheKey, out);
+      lruSet(stockCache, cacheKey, out, MAX_STOCK_CACHE);
       return out;
     } catch {
       clearTimeout(tid);
@@ -1163,7 +1185,7 @@
 
       if (hasExplicitOos) {
         const badCacheKey = `${pending.bucketKey}|${String(currentCand.title || "").toLowerCase()}`;
-        stockCache.set(badCacheKey, { inStock: false, verifiedUrl: location.href, ts: Date.now() });
+        lruSet(stockCache, badCacheKey, { inStock: false, verifiedUrl: location.href, ts: Date.now() }, MAX_STOCK_CACHE);
 
         const nextIdx = (pending.currentIndex || 0) + 1;
         if (nextIdx < pending.candidates.length && pending.candidates[nextIdx]?.webUrl) {
@@ -4211,7 +4233,7 @@
     }
 
     const cKey = `${normCacheKey(productTitle, rawIngredients)}|${pageBarcode}`;
-    const cached = scanCache.get(cKey);
+    const cached = lruGet(scanCache, cKey);
     if (cached?.ok) {
       void applyScanResult(cached, domImage, seq);
       return;
@@ -4231,7 +4253,7 @@
       },
       (resp) => {
         if (resp?.ok && !isTransientLockedSwap(resp)) {
-          scanCache.set(cKey, resp);
+          lruSet(scanCache, cKey, resp, MAX_PDP_SCAN_CACHE);
         }
         if (seq !== scanSeq || !isProductPage() || resolveStoreBucket().bucketKey !== reqBucket.bucketKey) return;
         void applyScanResult(resp, domImage, seq);
@@ -4774,7 +4796,7 @@
         },
         (freshResp) => {
           if (freshResp?.ok && !isTransientLockedSwap(freshResp)) {
-            gridScanCache.set(normCacheKey(liveInfo.title, ""), freshResp);
+            lruSet(gridScanCache, normCacheKey(liveInfo.title, ""), freshResp, MAX_GRID_SCAN_CACHE);
           }
           if (seq !== scanSeq || resolveStoreBucket().bucketKey !== reqBucket.bucketKey) return;
           void applyScanResult(freshResp, liveDomImg, seq);
@@ -4913,7 +4935,7 @@
           for (const entry of batchEntries) {
             const itemResp = Object.prototype.hasOwnProperty.call(map, entry.id) ? map[entry.id] : null;
             if (itemResp?.ok && !isTransientLockedSwap(itemResp)) {
-              gridScanCache.set(normCacheKey(entry.info.title, ""), itemResp);
+              lruSet(gridScanCache, normCacheKey(entry.info.title, ""), itemResp, MAX_GRID_SCAN_CACHE);
             }
             const keepOpen = Boolean(badgeDataByElement.get(entry.badgeEl)?.openOnResolve);
             if (!entry.cardEl?.isConnected) {
@@ -5017,7 +5039,7 @@
                   },
                   (freshResp) => {
                     if (freshResp?.ok && !isTransientLockedSwap(freshResp)) {
-                      gridScanCache.set(normCacheKey(entry.info.title, ""), freshResp);
+                      lruSet(gridScanCache, normCacheKey(entry.info.title, ""), freshResp, MAX_GRID_SCAN_CACHE);
                     }
                     if (seq !== scanSeq || resolveStoreBucket().bucketKey !== reqBucket.bucketKey) return;
                     void applyScanResult(freshResp, entry.domImg, seq);
@@ -5077,7 +5099,7 @@
 
     const domImg = info.domImageUrl || info.image || null;
     const cKey = normCacheKey(info.title, "");
-    const cached = gridScanCache.get(cKey);
+    const cached = lruGet(gridScanCache, cKey);
     if (cached) {
       if (!cached.ok || isNonFoodScanResponse(cached)) {
         cardStateByEl.set(cardEl, { sig, status: "nonfood", badgeEl: null, retryCount: 0, nextRetryAt: 0 });
@@ -5487,7 +5509,7 @@
     state.hoveredCardData = info;
     const domImg = info.domImageUrl || info.image || null;
     const cKey = normCacheKey(info.title, "");
-    const cached = gridScanCache.get(cKey);
+    const cached = lruGet(gridScanCache, cKey);
     if (cached?.ok) {
       if (isNonFoodScanResponse(cached)) return;
       void applyScanResult(cached, domImg, seq);
@@ -5513,7 +5535,7 @@
       },
       (resp) => {
         if (resp?.ok && !isTransientLockedSwap(resp)) {
-          gridScanCache.set(cKey, resp);
+          lruSet(gridScanCache, cKey, resp, MAX_GRID_SCAN_CACHE);
         } else if (!resp?.ok && lastMobileAlignedTitle === info.title) {
           lastMobileAlignedTitle = "";
         }
@@ -5600,7 +5622,7 @@
           },
         },
         (resp) => {
-          if (resp?.ok && !isTransientLockedSwap(resp)) gridScanCache.set(cKey, resp);
+          if (resp?.ok && !isTransientLockedSwap(resp)) lruSet(gridScanCache, cKey, resp, MAX_GRID_SCAN_CACHE);
         }
       );
     },

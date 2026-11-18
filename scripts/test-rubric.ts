@@ -10210,6 +10210,33 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const fsNode = await import("node:fs");
+    const androidDetector = fsNode.readFileSync("android-app/app/src/main/assets/live_store_detector.js", "utf8");
+    const iosBrowser = fsNode.readFileSync("ios-app/App/LiveStoreBrowserViewController.swift", "utf8");
+    const chromeContent = fsNode.readFileSync("chrome-extension/content.js", "utf8");
+    const safariContent = fsNode.readFileSync("ios-app/SafariExtension/Resources/content.js", "utf8");
+    const chromeBg = fsNode.readFileSync("chrome-extension/background.js", "utf8");
+    const safariBg = fsNode.readFileSync("ios-app/SafariExtension/Resources/background.js", "utf8");
+    check(
+      "P2-6 Idle 1800ms scanPhotoBadges setInterval removed, DOM reads batched before writes, extension caches LRU-bounded, and background fetches AbortController-timed",
+      !androidDetector.includes("}, 1800);") &&
+        !iosBrowser.includes("}, 1800);") &&
+        androidDetector.includes("Phase 1: Batch DOM reads before mutating badges") &&
+        iosBrowser.includes("Phase 1: Batch DOM reads before mutating badges") &&
+        chromeContent === safariContent &&
+        chromeContent.includes("function lruSet(map, key, val, maxEntries)") &&
+        chromeContent.includes("MAX_GRID_SCAN_CACHE") &&
+        chromeContent.includes("MAX_PDP_SCAN_CACHE") &&
+        chromeContent.includes("MAX_STOCK_CACHE") &&
+        !chromeContent.includes("gridScanCache.set(") &&
+        !chromeContent.includes("scanCache.set(") &&
+        !chromeContent.includes("stockCache.set(") &&
+        chromeBg.includes("async function fetchWithTimeout(") &&
+        safariBg.includes("async function fetchWithTimeout("),
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

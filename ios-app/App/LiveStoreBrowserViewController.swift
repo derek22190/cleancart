@@ -2098,17 +2098,20 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             }
             var onPdp = Boolean(findOpenProductModal()) || looksLikeProductUrl(location.href);
             var maxCardW = onPdp ? 360 : Math.max(580, (window.innerWidth || 390) + 32);
+            var vh = Math.max(400, window.innerHeight || 800);
             var seen = [];
-            function addCand(el) {
+            var seenRects = [];
+            function addCand(el, preRect) {
               if (!el || seen.indexOf(el) !== -1 || el.closest('header, nav, footer, [role="contentinfo"]')) return;
               if (el.querySelectorAll && el.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) return;
-              var r = el.getBoundingClientRect();
+              var r = preRect || el.getBoundingClientRect();
               if (r.width > 0 && (r.width < 84 || r.width > maxCardW || r.height < 84 || r.height > 780)) return;
               for (var s = 0; s < seen.length; s++) {
                 var ex = seen[s];
                 if (nodeContains(ex, el) || nodeContains(el, ex)) return;
               }
               seen.push(el);
+              seenRects.push(r);
             }
             var direct = document.querySelectorAll(CARD_SEL);
             for (var d = 0; d < direct.length; d++) addCand(direct[d]);
@@ -2119,18 +2122,20 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 if (a.closest(CARD_SEL) || a.closest('header, nav, footer, [role="contentinfo"]')) continue;
                 var cur = a;
                 var tile = null;
+                var tileRect = null;
                 for (var depth = 0; depth < 5 && cur && cur !== document.body; depth++) {
                   if (cur.querySelector('img')) {
                     if (cur.querySelectorAll && cur.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) break;
                     var cr = cur.getBoundingClientRect();
                     if (cr.width >= 90 && cr.width <= maxCardW && cr.height >= 90 && cr.height <= 760) {
                       tile = cur;
+                      tileRect = cr;
                       if (/^(ARTICLE|LI)$/i.test(cur.tagName)) break;
                     }
                   }
                   cur = cur.parentElement;
                 }
-                if (tile) addCand(tile);
+                if (tile) addCand(tile, tileRect);
               }
               if (/(?:doordash|ubereats|uber|instacart|shipt|aldi)\\./i.test(String(location.hostname || ''))) {
                 var btnTiles = document.querySelectorAll('div[role="button"], li[role="button"], button');
@@ -2142,40 +2147,32 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                   var br = bel.getBoundingClientRect();
                   if (br.width < 96 || br.width > maxCardW || br.height < 110 || br.height > 640) continue;
                   if (!/\\$\\s*\\d/.test(bel.textContent || '')) continue;
-                  addCand(bel);
+                  addCand(bel, br);
                 }
               }
             }
+            // Phase 1: Batch DOM reads before mutating badges to avoid per-card layout thrashing
             var now = Date.now();
             var minRemainingRetryMs = 0;
+            var actions = [];
             for (var c = 0; c < seen.length; c++) {
               var card = seen[c];
+              var cardRect = seenRects[c];
               var st = hbCardState ? hbCardState.get(card) : null;
+              var resetBeforeProcess = false;
               if (st) {
                 var curInfo = readCardInfo(card);
                 if (!curInfo) {
-                  removeCardBadgeState(card, st);
-                  hbCardState.delete(card);
+                  actions.push({ kind: 'clear', card: card, st: st });
                   continue;
                 }
                 if (curInfo.sig !== st.sig) {
-                  removeCardBadgeState(card, st);
-                  hbCardState.delete(card);
-                  st = null;
+                  resetBeforeProcess = true;
                 } else if (st.suppressedEstimate) {
                   continue;
                 } else if (st.badgeEl && st.badgeEl.isConnected) {
                   if (curInfo.chosenImg && st.chosenImg && curInfo.chosenImg !== st.chosenImg) {
-                    if (hbOwnerCardByImg && hbOwnerCardByImg.get(st.chosenImg) === card) {
-                      hbOwnerCardByImg.delete(st.chosenImg);
-                    }
-                    removeBadgeDom(st.badgeEl, st.slotEl);
-                    if (st.badgeEl.classList) st.badgeEl.classList.remove('hb-photo-badge--overlay');
-                    st.badgeEl.style.removeProperty('top');
-                    st.badgeEl.style.removeProperty('bottom');
-                    st.chosenImg = curInfo.chosenImg;
-                    st.slotEl = mountBadgeUnderOrOnPhoto(curInfo.chosenImg, card, st.badgeEl, curInfo.anchor);
-                    if (hbOwnerCardByImg) hbOwnerCardByImg.set(curInfo.chosenImg, card);
+                    actions.push({ kind: 'reanchor', card: card, st: st, curInfo: curInfo });
                   }
                   continue;
                 } else if (st.retryAfter && now < st.retryAfter) {
@@ -2184,13 +2181,43 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                   continue;
                 }
               }
-              if (inNearViewport(card)) {
-                if (hbIntersectionObs) hbIntersectionObs.unobserve(card);
-                processVisibleCard(card);
-              } else if (hbIntersectionObs) {
-                hbIntersectionObs.observe(card);
+              var nearVp = cardRect.height > 0 && cardRect.bottom >= -140 && cardRect.top <= vh + 180;
+              actions.push({
+                kind: nearVp ? 'process' : 'observe',
+                card: card,
+                resetSt: resetBeforeProcess ? st : null
+              });
+            }
+            // Phase 2: Apply DOM writes in a single pass
+            for (var w = 0; w < actions.length; w++) {
+              var act = actions[w];
+              if (act.kind === 'clear') {
+                removeCardBadgeState(act.card, act.st);
+                if (hbCardState) hbCardState.delete(act.card);
+              } else if (act.kind === 'reanchor') {
+                if (hbOwnerCardByImg && hbOwnerCardByImg.get(act.st.chosenImg) === act.card) {
+                  hbOwnerCardByImg.delete(act.st.chosenImg);
+                }
+                removeBadgeDom(act.st.badgeEl, act.st.slotEl);
+                if (act.st.badgeEl.classList) act.st.badgeEl.classList.remove('hb-photo-badge--overlay');
+                act.st.badgeEl.style.removeProperty('top');
+                act.st.badgeEl.style.removeProperty('bottom');
+                act.st.chosenImg = act.curInfo.chosenImg;
+                act.st.slotEl = mountBadgeUnderOrOnPhoto(act.curInfo.chosenImg, act.card, act.st.badgeEl, act.curInfo.anchor);
+                if (hbOwnerCardByImg) hbOwnerCardByImg.set(act.curInfo.chosenImg, act.card);
               } else {
-                processVisibleCard(card);
+                if (act.resetSt) {
+                  removeCardBadgeState(act.card, act.resetSt);
+                  if (hbCardState) hbCardState.delete(act.card);
+                }
+                if (act.kind === 'process') {
+                  if (hbIntersectionObs) hbIntersectionObs.unobserve(act.card);
+                  processVisibleCard(act.card);
+                } else if (hbIntersectionObs) {
+                  hbIntersectionObs.observe(act.card);
+                } else {
+                  processVisibleCard(act.card);
+                }
               }
             }
             if (minRemainingRetryMs > 0) {
@@ -2599,13 +2626,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               scheduleCheck(false);
             }
           }, true);
-          if (typeof setInterval === 'function') {
-            setInterval(function() {
-              if (!document.hidden && !isCartUrl()) {
-                scanPhotoBadges();
-              }
-            }, 1800);
-          }
+          // Photo badges are driven by IntersectionObserver, debounced scroll/mutation,
+          // image load events, history hooks, and retry timers (no idle 1800ms polling).
           window.addEventListener('popstate', function() { scheduleCheck(true); });
           window.addEventListener('hashchange', function() { scheduleCheck(true); });
           var origPush = history.pushState;

@@ -60,6 +60,16 @@ async function getSettings() {
   };
 }
 
+async function fetchWithTimeout(url, init, timeoutMs) {
+  const ctrl = new AbortController();
+  const timeoutId = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "CLEANCART_GET_CLIENT_INFO") {
     (async () => {
@@ -77,27 +87,31 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     (async () => {
       try {
         const { apiBase, watchlist, familyWatchlist, dietaryWatchlist, preferStoreBrand, deviceId, deviceSecret, authToken } = await getSettings();
-        const res = await fetch(`${apiBase}/api/scan`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Device-Secret": deviceSecret,
-            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        const res = await fetchWithTimeout(
+          `${apiBase}/api/scan`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Device-Secret": deviceSecret,
+              ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+            },
+            body: JSON.stringify({
+              ...msg.payload,
+              watchlist,
+              familyWatchlist,
+              dietaryWatchlist,
+              ...(preferStoreBrand !== undefined ? { preferStoreBrand } : {}),
+              ...(authToken ? { authToken } : {}),
+              deviceId,
+              deviceSecret,
+              surface: "extension",
+              clientPlatform: "chrome-extension",
+              format: "json",
+            }),
           },
-          body: JSON.stringify({
-            ...msg.payload,
-            watchlist,
-            familyWatchlist,
-            dietaryWatchlist,
-            ...(preferStoreBrand !== undefined ? { preferStoreBrand } : {}),
-            ...(authToken ? { authToken } : {}),
-            deviceId,
-            deviceSecret,
-            surface: "extension",
-            clientPlatform: "chrome-extension",
-            format: "json",
-          }),
-        });
+          12000
+        );
         const data = await res.json();
         if (data?.issuedDeviceSecret) {
           await persistRotatedDeviceSecret(data.issuedDeviceSecret);
@@ -174,25 +188,29 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     (async () => {
       try {
         const { apiBase, watchlist, familyWatchlist, dietaryWatchlist, deviceId, deviceSecret, authToken } = await getSettings();
-        const res = await fetch(`${apiBase}/api/audit`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Device-Secret": deviceSecret,
-            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        const res = await fetchWithTimeout(
+          `${apiBase}/api/audit`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Device-Secret": deviceSecret,
+              ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+            },
+            body: JSON.stringify({
+              ...msg.payload,
+              watchlist,
+              familyWatchlist,
+              dietaryWatchlist,
+              ...(authToken ? { authToken } : {}),
+              deviceId,
+              deviceSecret,
+              surface: "extension",
+              clientPlatform: "chrome-extension",
+            }),
           },
-          body: JSON.stringify({
-            ...msg.payload,
-            watchlist,
-            familyWatchlist,
-            dietaryWatchlist,
-            ...(authToken ? { authToken } : {}),
-            deviceId,
-            deviceSecret,
-            surface: "extension",
-            clientPlatform: "chrome-extension",
-          }),
-        });
+          15000
+        );
         const data = await res.json();
         if (data?.issuedDeviceSecret) {
           await persistRotatedDeviceSecret(data.issuedDeviceSecret);
@@ -209,20 +227,24 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     (async () => {
       try {
         const { apiBase, deviceId, deviceSecret, authToken } = await getSettings();
-        const res = await fetch(`${apiBase}/api/referral`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Device-Secret": deviceSecret,
-            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        const res = await fetchWithTimeout(
+          `${apiBase}/api/referral`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Device-Secret": deviceSecret,
+              ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+            },
+            body: JSON.stringify({
+              action: "record_swap",
+              deviceId,
+              deviceSecret,
+              productKey: msg.productKey,
+            }),
           },
-          body: JSON.stringify({
-            action: "record_swap",
-            deviceId,
-            deviceSecret,
-            productKey: msg.productKey,
-          }),
-        });
+          10000
+        );
         const data = await res.json();
         if (data?.issuedDeviceSecret) {
           await persistRotatedDeviceSecret(data.issuedDeviceSecret);
@@ -239,21 +261,25 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     (async () => {
       try {
         const { apiBase, watchlist, familyWatchlist, dietaryWatchlist, preferStoreBrand, deviceId, deviceSecret } = await getSettings();
-        const res = await fetch(`${apiBase}/api/label-report`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Device-Secret": deviceSecret,
+        const res = await fetchWithTimeout(
+          `${apiBase}/api/label-report`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Device-Secret": deviceSecret,
+            },
+            body: JSON.stringify({
+              ...msg.payload,
+              watchlist,
+              familyWatchlist,
+              dietaryWatchlist,
+              ...(preferStoreBrand !== undefined ? { preferStoreBrand } : {}),
+              deviceId,
+            }),
           },
-          body: JSON.stringify({
-            ...msg.payload,
-            watchlist,
-            familyWatchlist,
-            dietaryWatchlist,
-            ...(preferStoreBrand !== undefined ? { preferStoreBrand } : {}),
-            deviceId,
-          }),
-        });
+          12000
+        );
         const data = await res.json();
         sendResponse(data);
       } catch (err) {
