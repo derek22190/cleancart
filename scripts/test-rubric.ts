@@ -9251,6 +9251,28 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         androidLiveStoreKt.includes("retryAfterMs") &&
         iosShortcutsSwift.includes("retryAfterSec"),
     );
+
+    check(
+      "P0-1 iOS Native Paywall Guideline 3.1.2 compliance: prominent billed price, auto-renewal disclosure, Terms of Use & Privacy Policy links, no $0.00 due today or TestFlight copy",
+      (() => {
+        const vcSwift = fsNode.readFileSync("ios-app/App/ViewController.swift", "utf8");
+        const paywallSlice = vcSwift.slice(vcSwift.indexOf("NativeProPaywallSheetViewController"));
+        const kitMd = fsNode.readFileSync("store-assets/STORE_SUBMISSION_KIT.md", "utf8");
+        return (
+          vcSwift.includes("import SafariServices") &&
+          paywallSlice.includes("billedPriceLabel.font = UIFont.systemFont(ofSize: 28, weight: .heavy)") &&
+          paywallSlice.includes("Auto-renewable subscription:") &&
+          paywallSlice.includes("at least 24 hours before the end of the current period") &&
+          paywallSlice.includes("https://www.heybroc.com/terms") &&
+          paywallSlice.includes("https://www.heybroc.com/privacy") &&
+          paywallSlice.includes("Terms of Use (EULA)") &&
+          !paywallSlice.includes("$0.00 due today") &&
+          !paywallSlice.includes("TestFlight") &&
+          kitMd.includes("https://www.heybroc.com/terms") &&
+          kitMd.includes("https://www.heybroc.com/privacy")
+        );
+      })(),
+    );
   }
 
   console.log("Checks executed:", checks);

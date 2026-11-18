@@ -24,6 +24,7 @@
   - Slide 5 (HeyBroc Mascot in Red Cape + Clean Cart Streak): [`store-assets/aso-screenshots/slide-5-mascot-streak.jpg`](file:///home/antigravity/derek22190/cleancart/store-assets/aso-screenshots/slide-5-mascot-streak.jpg)
   - Slide 6 (Award & 4.9★ Social Proof Poster): [`store-assets/aso-screenshots/slide-6-awards-quote.jpg`](file:///home/antigravity/derek22190/cleancart/store-assets/aso-screenshots/slide-6-awards-quote.jpg)
 - **Privacy Policy URL (Required by both stores):** `https://www.heybroc.com/privacy`
+- **Terms of Use (EULA) URL (Required by Apple Guideline 3.1.2):** `https://www.heybroc.com/terms`
 
 ---
 
@@ -85,6 +86,10 @@ HOW HEYBROC WORKS:
 100% INDEPENDENT RATING:
 HeyBroc never accepts payments from food brands to boost product scores. Every score is calculated deterministically from the ingredient list and nutrition data.
 
+SUBSCRIPTION & LEGAL:
+HeyBroc Family Pro is available as an auto-renewable subscription ($49.99/year or $9.99/month, with a 7-day free trial for eligible new subscribers). Payment is charged to your Apple ID or Google Play account at confirmation of purchase or end of trial, and renews automatically unless canceled at least 24 hours before the end of the current period.
+
+Terms of Use (EULA): https://www.heybroc.com/terms
 Privacy Policy: https://www.heybroc.com/privacy
 ```
 

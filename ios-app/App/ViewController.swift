@@ -3,6 +3,7 @@ import WebKit
 import AVFoundation
 import AuthenticationServices
 import StoreKit
+import SafariServices
 import CryptoKit
 import Security
 
@@ -1722,11 +1723,16 @@ private final class NativeProPaywallSheetViewController: UIViewController, UITex
     private let spinner = UIActivityIndicatorView(style: .medium)
     private let creatorCodeField = UITextField()
     private let creatorAppliedBadge = UILabel()
+    private let billedPriceLabel = UILabel()
+    private let billedSubLabel = UILabel()
+    private let legalDisclosureLabel = UILabel()
     private let annualButton = UIButton(type: .system)
     private let monthlyButton = UIButton(type: .system)
     private let createAccountButton = UIButton(type: .system)
     private let restoreButton = UIButton(type: .system)
     private let manageButton = UIButton(type: .system)
+    private let termsButton = UIButton(type: .system)
+    private let privacyButton = UIButton(type: .system)
 
     init(
         onVerifiedPurchase: @escaping (String, String, Bool) async -> Void,
@@ -1789,18 +1795,35 @@ private final class NativeProPaywallSheetViewController: UIViewController, UITex
         stack.addArrangedSubview(headerRow)
 
         let titleLabel = UILabel()
-        titleLabel.text = "7-Day Free Family Pro Trial"
-        titleLabel.font = UIFont.systemFont(ofSize: 24, weight: .heavy)
+        titleLabel.text = "HeyBroc Family Pro"
+        titleLabel.font = UIFont.systemFont(ofSize: 22, weight: .heavy)
         titleLabel.textColor = UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0)
         titleLabel.numberOfLines = 2
         stack.addArrangedSubview(titleLabel)
 
-        let subLabel = UILabel()
-        subLabel.text = "$0.00 due today with Apple Face ID • Cancel anytime in iPhone Settings in 1 tap."
-        subLabel.font = UIFont.systemFont(ofSize: 13.5, weight: .medium)
-        subLabel.textColor = UIColor(red: 0.278, green: 0.333, blue: 0.412, alpha: 1.0)
-        subLabel.numberOfLines = 0
-        stack.addArrangedSubview(subLabel)
+        // Guideline 3.1.2: Billed subscription price is the largest, most conspicuous element; free trial is subordinate.
+        let pricingCard = UIStackView()
+        pricingCard.axis = .vertical
+        pricingCard.spacing = 4
+        pricingCard.isLayoutMarginsRelativeArrangement = true
+        pricingCard.layoutMargins = UIEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
+        pricingCard.backgroundColor = .white
+        pricingCard.layer.cornerRadius = 14
+        pricingCard.layer.borderWidth = 1.5
+        pricingCard.layer.borderColor = UIColor(red: 0.086, green: 0.639, blue: 0.290, alpha: 1.0).cgColor
+
+        billedPriceLabel.text = "$49.99/year"
+        billedPriceLabel.font = UIFont.systemFont(ofSize: 28, weight: .heavy)
+        billedPriceLabel.textColor = UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0)
+        billedPriceLabel.numberOfLines = 0
+        pricingCard.addArrangedSubview(billedPriceLabel)
+
+        billedSubLabel.text = "or $9.99/month • Includes a 7-day free trial for eligible new subscribers"
+        billedSubLabel.font = UIFont.systemFont(ofSize: 13, weight: .medium)
+        billedSubLabel.textColor = UIColor(red: 0.278, green: 0.333, blue: 0.412, alpha: 1.0)
+        billedSubLabel.numberOfLines = 0
+        pricingCard.addArrangedSubview(billedSubLabel)
+        stack.addArrangedSubview(pricingCard)
 
         let card = UIStackView()
         card.axis = .vertical
@@ -1885,11 +1908,11 @@ private final class NativeProPaywallSheetViewController: UIViewController, UITex
         statusLabel.numberOfLines = 0
         stack.addArrangedSubview(loadingRow)
 
-        stylePrimaryCTA(annualButton, title: "Start 7-Day Free Trial • Annual ($49.99/yr)")
+        stylePrimaryCTA(annualButton, title: "$49.99/year — Annual Plan\n7-day free trial, then $49.99/year")
         annualButton.addTarget(self, action: #selector(tapAnnual), for: .touchUpInside)
         stack.addArrangedSubview(annualButton)
 
-        styleSecondaryCTA(monthlyButton, title: "Monthly Plan ($9.99/mo)")
+        styleSecondaryCTA(monthlyButton, title: "$9.99/month — Monthly Plan")
         monthlyButton.addTarget(self, action: #selector(tapMonthly), for: .touchUpInside)
         stack.addArrangedSubview(monthlyButton)
 
@@ -1914,6 +1937,29 @@ private final class NativeProPaywallSheetViewController: UIViewController, UITex
 
         stack.addArrangedSubview(footerRow)
 
+        let legalLinksRow = UIStackView(arrangedSubviews: [termsButton, privacyButton])
+        legalLinksRow.axis = .horizontal
+        legalLinksRow.distribution = .fillEqually
+        legalLinksRow.spacing = 8
+
+        termsButton.setTitle("Terms of Use (EULA)", for: .normal)
+        termsButton.titleLabel?.font = UIFont.systemFont(ofSize: 12.5, weight: .semibold)
+        termsButton.setTitleColor(UIColor(red: 0.059, green: 0.478, blue: 0.290, alpha: 1.0), for: .normal)
+        termsButton.addTarget(self, action: #selector(tapTerms), for: .touchUpInside)
+
+        privacyButton.setTitle("Privacy Policy", for: .normal)
+        privacyButton.titleLabel?.font = UIFont.systemFont(ofSize: 12.5, weight: .semibold)
+        privacyButton.setTitleColor(UIColor(red: 0.059, green: 0.478, blue: 0.290, alpha: 1.0), for: .normal)
+        privacyButton.addTarget(self, action: #selector(tapPrivacy), for: .touchUpInside)
+        stack.addArrangedSubview(legalLinksRow)
+
+        legalDisclosureLabel.font = UIFont.systemFont(ofSize: 11, weight: .regular)
+        legalDisclosureLabel.textColor = UIColor(red: 0.392, green: 0.455, blue: 0.545, alpha: 1.0)
+        legalDisclosureLabel.numberOfLines = 0
+        legalDisclosureLabel.textAlignment = .left
+        updateLegalDisclosure(annualPrice: "$49.99", monthlyPrice: "$9.99")
+        stack.addArrangedSubview(legalDisclosureLabel)
+
         let continueFreeBtn = UIButton(type: .system)
         continueFreeBtn.setTitle("Continue with Free Plan (0–100 Scores + 3 Weekly Swaps) →", for: .normal)
         continueFreeBtn.titleLabel?.font = UIFont.systemFont(ofSize: 12.5, weight: .semibold)
@@ -1936,6 +1982,10 @@ private final class NativeProPaywallSheetViewController: UIViewController, UITex
         ])
 
         loadStoreKitProducts()
+    }
+
+    private func updateLegalDisclosure(annualPrice: String, monthlyPrice: String) {
+        legalDisclosureLabel.text = "Auto-renewable subscription: 7-day free trial, then \(annualPrice)/year (or \(monthlyPrice)/month). Payment is charged to your Apple ID account at confirmation of purchase or at the end of the free trial. Subscription automatically renews unless canceled at least 24 hours before the end of the current period. Manage or cancel anytime in Settings › Apple ID › Subscriptions."
     }
 
     private func updateCreatorBadge(_ norm: String) {
@@ -2034,17 +2084,23 @@ private final class NativeProPaywallSheetViewController: UIViewController, UITex
                 self.annualProduct = products.first(where: { $0.id == Self.annualProductID })
                 self.monthlyProduct = products.first(where: { $0.id == Self.monthlyProductID })
 
+                let annualDisplay = self.annualProduct?.displayPrice ?? "$49.99"
+                let monthlyDisplay = self.monthlyProduct?.displayPrice ?? "$9.99"
+                self.billedPriceLabel.text = "\(annualDisplay)/year"
+                self.billedSubLabel.text = "or \(monthlyDisplay)/month • Includes a 7-day free trial for eligible new subscribers"
+                self.updateLegalDisclosure(annualPrice: annualDisplay, monthlyPrice: monthlyDisplay)
+
                 if let annual = self.annualProduct {
-                    self.annualButton.setTitle("Start 7-Day Free Trial • Annual (\(annual.displayPrice)/yr)", for: .normal)
+                    self.annualButton.setTitle("\(annual.displayPrice)/year — Annual Plan\n7-day free trial, then \(annual.displayPrice)/year", for: .normal)
                     self.annualButton.isHidden = false
                 }
                 if let monthly = self.monthlyProduct {
-                    self.monthlyButton.setTitle("Monthly Plan (\(monthly.displayPrice)/mo)", for: .normal)
+                    self.monthlyButton.setTitle("\(monthly.displayPrice)/month — Monthly Plan", for: .normal)
                     self.monthlyButton.isHidden = false
                 }
 
                 if self.annualProduct == nil && self.monthlyProduct == nil {
-                    self.statusLabel.text = "✓ Your Watchlist is saved! TestFlight In-App Purchase plans are finishing App Store review — create your free account below to sync across iPhone & Web, or scan free right now."
+                    self.statusLabel.text = "✓ Your Watchlist is saved! App Store plans are currently unavailable — create your free account below to sync across iPhone & Web, or scan free right now."
                 } else {
                     self.statusLabel.text = "✓ Watchlist saved! Choose a plan or create a free account to sync."
                 }
@@ -2112,6 +2168,20 @@ private final class NativeProPaywallSheetViewController: UIViewController, UITex
         dismiss(animated: true) {
             callback("signup")
         }
+    }
+
+    @objc private func tapTerms() {
+        guard let url = URL(string: "https://www.heybroc.com/terms") else { return }
+        let sf = SFSafariViewController(url: url)
+        sf.modalPresentationStyle = .pageSheet
+        present(sf, animated: true)
+    }
+
+    @objc private func tapPrivacy() {
+        guard let url = URL(string: "https://www.heybroc.com/privacy") else { return }
+        let sf = SFSafariViewController(url: url)
+        sf.modalPresentationStyle = .pageSheet
+        present(sf, animated: true)
     }
 
     @objc private func tapRestore() {
