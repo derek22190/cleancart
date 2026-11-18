@@ -1255,6 +1255,37 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             return false;
           }
 
+          var NON_PRODUCT_CARD_META_RE = /(?:^|[\\s_./-])(?:brand[-_ ]?logo|logo|badge|icon|avatar|stars?|rating|ribbon|seal|emblem|favicon|sprite|ebt|snap|wic)(?:$|[\\s_./-])/i;
+          var NON_PRODUCT_CARD_ALT_RE = /\\b(?:brand\\s+logo|logo|badge|icon|avatar|star\\s*rating|rating\\s*stars?|ebt\\s+eligible|snap\\s+eligible|wic\\s+approved)\\b/i;
+
+          function isNonProductCardImg(img, src, altCand) {
+            if (isPlaceholderCardImg(img, src)) return true;
+            var s = String(src || '').trim();
+            if (!/^data:/i.test(s)) {
+              try {
+                var parsedPath = new URL(s, location.href).pathname || '';
+                if (/\\.svg$/i.test(parsedPath) || NON_PRODUCT_IMG_RE.test(parsedPath)) return true;
+              } catch (e) {
+                if (/\\.svg(?:$|[?#])/i.test(s) || NON_PRODUCT_IMG_RE.test(s)) return true;
+              }
+              if (NON_PRODUCT_IMG_RE.test(s)) return true;
+            }
+            if (altCand && NON_PRODUCT_CARD_ALT_RE.test(altCand)) return true;
+            if (img) {
+              var attrMeta = String(img.className || '') + ' ' +
+                String((img.getAttribute && img.getAttribute('data-testid')) || '') + ' ' +
+                String((img.getAttribute && img.getAttribute('data-test')) || '') + ' ' +
+                String((img.getAttribute && img.getAttribute('data-automation-id')) || '') + ' ' +
+                String(img.id || '');
+              if (NON_PRODUCT_CARD_META_RE.test(attrMeta)) return true;
+              if (img.complete && img.naturalWidth > 0 && (img.naturalWidth < 32 || img.naturalHeight < 32)) return true;
+              var aw = Number((img.getAttribute && img.getAttribute('width')) || 0);
+              var ah = Number((img.getAttribute && img.getAttribute('height')) || 0);
+              if ((aw > 0 && aw < 32) || (ah > 0 && ah < 32)) return true;
+            }
+            return false;
+          }
+
           function sanitizeStoreImgSrc(img) {
             if (!img || (img.closest && img.closest('.hb-photo-badge, .hb-photo-badge-slot, header, nav, footer'))) return '';
             var raw = String(img.currentSrc || img.getAttribute('src') || img.getAttribute('data-src') || '').trim();
@@ -1739,16 +1770,18 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 }
               }
               var src = img.currentSrc || img.getAttribute('src') || img.getAttribute('srcset') || img.getAttribute('data-src') || '';
-              if (isPlaceholderCardImg(img, src)) continue;
+              if (isNonProductCardImg(img, src, altCand)) continue;
               var r = img.getBoundingClientRect();
               var pr = img.parentElement ? img.parentElement.getBoundingClientRect() : r;
               var ew = Math.max(r.width, pr.width);
               var eh = Math.max(r.height, pr.height);
               if (ew >= 44 && eh >= 44 && ew <= 640 && eh <= 640) {
+                if (r.width >= 20 && r.height >= 20 && (r.width / r.height > 4 || r.height / r.width > 4)) continue;
                 var boxR = (r.width >= 32 && r.height >= 32) ? r : pr;
                 var horizVisible = cardRect.width < 40 || (boxR.right > cardRect.left + 12 && boxR.left < cardRect.right - 12);
                 var imgLoaded = (r.width >= 36 && r.height >= 36) ? 1 : 0;
-                var rank = (horizVisible ? 40 : -30) + (isPromoAlt ? -25 : 0) + (imgLoaded ? 8 : 0) - m;
+                var areaBonus = (r.width >= 84 && r.height >= 84) ? 12 : 0;
+                var rank = (horizVisible ? 40 : -30) + (isPromoAlt ? -25 : 0) + (imgLoaded ? 8 : 0) + areaBonus - m;
                 if (rank > bestImgRank) {
                   bestImgRank = rank;
                   chosenImg = img;
@@ -2130,6 +2163,18 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 } else if (st.suppressedEstimate) {
                   continue;
                 } else if (st.badgeEl && st.badgeEl.isConnected) {
+                  if (curInfo.chosenImg && st.chosenImg && curInfo.chosenImg !== st.chosenImg) {
+                    if (hbOwnerCardByImg && hbOwnerCardByImg.get(st.chosenImg) === card) {
+                      hbOwnerCardByImg.delete(st.chosenImg);
+                    }
+                    removeBadgeDom(st.badgeEl, st.slotEl);
+                    if (st.badgeEl.classList) st.badgeEl.classList.remove('hb-photo-badge--overlay');
+                    st.badgeEl.style.removeProperty('top');
+                    st.badgeEl.style.removeProperty('bottom');
+                    st.chosenImg = curInfo.chosenImg;
+                    st.slotEl = mountBadgeUnderOrOnPhoto(curInfo.chosenImg, card, st.badgeEl, curInfo.anchor);
+                    if (hbOwnerCardByImg) hbOwnerCardByImg.set(curInfo.chosenImg, card);
+                  }
                   continue;
                 } else if (st.retryAfter && now < st.retryAfter) {
                   var rem = st.retryAfter - now;

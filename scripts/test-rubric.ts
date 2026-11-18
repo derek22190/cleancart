@@ -10090,6 +10090,21 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const fsNode = await import("node:fs");
+    const androidDet = fsNode.readFileSync("android-app/app/src/main/assets/live_store_detector.js", "utf8");
+    const iosDet = fsNode.readFileSync("ios-app/App/LiveStoreBrowserViewController.swift", "utf8");
+    check(
+      "P2-1 Android & iOS Live Shop detectors reject brand-logo/badge/icon images and re-anchor when the real product photo loads",
+      androidDet.includes("function isNonProductCardImg(") &&
+        androidDet.includes("if (isNonProductCardImg(img, src, altCand)) continue;") &&
+        androidDet.includes("curInfo.img !== st.img") &&
+        iosDet.includes("function isNonProductCardImg(") &&
+        iosDet.includes("if (isNonProductCardImg(img, src, altCand)) continue;") &&
+        iosDet.includes("curInfo.chosenImg !== st.chosenImg"),
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

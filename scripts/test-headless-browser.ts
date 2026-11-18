@@ -2053,6 +2053,110 @@ async function main() {
       `   ✓ P1-8 Costco /CheckoutCartDisplayView cart scraped & persisted (${p18StoredCart.titles.join(" + ")})!`,
     );
 
+    // 4H. P2-1 Brand-Logo Badge Guard & Re-Anchoring on Android & iOS
+    const p21BrandLogoHtml = `
+      <div style="display:grid;grid-template-columns:1fr;gap:12px;padding:12px;">
+        <div data-item-id="p21-brand-card" style="width:220px;border:1px solid #e2e8f0;border-radius:10px;padding:8px;position:relative;">
+          <div id="p21-logo-wrap" style="width:52px;height:52px;">
+            <img id="p21-logo-img" class="brand-logo" src="https://i5.walmartimages.com/assets/brand-logo.png" width="52" height="52" style="display:block;width:52px;height:52px;" alt="Organic Valley brand logo" />
+          </div>
+          <div id="p21-photo-wrap" style="width:160px;height:160px;margin-top:6px;">
+            <img id="p21-prod-img" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" width="160" height="160" style="display:block;width:160px;height:160px;" alt="Organic Valley Whole Milk, 64 fl oz" />
+          </div>
+          <a href="/ip/Organic-Valley-Whole-Milk-64-fl-oz/10452101">
+            <span data-automation-id="product-title">Organic Valley Organic Whole Milk, 64 fl oz</span>
+          </a>
+        </div>
+      </div>
+    `;
+    await storePage.navigate("https://www.walmart.com/search?q=p21-android");
+    await storePage.eval(`
+      document.body.innerHTML = ${JSON.stringify(p21BrandLogoHtml)};
+      window.__p21AndroidBatches = 0;
+      window.heybrocAndroidBridge = {
+        postMessage: function(rawJson) {
+          const msg = JSON.parse(rawJson);
+          if (msg._hbSec === ${JSON.stringify(androidBridgeSecret)} && msg.kind === "gridBatch") {
+            window.__p21AndroidBatches += (msg.items || []).length;
+          }
+        }
+      };
+    `);
+    await storePage.eval(androidDetectorJS, false);
+    await new Promise((r) => setTimeout(r, 450));
+    const p21BeforeLoadAndroid = await storePage.eval<{ badges: number; batches: number }>(
+      `({ badges: document.querySelectorAll(".hb-photo-badge").length, batches: window.__p21AndroidBatches })`,
+    );
+    assert(
+      p21BeforeLoadAndroid.badges === 0 && p21BeforeLoadAndroid.batches === 0,
+      `P2-1 Android badged a brand logo before real product photo loaded: ${JSON.stringify(p21BeforeLoadAndroid)}`,
+    );
+    await storePage.eval(`
+      const prodImg = document.getElementById("p21-prod-img");
+      prodImg.src = ${JSON.stringify(placeholderSvgDataUrl)};
+      prodImg.dispatchEvent(new Event("load"));
+    `);
+    const p21AfterLoadAndroid = await storePage.waitFor<{ badges: number; inLogoWrap: boolean }>(
+      `(() => {
+        const b = document.querySelector(".hb-photo-badge");
+        if (!b) return null;
+        const logoWrap = document.getElementById("p21-logo-wrap");
+        return { badges: document.querySelectorAll(".hb-photo-badge").length, inLogoWrap: Boolean(logoWrap && logoWrap.contains(b)) };
+      })()`,
+      "P2-1 Android badge appears on real product photo once loaded",
+      5000,
+    );
+    assert(
+      p21AfterLoadAndroid.badges === 1 && !p21AfterLoadAndroid.inLogoWrap,
+      `P2-1 Android badge anchored incorrectly after real photo loaded: ${JSON.stringify(p21AfterLoadAndroid)}`,
+    );
+
+    await storePage.navigate("https://www.walmart.com/search?q=p21-ios");
+    await storePage.eval(`
+      document.body.innerHTML = ${JSON.stringify(p21BrandLogoHtml)};
+      window.__p21IosBatches = 0;
+      window.webkit = {
+        messageHandlers: {
+          heybrocStore: {
+            postMessage: function(msg) {
+              if (msg && msg.kind === "gridBatch") {
+                window.__p21IosBatches += (msg.items || []).length;
+              }
+            }
+          }
+        }
+      };
+    `);
+    await storePage.eval(detectorJS, false);
+    await new Promise((r) => setTimeout(r, 450));
+    const p21BeforeLoadIos = await storePage.eval<{ badges: number; batches: number }>(
+      `({ badges: document.querySelectorAll(".hb-photo-badge").length, batches: window.__p21IosBatches })`,
+    );
+    assert(
+      p21BeforeLoadIos.badges === 0 && p21BeforeLoadIos.batches === 0,
+      `P2-1 iOS badged a brand logo before real product photo loaded: ${JSON.stringify(p21BeforeLoadIos)}`,
+    );
+    await storePage.eval(`
+      const prodImg = document.getElementById("p21-prod-img");
+      prodImg.src = ${JSON.stringify(placeholderSvgDataUrl)};
+      prodImg.dispatchEvent(new Event("load"));
+    `);
+    const p21AfterLoadIos = await storePage.waitFor<{ badges: number; inLogoWrap: boolean }>(
+      `(() => {
+        const b = document.querySelector(".hb-photo-badge");
+        if (!b) return null;
+        const logoWrap = document.getElementById("p21-logo-wrap");
+        return { badges: document.querySelectorAll(".hb-photo-badge").length, inLogoWrap: Boolean(logoWrap && logoWrap.contains(b)) };
+      })()`,
+      "P2-1 iOS badge appears on real product photo once loaded",
+      5000,
+    );
+    assert(
+      p21AfterLoadIos.badges === 1 && !p21AfterLoadIos.inLogoWrap,
+      `P2-1 iOS badge anchored incorrectly after real photo loaded: ${JSON.stringify(p21AfterLoadIos)}`,
+    );
+    console.log("   ✓ P2-1 brand-logo badge guard & lazy-photo anchoring verified on Android & iOS!");
+
     storePage.close();
 
     console.log("\n✅ ALL HEADLESS BROWSER E2E SUITES PASSED (iPhone + Android + Safari/Chrome Extension)!");
