@@ -2949,10 +2949,11 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     match: /\b(hidden valley)\b/i,
     brand: "Hidden Valley",
     title: "Original Ranch Salad Dressing & Topping",
+    keywords: ["gluten free"],
     ingredients: "Vegetable Oil (Soybean and/or Canola), Water, Egg Yolk, Sugar, Salt, Cultured Nonfat Buttermilk, Natural Flavors, Less than 1% of: Spices, Dried Garlic, Dried Onion, Vinegar, Phosphoric Acid, Xanthan Gum, Modified Food Starch, Monosodium Glutamate, Artificial Flavors, Disodium Phosphate, Sorbic Acid and Calcium Disodium EDTA Added to Preserve Freshness, Disodium Inosinate and Disodium Guanylate.",
     nutrition: { caloriesKcal100g: 433, sugarsG100g: 3.3, saturatedFatG100g: 6.7, sodiumMg100g: 867, fiberG100g: 0, proteinG100g: 1.0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://www.hiddenvalley.com/products/ranch-condiments/classic-ranch/original-ranch/",
-    verifiedAt: "2026-11-08",
+    verifiedAt: "2026-11-18",
   },
   {
     match: /(?<!primal kitchen |avocado oil |organic )\branch dressing\b/i,
@@ -4331,6 +4332,52 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     sourceUrl: "https://www.kraftheinz.com/kraft-mayo/products/00021000642052-real-mayo-creamy-smooth-mayonnaise",
     verifiedAt: "2026-11-10",
   },
+  {
+    match: /^(?!.*\b(?:cheddar|white\s+cheddar|butter|kettle|sweet|lime|jalapeno|spicy)\b).*\bskinny\s*pop\b.*\bpopcorn\b/i,
+    brand: "SkinnyPop",
+    title: "SkinnyPop Original Popped Popcorn",
+    ingredients: "Popcorn, Sunflower Oil, Salt.",
+    nutrition: { caloriesKcal100g: 536, sugarsG100g: 0, saturatedFatG100g: 3.6, sodiumMg100g: 268, fiberG100g: 10.7, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
+    sourceUrl: "https://www.skinnypop.com/our-popcorn/popped-popcorn/original/",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:black\s+bean|vegetable|spinach|chicken|verde)\b).*\bamy'?s\b.*\bcheese\s+enchiladas?\b/i,
+    brand: "Amy's",
+    title: "Amy's Cheese Enchilada Frozen Meal",
+    ingredients: "Filtered Water, Corn Tortillas (Corn Masa, Water), Cheddar Cheese (Pasteurized Milk, Culture, Salt, Enzymes, Annatto), Monterey Jack Cheese (Pasteurized Milk, Culture, Salt, Enzymes), Tomato Puree, Olives, Onions, Sweet Rice Flour, Expeller Pressed High Oleic Safflower and Sunflower Oil, Spices, Sea Salt, Garlic.",
+    nutrition: { caloriesKcal100g: 176, sugarsG100g: 2.0, saturatedFatG100g: 3.9, sodiumMg100g: 306, fiberG100g: 2.4, proteinG100g: 6.7, fruitsVegNutsPct: 25, nutriScoreGrade: "b", isWholeFood: false },
+    sourceUrl: "https://www.amys.com/our-foods/cheese-enchilada",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:treats?|cocoa|frosted|strawberry|rainbow|chocolate|bar)\b).*\bkellogg'?s?\b.*\brice\s+krispies\b/i,
+    brand: "Kellogg's",
+    title: "Kellogg's Rice Krispies Toasted Rice Cereal",
+    keywords: ["breakfast cereal"],
+    ingredients: "Rice, Sugar, Contains 2% or Less of Salt, Malt Flavor. Vitamins and Minerals: Iron, Niacinamide, Vitamin B6 (Pyridoxine Hydrochloride), Vitamin B2 (Riboflavin), Vitamin B1 (Thiamin Hydrochloride), Folic Acid, Vitamin D3, Vitamin B12.",
+    nutrition: { caloriesKcal100g: 375, sugarsG100g: 10.0, saturatedFatG100g: 0, sodiumMg100g: 475, fiberG100g: 0, proteinG100g: 7.5, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
+    sourceUrl: "https://www.ricekrispies.com/en_US/products/kellogg-s-rice-krispies-cereal-product.html",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:bbq|barbecue|sour\s+cream|cheddar|salt\s+and\s+vinegar|vinegar|jalapeno|unsalted|sweet\s+potato|tortilla)\b).*\b365\b.*\borganic\b.*\bpotato\s+chips\b.*\bsea\s+salt\b/i,
+    brand: "365 by Whole Foods Market",
+    title: "365 by Whole Foods Market Organic Classic Sea Salt Potato Chips",
+    ingredients: "Organic Potatoes, Organic Safflower and or Organic Sunflower Oil, Sea Salt.",
+    nutrition: { caloriesKcal100g: 536, sugarsG100g: 0, saturatedFatG100g: 3.6, sodiumMg100g: 429, fiberG100g: 3.6, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false, isOrganic: true },
+    sourceUrl: "https://www.wholefoodsmarket.com/products/brands/365-by-whole-foods-market",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:healthy\s+request|low\s+sodium|unsalted|98%\s+fat\s+free|golden|garlic|roasted|chicken)\b).*\bcampbell'?s\b.*\bcondensed\b.*\bcream\s+of\s+mushroom\s+soup\b/i,
+    brand: "Campbell's",
+    title: "Campbell's Condensed Cream of Mushroom Soup",
+    ingredients: "Water, Mushrooms, Vegetable Oil (Corn, Canola, and or Soybean), Modified Food Starch, Wheat Flour, Contains Less Than 2% of: Salt, Cream, Whey, Soy Protein Concentrate, Monosodium Glutamate, Yeast Extract, Dehydrated Garlic, Natural Flavoring.",
+    nutrition: { caloriesKcal100g: 83, sugarsG100g: 0.8, saturatedFatG100g: 0.8, sodiumMg100g: 725, fiberG100g: 0.4, proteinG100g: 1.7, fruitsVegNutsPct: 12, nutriScoreGrade: "d", isWholeFood: false },
+    sourceUrl: "https://www.campbells.com/products/condensed/cream-of-mushroom-soup/",
+    verifiedAt: "2026-11-18",
+  },
 ];
 
 const UI_NOISE_QUERY =
@@ -5339,6 +5386,7 @@ const PRESERVED_VARIANT_ELLIPSIS_TOKEN_RE =
 export function cleanSearchQuery(title: string): string {
   let out = title
     .replace(/[®™©]/g, "")
+    .replace(/^\s*(?:sponsored(?:\s+ad)?|ad(?=\s*[-–—:|•]))\s*[,•|:\-–—]?\s*/i, "")
     .replace(/\s*[.,•|\-]?\s*\bbased\s+on(?:\s+[\d,]+\s+ratings?|\s+customer\s+ratings?|\s+star\s+ratings?)?\s*[.,•|\-]*$/i, "")
     .replace(/,\s*([^,]{0,28}?)(?:\.\.\.+|…)+\s*$/g, (_m, seg: string) => {
       const trimmedSeg = (seg || "").trim();

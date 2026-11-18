@@ -9,6 +9,7 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test:rubric": "tsx scripts/test-rubric.ts",
     "test:browser": "tsx scripts/test-headless-browser.ts",
+    "audit:stores": "tsx scripts/audit-13-stores-10-pages.ts",
     "audit:ai": "node scripts/ai-audit.mjs",
     "ops": "tsx --conditions=react-server scripts/ops-cli.ts"
   },

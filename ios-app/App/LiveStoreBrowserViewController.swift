@@ -633,13 +633,14 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           if (window.__heybrocLiveObserverInstalled) return;
           window.__heybrocLiveObserverInstalled = true;
 
-          var NON_TITLE_RE = /^(search|your cart|shopping cart|cart|bag|basket|checkout|review order|order summary|items to add next|product information|similar items|customers also.*|sponsored.*|product|item|ad|advertisement|buy (?:it )?again|frequently bought together|saved for later|walmart|target|costco(?:\\s+wholesale)?|sam'?s\\s+club|aldi|kroger|instacart|whole\\s+foods(?:\\s+market)?|amazon(?:\\s+fresh)?|bj'?s(?:\\s+wholesale\\s+club)?|doordash|dashmart|uber\\s*eats|shipt|sign\\s*in|log\\s*in|continue\\s+as\\s+guest|departments|grocery|deals|weekly\\s+ad|dairy\\s*&\\s*eggs|fresh\\s+produce|fruits?\\s*&\\s*vegetables?|meat\\s*&\\s*seafood|bakery(?:\\s*&\\s*bread)?|deli|frozen(?:\\s+foods?)?|pantry|snacks|beverages|household|personal\\s+care|all\\s+products|shop\\s+all)$/i;
+          var NON_TITLE_RE = /^(search|your cart|shopping cart|cart|bag|basket|checkout|review order|order summary|items to add next|product information|similar items|customers also.*|sponsored.*|product|item|ad|advertisement|buy (?:it )?again|frequently bought together|saved for later|walmart|target|costco(?:\\s+wholesale)?|sam'?s\\s+club|aldi|kroger|instacart|whole\\s+foods(?:\\s+market)?|amazon(?:\\s+fresh)?|bj'?s(?:\\s+wholesale\\s+club)?|doordash|dashmart|uber\\s*eats|shipt|sign\\s*in|log\\s*in|continue\\s+as\\s+guest|departments|grocery|new\\s+grocery|produce|fresh\\s+produce|fruits?(?:\\s*&\\s*vegetables?)?|vegetables?|meat(?:\\s*&\\s*seafood)?|seafood|dairy(?:\\s*&\\s*eggs)?|eggs|bakery(?:\\s*&\\s*bread)?|bread|deli|frozen(?:\\s+foods?)?|pantry|snacks(?:\\s*&\\s*candy)?|candy|beverages|drinks|coffee(?:\\s*&\\s*tea)?|breakfast(?:\\s*&\\s*cereal)?|condiments|baking|household|personal\\s+care|health(?:\\s*&\\s*beauty)?|baby|pets?|deals|weekly\\s+ad|instant\\s+savings|top\\s+deals|rollbacks?|clearance|new\\s+arrivals|best\\s+sellers|trending|featured(?:\\s+categories|\\s+items)?|shop\\s+by\\s+(?:category|department|brand|diet)|all\\s+products|shop\\s+all)$/i;
           var EXCLUDED_CONTAINER_SEL = '[data-testid*="carousel" i], [class*="carousel" i], [aria-label*="Sponsored" i], [data-testid*="sponsored" i], [data-testid*="similar" i], [data-testid*="related" i], [data-testid*="upsell" i], [data-testid*="recommend" i], #sc-saved-cart';
           var EXCLUDED_HEADING_RE = /\\b(customers\\s+also\\s+(?:viewed|bought|shopped|considered)|similar\\s+items?|sponsored(?:\\s+products?|\\s+items?)?|buy\\s+(?:it\\s+)?again|frequently\\s+bought\\s+together|items?\\s+to\\s+add\\s+next|recommended(?:\\s+for\\s+you)?|you\\s+may\\s+also\\s+like|related\\s+(?:products?|items?)|more\\s+to\\s+consider|saved\\s+for\\s+later)\\b/i;
 
           function clean(s) {
             return String(s || '')
               .replace(/\\s+/g, ' ')
+              .replace(/^(?:sponsored\\s+ad|ad)\\s*[-–—:|•]\\s*/i, '')
               .replace(/^(?:sponsored|best\\s+seller|overall\\s+pick|popular\\s+pick|rollback)\\s*[,•|:\\-]?\\s*/i, '')
               .replace(/\\s*\\(\\d+(?:\\.\\d+)?\\s*stars?.*$/i, '')
               .trim();
@@ -1119,21 +1120,58 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             return best;
           }
 
-          var CARD_SEL = '[data-item-id], [data-testid*="item-stack" i] > div, [data-testid*="list-view" i], div[class*="mb0"][class*="ph1"], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid*="product-tile" i], [data-test*="product-card" i], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-qa*="product-card" i], [data-qa*="product-tile" i], [data-automation-id="product-tile"], [automation-id*="productTile" i], [data-component-type="s-search-result"], [data-asin]:not([data-asin=""]), [data-anchor-id*="RetailItem" i], [data-anchor-id*="MenuItem" i], [data-testid*="RetailItem" i], [data-testid*="MenuItem" i], [data-testid*="store-item" i], li[data-testid*="store-item" i], .product-tile-set, .product-tile, .base-product-tile, .ProductCard, .sc-pc-medium-desktop-card, [class*="sc-pc-" i][class*="card" i], app-product-card, [data-auto-data*="product" i], [data-cy*="product-card" i], article[class*="product" i], li[class*="product" i]';
-          var MULTI_CARD_UNIT_SEL = '[data-item-id], [data-asin]:not([data-asin=""]), [data-component-type="s-search-result"], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-qa*="product-card" i], [data-anchor-id*="RetailItem" i], [data-testid*="store-item" i], .product-tile-set, .ProductCard, app-product-card';
-          var PRODUCT_LINK_SEL = 'a[link-identifier], a[href*="/sp/track"], a[href*="/ip/"], a[href*="/products/"], a[href*="/product/"], a[href*="/items/"], a[href*=".product."], a[href*="/p/"], a[href*="/sams/shop/product/"], a[href*="/detail/ps/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"], a[href*="item_id="], a[href*="product_id="]';
+          var CARD_SEL = '[data-item-id], [data-testid*="item-stack" i] > div, [data-testid*="list-view" i], div[class*="mb0"][class*="ph1"], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid^="item_list_item" i], [data-testid*="product-tile" i], [data-test*="product-card" i], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-qa*="product-card" i], [data-qa*="product-tile" i], [data-automation-id="product-tile"], [automation-id*="productTile" i], [data-component-type="s-search-result"], [data-csa-c-type="productTile"], li[data-csa-c-type="item"][data-csa-c-item-id*="asin."], [data-asin]:not([data-asin=""]), [data-anchor-id*="RetailItem" i], [data-anchor-id*="MenuItem" i], [data-testid*="RetailItem" i], [data-testid*="MenuItem" i], [data-testid*="store-item" i], li[data-testid*="store-item" i], .product-tile-set, .product-tile, .base-product-tile, .ProductCard, .sc-pc-medium-desktop-card, [class*="sc-pc-" i][class*="card" i], app-product-card, [auto-data*="productCard" i], [data-auto-data*="product" i], [data-cy*="product-card" i], article[class*="product" i], li[class*="product" i]';
+          var EXPLICIT_PRODUCT_CARD_SEL = '[data-item-id], [data-asin]:not([data-asin=""]), [data-component-type="s-search-result"], [data-csa-c-type="productTile"], li[data-csa-c-type="item"][data-csa-c-item-id*="asin."], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid^="item_list_item" i], [data-testid*="product-tile" i], [data-test*="product-card" i], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-qa*="product-card" i], [data-automation-id="product-tile"], [automation-id*="productTile" i], [data-anchor-id*="RetailItem" i], [data-testid*="RetailItem" i], [data-testid*="store-item" i], .product-tile-set, .product-tile, .base-product-tile, .ProductCard, .sc-pc-medium-desktop-card, app-product-card, [auto-data*="productCard" i]';
+          var MULTI_CARD_UNIT_SEL = '[data-item-id], [data-asin]:not([data-asin=""]), [data-component-type="s-search-result"], [data-csa-c-type="productTile"], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid^="item_list_item" i], [data-qa*="product-card" i], [data-anchor-id*="RetailItem" i], [data-testid*="RetailItem" i], [data-testid*="store-item" i], .product-tile-set, .ProductCard, app-product-card, [auto-data*="productCard" i]';
+          var DEFINITIVE_SINGLE_CARD_SEL = '[data-component-type="s-search-result"], [data-csa-c-type="productTile"], li[data-csa-c-type="item"][data-csa-c-item-id*="asin."], [data-item-id], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-testid^="item_list_item" i], [data-testid*="RetailItem" i], [data-testid*="store-item" i], .sc-pc-medium-desktop-card, [auto-data*="productCard" i]';
+          var PRODUCT_LINK_SEL = 'a[data-csa-c-type="productTile"], a[link-identifier], a[href*="/sp/track"], a[href*="/gp/slredirect"], a[href*="/ip/"], a[href*="/products/"], a[href*="/product/"], a[href*="/items/"], a[href*=".product."], a[href*="/p/"], a[href*="/sams/shop/product/"], a[href*="/detail/ps/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"], a[href*="item_id="], a[href*="product_id="]';
           var PLACEHOLDER_IMG_RE = /(?:^|[\\/_.-])(?:1x1|pixel|spacer|spinner|transparent|blank|placeholder|skeleton|shimmer|blur|lazy|grey-pixel)(?:[\\/_.-]|$)|^data:image\\/gif|^data:image\\/svg\\+xml.*(?:feGaussianBlur|blur|shimmer|skeleton|spinner|spacer|1x1)/i;
           var NON_PRODUCT_IMG_RE = /(?:^|[\\/_.-])(?:logo|sprite|icon|avatar|badge|stars?|rating|banner|promo|favicon)(?:[\\/_.-]|$)/i;
 
+          function isRealProductHrefPath(rawHref) {
+            var unwrapped = unwrapProductHref(rawHref);
+            var p = unwrapped.split('#')[0].split('?')[0];
+            if (!p || p === '/' || /^\\/(?:browse|cp|c|categories|category|departments|aisles|fmc|stores|shop\\/categories|all-departments|my-items)\\b/i.test(p)) {
+              if (/[?&](?:item_id|product_id)=/i.test(unwrapped)) return unwrapped.split('#')[0];
+              return '';
+            }
+            if (/(\\/ip\\/|\\/dp\\/|\\/gp\\/product\\/|\\/gp\\/aw\\/d\\/|\\/sams\\/shop\\/product\\/|\\.product\\.|\\/p\\/|\\/products?\\/|\\/items?\\/|\\/detail\\/ps\\/p\\/)/i.test(p) || /[?&](?:item_id|product_id)=/i.test(unwrapped)) {
+              return unwrapped.split('#')[0];
+            }
+            return '';
+          }
+
+          function hasMultipleDistinctProductLinks(el) {
+            if (!el || !el.querySelectorAll) return false;
+            if (el.matches && el.matches(DEFINITIVE_SINGLE_CARD_SEL) && el.querySelectorAll(DEFINITIVE_SINGLE_CARD_SEL).length === 0) {
+              return false;
+            }
+            if (el.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) return true;
+            var pLinks = el.querySelectorAll(PRODUCT_LINK_SEL);
+            if (pLinks.length <= 1) return false;
+            var firstKey = '';
+            for (var i = 0; i < pLinks.length; i++) {
+              var a = pLinks[i];
+              var csaId = (a.getAttribute && a.getAttribute('data-csa-c-content-id')) || '';
+              var key = csaId || isRealProductHrefPath(a.getAttribute('href') || '');
+              if (!key) continue;
+              if (!firstKey) firstKey = key;
+              else if (key !== firstKey) return true;
+            }
+            return false;
+          }
+
           var CARD_TITLE_SELS = [
             'span.w_iUH7', '[class*="w_iUH7"]',
-            '[data-automation-id*="product-title" i]', '[data-test="product-title"]', '[data-testid*="product-title" i]',
-            '[data-testid*="item-title" i]', '[data-testid*="product-card-name" i]', '[data-testid*="item-name" i]',
+            '[data-automation-id*="product-title" i]', '[data-test="product-title"]', '[data-test="product-card-title"]',
+            '[data-testid*="product-title" i]', '[data-testid*="item-title" i]', '[data-testid*="product-card-name" i]',
+            '[data-testid*="item-name" i]', '[data-telemetry-id*="storeItem.title" i]', '[auto-data="productTitle"]',
             '[data-qa*="product-name" i]', '[automation-id*="productDescriptionLink" i]', '[auto-data*="product_name" i]',
             '[data-auto-data*="product_name" i]', '.product-tile__name', '.base-product-tile__name', '.sc-pc-title-medium',
             '[class*="sc-pc-title" i]', 'h2 a span', 'h3 a span', 'h2', 'h3', 'h4',
             '[data-testid="rich-text"]',
-            'a[link-identifier]', 'a[href*="/sp/track"]', 'a[href*="/ip/"]', 'a[href*="/sams/shop/product/"]',
+            'a[data-csa-c-type="productTile"]', 'a[link-identifier]', 'a[href*="/sp/track"]', 'a[href*="/gp/slredirect"]',
+            'a[href*="/ip/"]', 'a[href*="/sams/shop/product/"]',
             'a[href*=".product."]', 'a[href*="/p/"]', 'a[href*="/dp/"]', 'a[href*="/gp/aw/d/"]',
             'a[href*="/products/"]', 'a[href*="/items/"]', 'a[href*="/detail/ps/p/"]', 'a[href*="/product/"]'
           ];
@@ -1173,7 +1211,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             for (var i = 0; i < rawCards.length; i++) {
               var card = rawCards[i];
               if (!isVisible(card)) continue;
-              if (card.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) continue;
+              if (hasMultipleDistinctProductLinks(card)) continue;
               if (card.closest('#sc-saved-cart, [data-testid*="saved-for-later" i], [data-test*="savedForLater" i]')) continue;
               if (isCartDrawer(card.closest('[role="dialog"], aside, section'))) continue;
               var cr = card.getBoundingClientRect();
@@ -1413,7 +1451,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             return { width: r.width, height: Math.max(0, r.height - slotH) };
           }
 
-          var PROMO_SLIDE_ALT_RE = /\\b(?:satisfaction\\s+guaranteed|money\\s+back\\s+guarantee|100%\\s+guaranteed|quality\\s+guaranteed|freshness\\s+guaranteed)\\b/i;
+          var PROMO_SLIDE_ALT_RE = /\\b(?:satisfaction\\s+guaranteed|money\\s+back\\s+guarantee|100%\\s+guaranteed|quality\\s+guaranteed|freshness\\s+guaranteed|shopping\\s+(?:basket|cart|bag)|checkout\\s+conveyor|in\\s+a\\s+(?:blue|red|green|white|wooden|wicker)\\s+(?:basket|bowl|cart)|promotional\\s+banner|hero\\s+banner)\\b/i;
           var MEDIA_ICON_BTN_RE = /^(?:save|favorite|favourite|wishlist|add\\s+to\\s+(?:list|registry|favorites)|sign\\s+in\\s+to\\s+save|like|heart|next|previous|prev|slide\\s*\\d*|image\\s*\\d*|photo\\s*\\d*|dot\\s*\\d*|close|zoom|expand)$/i;
 
           function nodeHasDetailsOrCta(el) {
@@ -1537,7 +1575,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             }
             if (!candidate && cardEl && cardEl !== document.body) {
               var cardR = measureWithoutBadgeSlot(cardEl);
-              if (cardR.width >= 44 && cardR.height >= 44 && cardR.height <= 780) {
+              if (cardR.width >= 44 && cardR.height >= 44 && cardR.height <= 920) {
                 candidate = cardEl;
               }
             }
@@ -1555,7 +1593,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 candidate.style.isolation = prevIso;
                 if (cardEl && cardEl !== candidate) {
                   var fbR = measureWithoutBadgeSlot(cardEl);
-                  if (fbR.width >= 44 && fbR.height >= 44 && fbR.height <= 780) {
+                  if (fbR.width >= 44 && fbR.height >= 44 && fbR.height <= 920) {
                     if (window.getComputedStyle(cardEl).position === 'static') {
                       cardEl.style.position = 'relative';
                     }
@@ -1724,12 +1762,24 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                   title = altCand;
                 }
               }
-              var src = img.currentSrc || img.getAttribute('src') || img.getAttribute('srcset') || img.getAttribute('data-src') || '';
-              if (isPlaceholderCardImg(img, src)) continue;
+              var src = img.currentSrc || img.getAttribute('src') || '';
+              var usedAltSrc = false;
+              if (!src || /^data:|^blob:/i.test(src) || isPlaceholderCardImg(img, src)) {
+                var altSrc = img.getAttribute('srcset') || img.getAttribute('data-src') || img.getAttribute('data-lazy-src') || '';
+                if (altSrc) {
+                  var parsedAlt = String(altSrc).split(',')[0].trim().split(/\\s+/)[0] || '';
+                  if (parsedAlt) {
+                    src = parsedAlt;
+                    usedAltSrc = true;
+                  }
+                }
+              }
               var r = img.getBoundingClientRect();
               var pr = img.parentElement ? img.parentElement.getBoundingClientRect() : r;
               var ew = Math.max(r.width, pr.width);
               var eh = Math.max(r.height, pr.height);
+              var isExplicitLazyTile = Boolean(cardEl.matches && cardEl.matches('[data-csa-c-type="productTile"], li[data-csa-c-type="item"][data-csa-c-item-id*="asin."]') && ew >= 60 && eh >= 60);
+              if (!isExplicitLazyTile && isPlaceholderCardImg(usedAltSrc ? null : img, src)) continue;
               if (ew >= 44 && eh >= 44 && ew <= 640 && eh <= 640) {
                 var boxR = (r.width >= 32 && r.height >= 32) ? r : pr;
                 var horizVisible = cardRect.width < 40 || (boxR.right > cardRect.left + 12 && boxR.left < cardRect.right - 12);
@@ -1757,6 +1807,26 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             title = rec.title;
             var hrefKey = rec.hrefKey || String((cardEl.getAttribute && cardEl.getAttribute('data-item-id')) || '').slice(0, 60);
             if (!title || !chosenImg || isNonFoodGridTitle(title)) return null;
+            var hasExplicitCardSignal = Boolean(
+              (cardEl.matches && cardEl.matches(EXPLICIT_PRODUCT_CARD_SEL)) ||
+              (cardEl.querySelector && cardEl.querySelector(EXPLICIT_PRODUCT_CARD_SEL))
+            );
+            if (!hasExplicitCardSignal) {
+              var hasProdHref = false;
+              var cardLinks = cardEl.querySelectorAll ? cardEl.querySelectorAll('a[href]') : [];
+              for (var cl = 0; cl < cardLinks.length; cl++) {
+                if (isRealProductHrefPath(cardLinks[cl].getAttribute('href') || '')) {
+                  hasProdHref = true;
+                  break;
+                }
+              }
+              if (!hasProdHref && cardEl.tagName === 'A' && isRealProductHrefPath(cardEl.getAttribute('href') || '')) {
+                hasProdHref = true;
+              }
+              if (!hasProdHref && !/\\$\\s*\\d|\\b\\d+\\s*¢/.test(cardEl.textContent || '')) {
+                return null;
+              }
+            }
             if (hbOwnerCardByImg) {
               var existingImgOwner = hbOwnerCardByImg.get(chosenImg);
               if (existingImgOwner && existingImgOwner !== cardEl && existingImgOwner.isConnected) {
@@ -2052,12 +2122,20 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             var seen = [];
             function addCand(el) {
               if (!el || seen.indexOf(el) !== -1 || el.closest('header, nav, footer, [role="contentinfo"]')) return;
-              if (el.querySelectorAll && el.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) return;
+              if (!el.querySelector || !el.querySelector('img')) return;
+              if (hasMultipleDistinctProductLinks(el)) return;
               var r = el.getBoundingClientRect();
-              if (r.width > 0 && (r.width < 84 || r.width > maxCardW || r.height < 84 || r.height > 780)) return;
+              if (r.width > 0 && (r.width < 84 || r.width > maxCardW || r.height < 84 || r.height > 1080)) return;
               for (var s = 0; s < seen.length; s++) {
                 var ex = seen[s];
-                if (nodeContains(ex, el) || nodeContains(el, ex)) return;
+                if (nodeContains(ex, el)) return;
+                if (nodeContains(el, ex)) {
+                  if (ex.matches && ex.matches(DEFINITIVE_SINGLE_CARD_SEL) && !(el.matches && el.matches(DEFINITIVE_SINGLE_CARD_SEL))) {
+                    return;
+                  }
+                  seen[s] = el;
+                  return;
+                }
               }
               seen.push(el);
             }
@@ -2072,9 +2150,9 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 var tile = null;
                 for (var depth = 0; depth < 5 && cur && cur !== document.body; depth++) {
                   if (cur.querySelector('img')) {
-                    if (cur.querySelectorAll && cur.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) break;
+                    if (hasMultipleDistinctProductLinks(cur)) break;
                     var cr = cur.getBoundingClientRect();
-                    if (cr.width >= 90 && cr.width <= maxCardW && cr.height >= 90 && cr.height <= 760) {
+                    if (cr.width >= 90 && cr.width <= maxCardW && cr.height >= 90 && cr.height <= 900) {
                       tile = cur;
                       if (/^(ARTICLE|LI)$/i.test(cur.tagName)) break;
                     }
