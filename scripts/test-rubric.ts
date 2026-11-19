@@ -10494,6 +10494,150 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     }
   }
 
+  {
+    const fsNode = await import("node:fs");
+    const { NextRequest } = await import("next/server");
+    const referralsLib = await import("../lib/referrals");
+    const checkoutRoute = await import("../app/api/checkout/route");
+
+    // 1. Weekly swap reset expires stale windows across maybeResetWeeklySwapWindow, getExistingDevice, and serializeEntitlement
+    const staleEntry = {
+      deviceId: `dev_p210_${Date.now()}`,
+      referralCode: "BROC-P210XX",
+      proUntil: 0,
+      referralsCompleted: 0,
+      referralActivated: false,
+      weeklySwapsUsed: ["swap-a", "swap-b", "swap-c"],
+      courtesyRefillUsedThisWeek: true,
+      weekResetAt: Date.now() - 60_000,
+      firstSeenAt: Date.now() - 8 * 86_400_000,
+    };
+    const serBeforeMutate = referralsLib.serializeEntitlement(staleEntry);
+    const didReset = referralsLib.maybeResetWeeklySwapWindow(staleEntry);
+    const devP210 = await referralsLib.getOrCreateDevice(`dev_p210_store_${Date.now()}`, "sec_p210_store");
+    devP210.weeklySwapsUsed = ["x", "y", "z"];
+    devP210.courtesyRefillUsedThisWeek = true;
+    devP210.weekResetAt = Date.now() - 5_000;
+    const refetchedP210 = await referralsLib.getExistingDevice(devP210.deviceId);
+
+    const { TERMS_VERSION } = await import("../lib/pricing");
+    // 2. Stale/invalid BROC-* friend referral code or passive referredByCode never blocks Stripe checkout with 400
+    const prevAllowPreview = process.env.ALLOW_PREVIEW_CHECKOUT;
+    const prevStripeKey = process.env.STRIPE_SECRET_KEY;
+    let staleRefStatus = 0;
+    let staleRefCreatorCode: string | null | undefined;
+    let staleCreatorBrocStatus = 0;
+    let explicitInvalidCreatorStatus = 0;
+    try {
+      process.env.ALLOW_PREVIEW_CHECKOUT = "true";
+      delete process.env.STRIPE_SECRET_KEY;
+
+      const r1 = await checkoutRoute.POST(
+        new NextRequest("https://www.heybroc.com/api/checkout", {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-forwarded-for": "198.51.100.210" },
+          body: JSON.stringify({
+            plan: "annual",
+            termsAccepted: true,
+            termsVersion: TERMS_VERSION,
+            referredByCode: "BROC-STALE999",
+            deviceId: "dev_p210_chk1",
+            deviceSecret: "sec_p210_chk1",
+          }),
+        }),
+      );
+      staleRefStatus = r1.status;
+      staleRefCreatorCode = ((await r1.json()) as { creatorCode?: string | null }).creatorCode;
+
+      const r2 = await checkoutRoute.POST(
+        new NextRequest("https://www.heybroc.com/api/checkout", {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-forwarded-for": "198.51.100.211" },
+          body: JSON.stringify({
+            plan: "annual",
+            termsAccepted: true,
+            termsVersion: TERMS_VERSION,
+            creatorCode: "BROC-STALE999",
+            deviceId: "dev_p210_chk2",
+            deviceSecret: "sec_p210_chk2",
+          }),
+        }),
+      );
+      staleCreatorBrocStatus = r2.status;
+
+      const r3 = await checkoutRoute.POST(
+        new NextRequest("https://www.heybroc.com/api/checkout", {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-forwarded-for": "198.51.100.212" },
+          body: JSON.stringify({
+            plan: "annual",
+            termsAccepted: true,
+            termsVersion: TERMS_VERSION,
+            creatorCode: "NONEXISTENTCODE99",
+            deviceId: "dev_p210_chk3",
+            deviceSecret: "sec_p210_chk3",
+          }),
+        }),
+      );
+      explicitInvalidCreatorStatus = r3.status;
+    } finally {
+      if (prevAllowPreview === undefined) delete process.env.ALLOW_PREVIEW_CHECKOUT;
+      else process.env.ALLOW_PREVIEW_CHECKOUT = prevAllowPreview;
+      if (prevStripeKey === undefined) delete process.env.STRIPE_SECRET_KEY;
+      else process.env.STRIPE_SECRET_KEY = prevStripeKey;
+    }
+
+    const appleVerifySrc = fsNode.readFileSync("app/api/apple/verify/route.ts", "utf8");
+    const rCodePageSrc = fsNode.readFileSync("app/r/[code]/page.tsx", "utf8");
+    const creatorsPageSrc = fsNode.readFileSync("app/creators/page.tsx", "utf8");
+    const paywallSrc = fsNode.readFileSync("components/Paywall.tsx", "utf8");
+    const iosVcSrc = fsNode.readFileSync("ios-app/App/ViewController.swift", "utf8");
+
+    const p210Detail = {
+      weeklySwapsUsedCount: serBeforeMutate.weeklySwapsUsedCount,
+      swapsRemaining: serBeforeMutate.swapsRemaining,
+      weeklySwapsLimit: serBeforeMutate.weeklySwapsLimit,
+      didReset,
+      staleUsedLen: staleEntry.weeklySwapsUsed.length,
+      staleCourtesy: staleEntry.courtesyRefillUsedThisWeek,
+      staleResetFuture: staleEntry.weekResetAt > Date.now(),
+      refetchedUsedLen: refetchedP210?.weeklySwapsUsed.length,
+      refetchedCourtesy: refetchedP210?.courtesyRefillUsedThisWeek,
+      staleRefStatus,
+      staleRefCreatorCode,
+      staleCreatorBrocStatus,
+      explicitInvalidCreatorStatus,
+    };
+    const p210Ok =
+      serBeforeMutate.weeklySwapsUsedCount === 0 &&
+      serBeforeMutate.swapsRemaining === serBeforeMutate.weeklySwapsLimit &&
+      serBeforeMutate.weekResetAt > Date.now() &&
+      didReset === true &&
+      staleEntry.weeklySwapsUsed.length === 0 &&
+      staleEntry.courtesyRefillUsedThisWeek === false &&
+      staleEntry.weekResetAt > Date.now() &&
+      refetchedP210?.weeklySwapsUsed.length === 0 &&
+      refetchedP210?.courtesyRefillUsedThisWeek === false &&
+      staleRefStatus === 200 &&
+      staleRefCreatorCode === null &&
+      staleCreatorBrocStatus === 200 &&
+      explicitInvalidCreatorStatus === 400 &&
+      appleVerifySrc.includes("else if (!existingEntitlement && !validCreatorCode)") &&
+      !/\bVIP\b/.test(rCodePageSrc) &&
+      creatorsPageSrc.includes("net pre-tax revenue") &&
+      creatorsPageSrc.includes("after platform fees") &&
+      paywallSrc.includes("referredByCode: passiveReferredByCode") &&
+      iosVcSrc.includes("validateCreatorCodeRemotely") &&
+      iosVcSrc.includes("/api/influencers?code=") &&
+      iosVcSrc.includes("/api/referral?validateCode=");
+    if (!p210Ok) console.error("P2-10 failure detail:", p210Detail);
+
+    check(
+      "P2-10 Subscription attribution locks initial state, trial/commission copy is accurate, iOS validates codes async, weekly swaps auto-reset, and stale referral codes never 400 checkout",
+      p210Ok,
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

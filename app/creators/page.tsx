@@ -360,18 +360,21 @@ export default function SelfServeCreatorsPage() {
           >
             Earn{" "}
             <b>
-              {PRICING.defaultCommissionPct}% commission on every new paid Pro
-              signup&apos;s first billing cycle
+              {PRICING.defaultCommissionPct}% commission on net pre-tax revenue
+              collected on every approved new paid Pro signup&apos;s first paid
+              billing cycle
             </b>{" "}
-            (
+            (up to{" "}
             <b>
               {usd(commissionFor("annual", PRICING.defaultCommissionPct))} on
               annual or{" "}
               {usd(commissionFor("monthly", PRICING.defaultCommissionPct))} on
               monthly
-            </b>
-            ) across <b>iPhone (App Store), Android, and Web</b> — plus give
-            your followers a <b>7-Day Free Family Pro Trial ($0 Today)</b>.
+            </b>{" "}
+            on direct web signups; App Store &amp; Google Play purchases are
+            calculated on net pre-tax proceeds after platform fees, excluding
+            refunds, chargebacks, and self-referrals) — plus share a{" "}
+            <b>7-Day Free Family Pro Trial ($0 Today)</b>.
           </p>
         </div>
 
@@ -587,8 +590,8 @@ export default function SelfServeCreatorsPage() {
                   borderRadius: 999,
                 }}
               >
-                {creator.commissionPct}% First-Cycle Commission ({usd(annualPayout)}{" "}
-                annual / {usd(monthlyPayout)} monthly)
+                {creator.commissionPct}% First-Cycle Net Commission (up to{" "}
+                {usd(annualPayout)} annual / {usd(monthlyPayout)} monthly)
               </span>
             </div>
 
@@ -1127,9 +1130,11 @@ export default function SelfServeCreatorsPage() {
                 days of Family Pro free!&rdquo;
               </i>{" "}
               (Earns {creator?.commissionPct ?? PRICING.defaultCommissionPct}%
-              commission on every new paid Pro signup&apos;s first billing cycle
-              — {usd(annualPayout)} on annual or {usd(monthlyPayout)} on monthly
-              across iPhone (App Store), Android, and Web.)
+              commission on net pre-tax revenue collected on every approved new
+              paid Pro signup&apos;s first paid billing cycle — up to{" "}
+              {usd(annualPayout)} on annual or {usd(monthlyPayout)} on monthly
+              after applicable store/platform fees, excluding refunds and
+              self-referrals.)
             </li>
           </ol>
 

@@ -1738,6 +1738,8 @@ private final class NativeProPaywallSheetViewController: UIViewController, UITex
     private let manageButton = UIButton(type: .system)
     private let termsButton = UIButton(type: .system)
     private let privacyButton = UIButton(type: .system)
+    private var creatorValidationTask: Task<Void, Never>?
+    private var verifiedCreatorCode: String = ""
 
     init(
         onVerifiedPurchase: @escaping (String, String, Bool) async -> Void,
@@ -1760,7 +1762,7 @@ private final class NativeProPaywallSheetViewController: UIViewController, UITex
         let current = HeyBrocSharedPrefs.normalizeCreatorCode(creatorCodeField.text)
         if current.isEmpty {
             creatorCodeField.text = norm
-            updateCreatorBadge(norm)
+            scheduleCreatorCodeValidation(norm, debounceMs: 0)
         }
     }
 
@@ -1898,7 +1900,11 @@ private final class NativeProPaywallSheetViewController: UIViewController, UITex
         creatorCodeField.leftViewMode = .always
         creatorCodeField.heightAnchor.constraint(equalToConstant: 38).isActive = true
         creatorCodeField.addTarget(self, action: #selector(creatorCodeEditingChanged(_:)), for: .editingChanged)
-        updateCreatorBadge(initialCreator)
+        if !initialCreator.isEmpty {
+            scheduleCreatorCodeValidation(initialCreator, debounceMs: 0)
+        } else {
+            updateCreatorBadge("")
+        }
         creatorContainer.addArrangedSubview(creatorCodeField)
         stack.addArrangedSubview(creatorContainer)
 
@@ -1993,9 +1999,13 @@ private final class NativeProPaywallSheetViewController: UIViewController, UITex
         legalDisclosureLabel.text = "Auto-renewable subscription: 7-day free trial, then \(annualPrice)/year (or \(monthlyPrice)/month). Payment is charged to your Apple ID account at confirmation of purchase or at the end of the free trial. Subscription automatically renews unless canceled at least 24 hours before the end of the current period. Manage or cancel anytime in Settings › Apple ID › Subscriptions."
     }
 
-    private func updateCreatorBadge(_ norm: String) {
-        if norm.count >= 2 {
-            creatorAppliedBadge.text = "✓ \(norm) saved"
+    private func updateCreatorBadge(
+        _ text: String,
+        color: UIColor = UIColor(red: 0.059, green: 0.478, blue: 0.290, alpha: 1.0)
+    ) {
+        if !text.isEmpty {
+            creatorAppliedBadge.text = text
+            creatorAppliedBadge.textColor = color
             creatorAppliedBadge.isHidden = false
         } else {
             creatorAppliedBadge.text = ""
@@ -2003,11 +2013,89 @@ private final class NativeProPaywallSheetViewController: UIViewController, UITex
         }
     }
 
+    private func scheduleCreatorCodeValidation(_ norm: String, debounceMs: UInt64) {
+        creatorValidationTask?.cancel()
+        guard norm.count >= 2 else {
+            verifiedCreatorCode = ""
+            updateCreatorBadge("")
+            return
+        }
+        updateCreatorBadge(
+            "Checking \(norm)…",
+            color: UIColor(red: 0.392, green: 0.455, blue: 0.545, alpha: 1.0)
+        )
+        creatorValidationTask = Task { @MainActor [weak self] in
+            if debounceMs > 0 {
+                try? await Task.sleep(nanoseconds: debounceMs * 1_000_000)
+            }
+            guard let self = self, !Task.isCancelled else { return }
+            _ = await self.validateCreatorCodeRemotely(norm)
+        }
+    }
+
+    @MainActor
     @discardableResult
-    private func commitCreatorCodeInput(normalizeFieldText: Bool = false) -> String {
+    private func validateCreatorCodeRemotely(_ norm: String) async -> Bool {
+        let encoded = norm.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? norm
+        let isFriendCode = norm.hasPrefix("BROC-")
+        let endpoint = isFriendCode
+            ? "https://www.heybroc.com/api/referral?validateCode=\(encoded)"
+            : "https://www.heybroc.com/api/influencers?code=\(encoded)"
+        guard let url = URL(string: endpoint) else { return false }
+
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 5.0
+        do {
+            let (data, response) = try await URLSession.shared.data(for: req)
+            guard let http = response as? HTTPURLResponse else { return false }
+            let currentNorm = HeyBrocSharedPrefs.normalizeCreatorCode(creatorCodeField.text)
+            guard currentNorm == norm else { return false }
+
+            let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            let isValid: Bool
+            if isFriendCode {
+                isValid = http.statusCode == 200 && (obj?["valid"] as? Bool == true)
+            } else {
+                isValid = http.statusCode == 200 && (obj?["ok"] as? Bool == true)
+            }
+
+            if isValid {
+                verifiedCreatorCode = norm
+                HeyBrocSharedPrefs.creatorCode = norm
+                updateCreatorBadge("✓ \(norm) applied")
+                onCreatorCodeChanged?(norm)
+                return true
+            } else {
+                verifiedCreatorCode = ""
+                HeyBrocSharedPrefs.creatorCode = ""
+                updateCreatorBadge(
+                    "Code not recognized",
+                    color: UIColor(red: 0.725, green: 0.110, blue: 0.110, alpha: 1.0)
+                )
+                onCreatorCodeChanged?("")
+                return false
+            }
+        } catch {
+            if !Task.isCancelled {
+                updateCreatorBadge(
+                    "Could not verify code right now",
+                    color: UIColor(red: 0.706, green: 0.325, blue: 0.035, alpha: 1.0)
+                )
+            }
+            return false
+        }
+    }
+
+    @discardableResult
+    private func commitCreatorCodeInput(
+        normalizeFieldText: Bool = false,
+        debounceMs: UInt64 = 0
+    ) -> String {
         let raw = creatorCodeField.text ?? ""
         let trimmedUpper = raw.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         if trimmedUpper.isEmpty {
+            creatorValidationTask?.cancel()
+            verifiedCreatorCode = ""
             HeyBrocSharedPrefs.creatorCode = ""
             updateCreatorBadge("")
             onCreatorCodeChanged?("")
@@ -2017,28 +2105,34 @@ private final class NativeProPaywallSheetViewController: UIViewController, UITex
         if normalizeFieldText && !norm.isEmpty && creatorCodeField.text != norm {
             creatorCodeField.text = norm
         }
-        if !norm.isEmpty {
-            HeyBrocSharedPrefs.creatorCode = norm
-            updateCreatorBadge(norm)
-            onCreatorCodeChanged?(norm)
+        if norm.count >= 2 {
+            if norm == verifiedCreatorCode {
+                HeyBrocSharedPrefs.creatorCode = norm
+                updateCreatorBadge("✓ \(norm) applied")
+            } else {
+                scheduleCreatorCodeValidation(norm, debounceMs: debounceMs)
+            }
         } else {
+            creatorValidationTask?.cancel()
+            verifiedCreatorCode = ""
+            HeyBrocSharedPrefs.creatorCode = ""
             updateCreatorBadge("")
         }
         return norm
     }
 
     @objc private func creatorCodeEditingChanged(_ sender: UITextField) {
-        _ = commitCreatorCodeInput(normalizeFieldText: false)
+        _ = commitCreatorCodeInput(normalizeFieldText: false, debounceMs: 450)
     }
 
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-        _ = commitCreatorCodeInput(normalizeFieldText: true)
+        _ = commitCreatorCodeInput(normalizeFieldText: true, debounceMs: 0)
         textField.resignFirstResponder()
         return true
     }
 
     func textFieldDidEndEditing(_ textField: UITextField) {
-        _ = commitCreatorCodeInput(normalizeFieldText: true)
+        _ = commitCreatorCodeInput(normalizeFieldText: true, debounceMs: 0)
     }
 
     private func stylePrimaryCTA(_ btn: UIButton, title: String) {
@@ -2118,7 +2212,7 @@ private final class NativeProPaywallSheetViewController: UIViewController, UITex
 
     private func purchase(_ product: StoreKit.Product) {
         creatorCodeField.resignFirstResponder()
-        _ = commitCreatorCodeInput(normalizeFieldText: true)
+        let pendingCode = commitCreatorCodeInput(normalizeFieldText: true, debounceMs: 0)
         spinner.startAnimating()
         statusLabel.text = "Confirming with Apple Face ID…"
         annualButton.isEnabled = false
@@ -2130,6 +2224,9 @@ private final class NativeProPaywallSheetViewController: UIViewController, UITex
                 self.spinner.stopAnimating()
                 self.annualButton.isEnabled = true
                 self.monthlyButton.isEnabled = true
+            }
+            if pendingCode.count >= 2 && pendingCode != self.verifiedCreatorCode {
+                _ = await self.validateCreatorCodeRemotely(pendingCode)
             }
             do {
                 let result = try await product.purchase()

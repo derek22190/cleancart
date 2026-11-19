@@ -166,7 +166,7 @@ export default function ReferralLandingPage({
             ? "Try HeyBroc Family Pro Free for 7 Days"
             : isFriendInvite
               ? "Your friend gifted you a 7-Day Free Trial + 7 Bonus Pro Days!"
-              : `${creatorName ? `${creatorName} unlocked` : "You unlocked"} a VIP 7-Day Free Trial of HeyBroc Pro!`}
+              : `${creatorName ? `${creatorName} shared` : "Start"} a 7-Day Free Trial of HeyBroc Family Pro`}
         </h1>
         <p
           style={{
@@ -187,7 +187,7 @@ export default function ReferralLandingPage({
             ? `Code "${cleanCode}" was not recognized, so you can continue with our standard 7-day free trial below.`
             : isFriendInvite
               ? "Scan any grocery item in the app or start your trial below so both you and your friend unlock +7 Free Pro Days!"
-              : "Use this creator code at checkout to start your VIP 7-Day Free Family Pro Trial ($0 Today)!"}
+              : "Use this creator code at checkout to support this creator and start your 7-Day Free Family Pro Trial ($0 Today)."}
         </p>
 
         {!creatorNotFound && (

@@ -130,6 +130,10 @@ export async function POST(req: NextRequest) {
       typeof body.creatorCode === "string"
         ? body.creatorCode.trim().toUpperCase()
         : "";
+    const rawReferredByCode =
+      typeof body.referredByCode === "string"
+        ? body.referredByCode.trim().toUpperCase()
+        : "";
     const normalizedBodyDeviceId = normalizeRealDeviceId(
       typeof body.deviceId === "string" ? body.deviceId : ""
     );
@@ -375,7 +379,9 @@ export async function POST(req: NextRequest) {
 
     const candidateCreatorCode =
       rawCreatorCode ||
+      rawReferredByCode ||
       (priorEntitlement?.creatorCode || priorHistory?.creatorCode || "").trim().toUpperCase();
+    const isExplicitCreatorCode = Boolean(rawCreatorCode);
     const isFriendCodeFormat = /^BROC-[A-Z0-9]{4,10}$/.test(candidateCreatorCode);
     let verifiedCode = "";
 
@@ -394,27 +400,15 @@ export async function POST(req: NextRequest) {
               }).catch(() => false)
             : false);
 
-        if (isSelfFriendCode) {
-          if (rawCreatorCode) {
-            return NextResponse.json(
-              { ok: false, error: "You cannot use your own referral code." },
-              { status: 400 }
-            );
-          }
-        } else {
-          const exists = Boolean(inviterOwnerId);
-          if (!exists && rawCreatorCode) {
-            return NextResponse.json(
-              { ok: false, error: "Invalid or expired friend referral code." },
-              { status: 400 }
-            );
-          }
-          if (exists) verifiedCode = candidateCreatorCode;
+        // Stale/invalid/self friend referral codes (e.g. from localStorage heybroc_referred_by)
+        // are safely ignored instead of blocking Stripe checkout with HTTP 400.
+        if (!isSelfFriendCode && Boolean(inviterOwnerId)) {
+          verifiedCode = candidateCreatorCode;
         }
       } else {
         const validCreator = await getCreator(candidateCreatorCode).catch(() => null);
         if (!validCreator || !validCreator.active) {
-          if (rawCreatorCode) {
+          if (isExplicitCreatorCode) {
             return NextResponse.json(
               { ok: false, error: "Invalid or inactive creator code." },
               { status: 400 }
@@ -435,7 +429,7 @@ export async function POST(req: NextRequest) {
             validCreator.registeredIp &&
             clientIp === validCreator.registeredIp.trim())
         ) {
-          if (rawCreatorCode) {
+          if (isExplicitCreatorCode) {
             return NextResponse.json(
               {
                 ok: false,

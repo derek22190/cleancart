@@ -206,6 +206,19 @@ export async function isValidReferralCode(rawCode: string): Promise<boolean> {
   return Boolean(owner);
 }
 
+export function maybeResetWeeklySwapWindow(
+  entry: DeviceEntitlement,
+  now: number = Date.now()
+): boolean {
+  if (!entry.weekResetAt || !Number.isFinite(entry.weekResetAt) || now >= entry.weekResetAt) {
+    entry.weeklySwapsUsed = [];
+    entry.courtesyRefillUsedThisWeek = false;
+    entry.weekResetAt = now + WEEK_MS;
+    return true;
+  }
+  return false;
+}
+
 export async function getExistingDevice(
   rawDeviceId?: string
 ): Promise<DeviceEntitlement | null> {
@@ -221,6 +234,9 @@ export async function getExistingDevice(
   } else {
     entry = devices.get(deviceId) ?? null;
   }
+  if (entry && maybeResetWeeklySwapWindow(entry)) {
+    await saveDevice(entry).catch(() => {});
+  }
   return entry;
 }
 
@@ -235,6 +251,9 @@ export async function getOrCreateDevice(
   const now = Date.now();
   const existing = await getExistingDevice(deviceId);
   if (existing) {
+    if (maybeResetWeeklySwapWindow(existing, now)) {
+      await saveDevice(existing).catch(() => {});
+    }
     return existing;
   }
 
@@ -681,12 +700,16 @@ export function serializeEntitlement(
   paywallVariant: "A" | "B" = "A",
 ) {
   const now = Date.now();
+  const weekExpired = !d.weekResetAt || !Number.isFinite(d.weekResetAt) || now >= d.weekResetAt;
+  const activeWeeklyUsed = weekExpired ? 0 : d.weeklySwapsUsed.length;
+  const activeCourtesyUsed = weekExpired ? false : d.courtesyRefillUsedThisWeek;
+  const effectiveWeekResetAt = weekExpired ? now + WEEK_MS : d.weekResetAt;
   const proDaysRemaining = Math.max(0, Math.ceil((d.proUntil - now) / DAY_MS));
   const isProActive = d.proUntil > now;
   const maxWeeklySwaps =
     remoteFreeWeeklySwaps +
-    (d.courtesyRefillUsedThisWeek ? PRICING.courtesyRefillSwaps : 0);
-  const swapsRemaining = Math.max(0, maxWeeklySwaps - d.weeklySwapsUsed.length);
+    (activeCourtesyUsed ? PRICING.courtesyRefillSwaps : 0);
+  const swapsRemaining = Math.max(0, maxWeeklySwaps - activeWeeklyUsed);
   return {
     deviceId: d.deviceId,
     referralCode: d.referralCode,
@@ -696,11 +719,11 @@ export function serializeEntitlement(
     proDaysRemaining,
     proUntil: d.proUntil,
     referralsCompleted: d.referralsCompleted,
-    weeklySwapsUsedCount: d.weeklySwapsUsed.length,
+    weeklySwapsUsedCount: activeWeeklyUsed,
     weeklySwapsLimit: maxWeeklySwaps,
     swapsRemaining,
-    courtesyRefillAvailable: PRICING.courtesyRefillSwaps > 0 && !d.courtesyRefillUsedThisWeek,
-    weekResetAt: d.weekResetAt,
+    courtesyRefillAvailable: PRICING.courtesyRefillSwaps > 0 && !activeCourtesyUsed,
+    weekResetAt: effectiveWeekResetAt,
     paywallHeadline: paywallHeadline || null,
     paywallVariant,
   };

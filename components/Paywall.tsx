@@ -345,9 +345,9 @@ export default function Paywall({
         typeof window !== "undefined"
           ? (window.localStorage.getItem("heybroc_referred_by") || "").trim().toUpperCase()
           : "";
-      const effectiveCreatorCode =
-        appliedCreator?.code ||
-        (/^BROC-[A-Z0-9]{4,10}$/.test(storedFriendRef) ? storedFriendRef : undefined);
+      const explicitCreatorCode = appliedCreator?.code || undefined;
+      const passiveReferredByCode =
+        !explicitCreatorCode && storedFriendRef ? storedFriendRef : undefined;
       const isAdTest =
         typeof window !== "undefined" &&
         (window.location.pathname === "/test" || sp?.get("ad") === "test");
@@ -361,7 +361,8 @@ export default function Paywall({
         body: JSON.stringify({
           plan: selectedPlan,
           adTestMode: isAdTest || undefined,
-          creatorCode: effectiveCreatorCode,
+          creatorCode: explicitCreatorCode,
+          referredByCode: passiveReferredByCode,
           deviceId: devId || undefined,
           deviceSecret: devSecret || undefined,
           email: userEmail || undefined,

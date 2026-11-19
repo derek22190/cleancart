@@ -253,7 +253,7 @@ export async function POST(request: Request) {
           activateNow: true,
         }).catch(() => {});
       }
-    } else if (!validCreatorCode) {
+    } else if (!existingEntitlement && !validCreatorCode) {
       const normCode = normalizeCode(rawCreatorInput);
       if (normCode) {
         const creator = await getCreator(normCode).catch(() => null);
