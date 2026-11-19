@@ -37,6 +37,18 @@ export interface CreatorRow {
   stripeConnectAccountId?: string;
   lastPayoutAt?: string;
   createdAt: string;
+  pendingPayout?: {
+    payoutId: string;
+    code: string;
+    requestedAmount: number;
+    effectiveAmount: number;
+    method: CreatorPayoutMethod;
+    destination?: string;
+    status: string;
+    createdAt: string;
+    lastAttemptAt?: string;
+    lastError?: string;
+  } | null;
 }
 
 export interface CreatorTotals {
@@ -175,14 +187,14 @@ export default function InfluencerEngine({
       onUnauthorized?.();
       return;
     }
+    if (data.creators) setCreators(data.creators);
+    if (data.totals) setTotals(data.totals);
+    if (Array.isArray(data.recentPayouts)) setRecentPayouts(data.recentPayouts);
     if (!data.ok) {
       setError(data.error || "Operation failed.");
       return;
     }
     setError("");
-    if (data.creators) setCreators(data.creators);
-    if (data.totals) setTotals(data.totals);
-    if (Array.isArray(data.recentPayouts)) setRecentPayouts(data.recentPayouts);
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -212,10 +224,7 @@ export default function InfluencerEngine({
     }
   };
 
-  const quickEvent = async (
-    code: string,
-    event: "click" | "trial" | "paid_annual" | "checkout_annual"
-  ) => {
+  const quickEvent = async (code: string, event: "click" | "trial") => {
     setNotice("");
     const res = await fetch("/api/influencers", {
       method: "POST",
@@ -244,7 +253,7 @@ export default function InfluencerEngine({
   };
 
   const handlePayCreator = async (c: CreatorRow) => {
-    if (c.commissionOwed <= 0) return;
+    if (c.pendingPayout || c.commissionOwed <= 0) return;
     const connectAccountId = (c.stripeConnectAccountId || "").trim();
     const hasConnect = connectAccountId.startsWith("acct_");
     const method: CreatorPayoutMethod = hasConnect
@@ -315,11 +324,52 @@ export default function InfluencerEngine({
     }
   };
 
+  const handleReconcilePendingPayout = async (c: CreatorRow) => {
+    const pending = c.pendingPayout;
+    if (!pending) return;
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        `Reconcile pending ${pending.method.toUpperCase()} payout of ${usd(pending.effectiveAmount)} to ${c.code} (ID: ${pending.payoutId})? Stripe Idempotency-Key prevents any duplicate transfer.`
+      )
+    ) {
+      return;
+    }
+
+    setPayoutBusyCode(c.code);
+    setNotice("");
+    try {
+      const res = await fetch("/api/influencers", {
+        method: "POST",
+        headers: authHeaders(true),
+        body: JSON.stringify({
+          action: "payout",
+          code: c.code,
+          amount: pending.effectiveAmount,
+          payoutMethod: pending.method,
+          executeStripeTransfer: pending.method === "stripe_connect",
+          destination: pending.destination,
+          idempotencyKey: pending.payoutId,
+          note: "Admin pending payout reconciliation",
+        }),
+      });
+      const data = await res.json();
+      applySnapshot(res.status, data);
+      if (res.ok && data.ok && data.payout) {
+        setNotice(
+          `Reconciled ${usd(data.payout.amount)} payout to ${c.code} (${data.payout.stripeTransferId || data.payout.method}).`
+        );
+      }
+    } finally {
+      setPayoutBusyCode(null);
+    }
+  };
+
   const resetAll = async () => {
     if (
       typeof window !== "undefined" &&
       !window.confirm(
-        "Reset click, trial, and test counters across all creators? (Completed payout history is preserved.)"
+        "Reset non-financial click & trial counters on creators with zero sales and zero balances? (Creators with any revenue, paid subs, or commission balances are untouched.)"
       )
     ) {
       return;
@@ -478,6 +528,24 @@ export default function InfluencerEngine({
                           : `${(c.payoutMethod || "payout").toUpperCase()}: ${c.payoutHandle || c.payoutEmail}`}
                       </small>
                     )}
+                    {c.pendingPayout && (
+                      <small
+                        className="creator-sub"
+                        title={
+                          c.pendingPayout.lastError ||
+                          `Pending payout ${c.pendingPayout.payoutId}`
+                        }
+                        style={{
+                          display: "block",
+                          color: "#b45309",
+                          fontWeight: 700,
+                          marginTop: 2,
+                        }}
+                      >
+                        ⚠ Pending reconciliation:{" "}
+                        {usd(c.pendingPayout.effectiveAmount)}
+                      </small>
+                    )}
                   </td>
                   <td>
                     <div className="split-cell">
@@ -508,7 +576,29 @@ export default function InfluencerEngine({
                   <td className="num-brand">{usd(c.netRevenue)}</td>
                   <td>
                     <div className="row-actions" style={{ flexWrap: "wrap" }}>
-                      {c.commissionOwed > 0 && (
+                      {c.pendingPayout ? (
+                        <button
+                          type="button"
+                          className="mini-action"
+                          style={{
+                            borderColor: "#d97706",
+                            color: "#92400e",
+                            backgroundColor: "#fef3c7",
+                            fontWeight: 700,
+                          }}
+                          disabled={payoutBusyCode === c.code}
+                          title={
+                            c.pendingPayout.lastError
+                              ? `Last error: ${c.pendingPayout.lastError}`
+                              : `Reconcile pending payout (${c.pendingPayout.payoutId})`
+                          }
+                          onClick={() => handleReconcilePendingPayout(c)}
+                        >
+                          {payoutBusyCode === c.code
+                            ? "Reconciling…"
+                            : `↻ Reconcile ${usd(c.pendingPayout.effectiveAmount)}`}
+                        </button>
+                      ) : c.commissionOwed > 0 ? (
                         <button
                           type="button"
                           className="mini-action mini-action--green"
@@ -526,15 +616,7 @@ export default function InfluencerEngine({
                               ? `⚡ Pay ${usd(c.commissionOwed)}`
                               : `Pay ${usd(c.commissionOwed)}`}
                         </button>
-                      )}
-                      <button
-                        type="button"
-                        className="mini-action"
-                        title="Simulate full Paywall checkout with this code"
-                        onClick={() => quickEvent(c.code, "checkout_annual")}
-                      >
-                        +$49.99 Test
-                      </button>
+                      ) : null}
                       <button
                         type="button"
                         className="mini-action"
@@ -569,7 +651,7 @@ export default function InfluencerEngine({
           Store), Android, and Web.
         </span>
         <button type="button" className="link-btn" onClick={resetAll}>
-          Reset test counters
+          Reset click &amp; trial counters
         </button>
       </div>
 

@@ -265,33 +265,6 @@ jobs:
             end
           end
 
-          project.save
-          FileUtils.cp("#{proj_path}/project.pbxproj", "#{proj_path}/project.pbxproj.minimal")
-          puts "Saved fallback project.pbxproj.minimal"
-
-          # Add Sign in with Apple entitlement for ASAuthorizationAppleIDProvider (Guideline 4.8)
-          entitlements_path = 'ios-app/build/HeyBroc/HeyBroc.entitlements'
-          apple_signin_only_plist = <<~PLIST
-            <?xml version="1.0" encoding="UTF-8"?>
-            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-            <plist version="1.0">
-            <dict>
-              <key>com.apple.developer.applesignin</key>
-              <array>
-                <string>Default</string>
-              </array>
-            </dict>
-            </plist>
-          PLIST
-          File.write(entitlements_path, apple_signin_only_plist)
-          File.write("#{entitlements_path}.no-group", apple_signin_only_plist)
-          app_target.build_configurations.each do |cfg|
-            cfg.build_settings['CODE_SIGN_ENTITLEMENTS'] = 'HeyBroc.entitlements'
-          end
-          project.save
-          FileUtils.cp("#{proj_path}/project.pbxproj", "#{proj_path}/project.pbxproj.no-share")
-          puts "Saved fallback project.pbxproj.no-share (with Sign in with Apple entitlement)"
-
           # Add Native iOS Share Sheet Extension target (HeyBrocShare -> com.heybroc.app.ShareExtension)
           share_target = project.new_target(:app_extension, 'HeyBrocShare', :ios, '15.0')
           share_group = project.main_group.new_group('HeyBrocShare', 'HeyBrocShare', :project)
@@ -327,32 +300,18 @@ jobs:
           build_file = embed_phase.add_file_reference(share_target.product_reference, true)
           build_file.settings = { 'ATTRIBUTES' => ['RemoveHeadersOnCopy', 'CodeSignOnCopy'] }
 
-          project.save
-          FileUtils.cp("#{proj_path}/project.pbxproj", "#{proj_path}/project.pbxproj.with-share-no-group")
-          puts "Added HeyBrocShare.appex and saved fallback project.pbxproj.with-share-no-group"
+          # Required Capabilities: Sign in with Apple (Guideline 4.8) + Shared App Group (group.com.heybroc.app)
+          entitlements_path = 'ios-app/build/HeyBroc/HeyBroc.entitlements'
+          FileUtils.cp('ios-app/App/HeyBroc.entitlements', entitlements_path)
+          app_target.build_configurations.each do |cfg|
+            cfg.build_settings['CODE_SIGN_ENTITLEMENTS'] = 'HeyBroc.entitlements'
+          end
 
-          # Primary Tier: Shared App Group (group.com.heybroc.app) across Host App + SafariExtension + HeyBrocShare
           ext_group_plist = <<~PLIST
             <?xml version="1.0" encoding="UTF-8"?>
             <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
             <plist version="1.0">
             <dict>
-              <key>com.apple.security.application-groups</key>
-              <array>
-                <string>group.com.heybroc.app</string>
-              </array>
-            </dict>
-            </plist>
-          PLIST
-          File.write(entitlements_path, <<~PLIST)
-            <?xml version="1.0" encoding="UTF-8"?>
-            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-            <plist version="1.0">
-            <dict>
-              <key>com.apple.developer.applesignin</key>
-              <array>
-                <string>Default</string>
-              </array>
               <key>com.apple.security.application-groups</key>
               <array>
                 <string>group.com.heybroc.app</string>
@@ -370,7 +329,7 @@ jobs:
             cfg.build_settings['CODE_SIGN_ENTITLEMENTS'] = 'Extension.entitlements'
           end
           project.save
-          puts "Configured App Group (group.com.heybroc.app) entitlements across Host App, SafariExtension, and HeyBrocShare"
+          puts "Configured Sign in with Apple + App Group (group.com.heybroc.app) entitlements across Host App, SafariExtension, and HeyBrocShare"
           RUBY
 
       - name: Verify LiveStoreBrowser on iOS Simulator (iOS 26 Crash Gate)
@@ -549,7 +508,7 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             build
 
-      - name: Cloud-Sign & Upload .ipa to TestFlight (No Mac Required)
+      - name: Cloud-Sign & Export .ipa (No Mac Required)
         if: ${{ github.event.inputs.upload_to_testflight != 'false' && env.ASC_KEY_ID != '' }}
         run: |
           mkdir -p ~/.appstoreconnect/private_keys ~/.private_keys ~/private_keys
@@ -581,81 +540,94 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             archive
-          if ! xcodebuild -exportArchive \
+          xcodebuild -exportArchive \
             -archivePath "ios-app/build/HeyBroc.xcarchive" \
             -exportOptionsPlist "ios-app/build/ExportOptions.plist" \
             -exportPath "ios-app/build/ipa" \
             -allowProvisioningUpdates \
             -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
             -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID"; then
-            echo "::warning::App Group group.com.heybroc.app not yet enabled on all App IDs; re-archiving with ShareExtension + Sign in with Apple + StoreKit 2 + LiveStoreBrowser."
-            cp "ios-app/build/HeyBroc/HeyBroc.xcodeproj/project.pbxproj.with-share-no-group" "ios-app/build/HeyBroc/HeyBroc.xcodeproj/project.pbxproj"
-            cp "ios-app/build/HeyBroc/HeyBroc.entitlements.no-group" "ios-app/build/HeyBroc/HeyBroc.entitlements"
-            rm -rf "ios-app/build/HeyBroc.xcarchive" "ios-app/build/ipa"
-            xcodebuild -project "ios-app/build/HeyBroc/HeyBroc.xcodeproj" \
-              -scheme "HeyBroc" \
-              -sdk iphoneos \
-              -configuration Release \
-              -archivePath "ios-app/build/HeyBroc.xcarchive" \
-              CODE_SIGNING_ALLOWED=NO \
-              CODE_SIGNING_REQUIRED=NO \
-              CODE_SIGN_IDENTITY="" \
-              archive
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - name: Verify Exported IPA Integrity
+        if: ${{ github.event.inputs.upload_to_testflight != 'false' && env.ASC_KEY_ID != '' }}
+        run: |
+          set -euo pipefail
+          IPA_PATH="ios-app/build/ipa/HeyBroc.ipa"
+          if [ ! -f "$IPA_PATH" ]; then
+            echo "::error::Expected exported IPA at $IPA_PATH"
+            exit 1
           fi
-          if [ ! -f "ios-app/build/ipa/HeyBroc.ipa" ]; then
-            if ! xcodebuild -exportArchive \
-              -archivePath "ios-app/build/HeyBroc.xcarchive" \
-              -exportOptionsPlist "ios-app/build/ExportOptions.plist" \
-              -exportPath "ios-app/build/ipa" \
-              -allowProvisioningUpdates \
-              -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
-              -authenticationKeyID "$ASC_KEY_ID" \
-              -authenticationKeyIssuerID "$ASC_ISSUER_ID"; then
-              echo "::warning::App Store Connect API key could not auto-provision ShareExtension; re-archiving with Sign in with Apple + StoreKit 2 + LiveStoreBrowser."
-              cp "ios-app/build/HeyBroc/HeyBroc.xcodeproj/project.pbxproj.no-share" "ios-app/build/HeyBroc/HeyBroc.xcodeproj/project.pbxproj"
-              cp "ios-app/build/HeyBroc/HeyBroc.entitlements.no-group" "ios-app/build/HeyBroc/HeyBroc.entitlements"
-              rm -rf "ios-app/build/HeyBroc.xcarchive" "ios-app/build/ipa"
-              xcodebuild -project "ios-app/build/HeyBroc/HeyBroc.xcodeproj" \
-                -scheme "HeyBroc" \
-                -sdk iphoneos \
-                -configuration Release \
-                -archivePath "ios-app/build/HeyBroc.xcarchive" \
-                CODE_SIGNING_ALLOWED=NO \
-                CODE_SIGNING_REQUIRED=NO \
-                CODE_SIGN_IDENTITY="" \
-                archive
-              if ! xcodebuild -exportArchive \
-                -archivePath "ios-app/build/HeyBroc.xcarchive" \
-                -exportOptionsPlist "ios-app/build/ExportOptions.plist" \
-                -exportPath "ios-app/build/ipa" \
-                -allowProvisioningUpdates \
-                -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
-                -authenticationKeyID "$ASC_KEY_ID" \
-                -authenticationKeyIssuerID "$ASC_ISSUER_ID"; then
-              echo "::warning::Sign in with Apple capability not yet enabled on com.heybroc.app in Apple Developer Portal; re-archiving with StoreKit 2 + Web Apple OAuth fallback so TestFlight upload succeeds immediately."
-              cp "ios-app/build/HeyBroc/HeyBroc.xcodeproj/project.pbxproj.minimal" "ios-app/build/HeyBroc/HeyBroc.xcodeproj/project.pbxproj"
-              rm -rf "ios-app/build/HeyBroc.xcarchive" "ios-app/build/ipa"
-              xcodebuild -project "ios-app/build/HeyBroc/HeyBroc.xcodeproj" \
-                -scheme "HeyBroc" \
-                -sdk iphoneos \
-                -configuration Release \
-                -archivePath "ios-app/build/HeyBroc.xcarchive" \
-                CODE_SIGNING_ALLOWED=NO \
-                CODE_SIGNING_REQUIRED=NO \
-                CODE_SIGN_IDENTITY="" \
-                archive
-              xcodebuild -exportArchive \
-                -archivePath "ios-app/build/HeyBroc.xcarchive" \
-                -exportOptionsPlist "ios-app/build/ExportOptions.plist" \
-                -exportPath "ios-app/build/ipa" \
-                -allowProvisioningUpdates \
-                -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
-                -authenticationKeyID "$ASC_KEY_ID" \
-                -authenticationKeyIssuerID "$ASC_ISSUER_ID"
-              fi
+          TMP_DIR="$(mktemp -d)"
+          trap 'rm -rf "$TMP_DIR"' EXIT
+          unzip -q "$IPA_PATH" -d "$TMP_DIR"
+
+          APP_BUNDLE="$TMP_DIR/Payload/HeyBroc.app"
+          if [ ! -d "$APP_BUNDLE" ]; then
+            echo "::error::Payload/HeyBroc.app missing from exported IPA!"
+            exit 1
+          fi
+
+          APP_ENTITLEMENTS="$(codesign -d --entitlements :- "$TMP_DIR/Payload/HeyBroc.app" 2>/dev/null)"
+          if ! printf '%s' "$APP_ENTITLEMENTS" | grep -q "com.apple.developer.applesignin"; then
+            echo "::error::Host app HeyBroc.app is missing Sign in with Apple entitlement (com.apple.developer.applesignin)!"
+            exit 1
+          fi
+          if ! printf '%s' "$APP_ENTITLEMENTS" | grep -q "group.com.heybroc.app"; then
+            echo "::error::Host app HeyBroc.app is missing App Group entitlement (group.com.heybroc.app)!"
+            exit 1
+          fi
+
+          SHARE_APPEX="$APP_BUNDLE/PlugIns/HeyBrocShare.appex"
+          if [ ! -d "$SHARE_APPEX" ]; then
+            echo "::error::Missing Share Extension bundle: Payload/HeyBroc.app/PlugIns/HeyBrocShare.appex!"
+            exit 1
+          fi
+
+          SAFARI_APPEX=""
+          for CAND in "$APP_BUNDLE/PlugIns"/*.appex; do
+            [ -d "$CAND" ] || continue
+            [ "$(basename "$CAND")" = "HeyBrocShare.appex" ] && continue
+            if plutil -convert xml1 -o - "$CAND/Info.plist" | grep -q "com.apple.Safari.web-extension"; then
+              SAFARI_APPEX="$CAND"
+              break
             fi
+          done
+          if [ -z "$SAFARI_APPEX" ] || [ ! -d "$SAFARI_APPEX" ]; then
+            echo "::error::Missing Safari Web Extension .appex inside Payload/HeyBroc.app/PlugIns!"
+            exit 1
           fi
+
+          for EXT_BUNDLE in "$SHARE_APPEX" "$SAFARI_APPEX"; do
+            EXT_ENTITLEMENTS="$(codesign -d --entitlements :- "$EXT_BUNDLE" 2>/dev/null)"
+            if ! printf '%s' "$EXT_ENTITLEMENTS" | grep -q "group.com.heybroc.app"; then
+              echo "::error::Extension $(basename "$EXT_BUNDLE") is missing App Group entitlement (group.com.heybroc.app)!"
+              exit 1
+            fi
+          done
+
+          for BUNDLE in "$APP_BUNDLE" "$SHARE_APPEX" "$SAFARI_APPEX"; do
+            PRIVACY_FILE="$BUNDLE/PrivacyInfo.xcprivacy"
+            if [ ! -f "$PRIVACY_FILE" ]; then
+              echo "::error::Missing PrivacyInfo.xcprivacy inside $(basename "$BUNDLE")!"
+              exit 1
+            fi
+            PRIVACY_XML="$(plutil -convert xml1 -o - "$PRIVACY_FILE")"
+            if ! printf '%s' "$PRIVACY_XML" | grep -q "CA92.1"; then
+              echo "::error::PrivacyInfo.xcprivacy inside $(basename "$BUNDLE") is missing CA92.1!"
+              exit 1
+            fi
+            if ! printf '%s' "$PRIVACY_XML" | grep -q "1C8F.1"; then
+              echo "::error::PrivacyInfo.xcprivacy inside $(basename "$BUNDLE") is missing 1C8F.1!"
+              exit 1
+            fi
+          done
+
+          echo "✅ Verified IPA integrity: HeyBroc.app (Sign in with Apple + App Group), HeyBrocShare.appex, $(basename "$SAFARI_APPEX"), and PrivacyInfo.xcprivacy (CA92.1 + 1C8F.1) across all 3 bundles."
+
+      - name: Upload Verified .ipa to TestFlight
+        if: ${{ github.event.inputs.upload_to_testflight != 'false' && env.ASC_KEY_ID != '' }}
+        run: |
           xcrun altool --upload-app \
             --type ios \
             --file "ios-app/build/ipa/HeyBroc.ipa" \

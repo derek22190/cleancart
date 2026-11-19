@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -27,6 +28,8 @@ import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Google Play Store distribution billing coordinator (`play` product flavor).
@@ -41,6 +44,12 @@ object PlayBillingCoordinator {
     private const val PRIVACY_URL = "https://www.heybroc.com/privacy"
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val syncInProgress = AtomicBoolean(false)
+
+    @Volatile
+    private var cachedPricingSummary: String? = null
+
+    fun cachedLocalizedPricingSummary(): String? = cachedPricingSummary
 
     fun openUpgradeFromContext(context: Context) {
         val intent = Intent(context, MainActivity::class.java).apply {
@@ -60,6 +69,142 @@ object PlayBillingCoordinator {
         }
     }
 
+    /**
+     * Queries active Google Play subscriptions on startup/resume so any pending-to-completed
+     * or previously unacknowledged `PURCHASED` subscription is verified against `/api/google/verify`
+     * and acknowledged cleanly without losing user entitlement.
+     */
+    fun syncExistingPurchases(ctx: Context, onProActivated: (() -> Unit)? = null) {
+        if (!syncInProgress.compareAndSet(false, true)) return
+        val appCtx = ctx.applicationContext
+        val queryDispatched = AtomicBoolean(false)
+        val client = BillingClient.newBuilder(appCtx)
+            .setListener { _, _ -> /* handled when active flow is open */ }
+            .enablePendingPurchases(
+                PendingPurchasesParams.newBuilder()
+                    .enableOneTimeProducts()
+                    .build()
+            )
+            .build()
+
+        fun finishSync(activated: Boolean) {
+            mainHandler.post {
+                runCatching { client.endConnection() }
+                syncInProgress.set(false)
+                if (activated) {
+                    onProActivated?.invoke()
+                }
+            }
+        }
+
+        client.startConnection(object : BillingClientStateListener {
+            override fun onBillingSetupFinished(billingResult: BillingResult) {
+                if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
+                    finishSync(activated = false)
+                    return
+                }
+                if (!queryDispatched.compareAndSet(false, true)) return
+                val qParams = QueryPurchasesParams.newBuilder()
+                    .setProductType(BillingClient.ProductType.SUBS)
+                    .build()
+                client.queryPurchasesAsync(qParams) { res, purchases ->
+                    if (res.responseCode != BillingClient.BillingResponseCode.OK) {
+                        finishSync(activated = false)
+                        return@queryPurchasesAsync
+                    }
+                    val purchased = purchases.filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
+                    if (purchased.isEmpty()) {
+                        finishSync(activated = false)
+                        return@queryPurchasesAsync
+                    }
+                    val remaining = AtomicInteger(purchased.size)
+                    val anyActivated = AtomicBoolean(false)
+
+                    fun completeOne() {
+                        if (remaining.decrementAndGet() == 0) {
+                            finishSync(activated = anyActivated.get())
+                        }
+                    }
+
+                    for (purchase in purchased) {
+                        val productId = purchase.products.firstOrNull().orEmpty()
+                        val orderId = purchase.orderId.orEmpty()
+                        val token = purchase.purchaseToken
+                        Thread {
+                            val verified = ScanApi.verifyGooglePlayPurchase(
+                                ctx = appCtx,
+                                purchaseToken = token,
+                                productId = productId,
+                                orderId = orderId
+                            )
+                            val serverOk = verified?.optBoolean("ok", false) == true &&
+                                verified.optBoolean("active", false)
+                            if (!serverOk) {
+                                completeOne()
+                                return@Thread
+                            }
+                            if (!purchase.isAcknowledged) {
+                                mainHandler.post {
+                                    if (!client.isReady) {
+                                        completeOne()
+                                        return@post
+                                    }
+                                    val ackParams = AcknowledgePurchaseParams.newBuilder()
+                                        .setPurchaseToken(token)
+                                        .build()
+                                    client.acknowledgePurchase(ackParams) { ackResult ->
+                                        if (ackResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                                            anyActivated.set(true)
+                                        }
+                                        completeOne()
+                                    }
+                                }
+                            } else {
+                                anyActivated.set(true)
+                                completeOne()
+                            }
+                        }.start()
+                    }
+                }
+            }
+
+            override fun onBillingServiceDisconnected() {
+                if (!queryDispatched.get()) {
+                    syncInProgress.set(false)
+                }
+            }
+        })
+    }
+
+    private data class PlayOfferDisplay(
+        val recurringPrice: String,
+        val freeTrialLabel: String?,
+    )
+
+    private fun formatTrialPeriodLabel(isoPeriod: String?): String {
+        return when (isoPeriod?.trim()?.uppercase()) {
+            "P3D" -> "3-day free trial"
+            "P7D", "P1W" -> "7-day free trial"
+            "P14D", "P2W" -> "14-day free trial"
+            "P1M" -> "1-month free trial"
+            else -> "free trial"
+        }
+    }
+
+    private fun extractOfferDisplay(details: ProductDetails?): PlayOfferDisplay? {
+        val phases = details?.subscriptionOfferDetails
+            ?.firstOrNull()
+            ?.pricingPhases
+            ?.pricingPhaseList
+            .orEmpty()
+        if (phases.isEmpty()) return null
+        val paidPhase = phases.lastOrNull { it.priceAmountMicros > 0L } ?: return null
+        val recurringPrice = paidPhase.formattedPrice.takeIf { it.isNotBlank() } ?: return null
+        val freeTrialPhase = phases.firstOrNull { it.priceAmountMicros == 0L }
+        val trialLabel = freeTrialPhase?.let { formatTrialPeriodLabel(it.billingPeriod) }
+        return PlayOfferDisplay(recurringPrice = recurringPrice, freeTrialLabel = trialLabel)
+    }
+
     fun openUpgradeFlow(activity: Activity, onProActivated: (() -> Unit)? = null) {
         if (activity.isFinishing || activity.isDestroyed) return
         val appCtx = activity.applicationContext
@@ -70,6 +215,16 @@ object PlayBillingCoordinator {
         var billingClient: BillingClient? = null
         var annualDetails: ProductDetails? = null
         var monthlyDetails: ProductDetails? = null
+        val inFlightOps = AtomicInteger(0)
+        val pendingDisconnect = AtomicBoolean(false)
+        val dialogDismissed = AtomicBoolean(false)
+
+        fun safeEndConnectionIfIdle(client: BillingClient?) {
+            if (client == null) return
+            if (inFlightOps.get() == 0 && pendingDisconnect.get()) {
+                runCatching { client.endConnection() }
+            }
+        }
 
         val statusView = TextView(activity).apply {
             text = "Loading Google Play plans…"
@@ -78,23 +233,25 @@ object PlayBillingCoordinator {
             setPadding(0, dp(4), 0, dp(8))
         }
         val priceHeadlineView = TextView(activity).apply {
-            text = "$49.99/year"
-            textSize = 26f
+            text = "Loading Google Play plans…"
+            textSize = 22f
             setTypeface(null, Typeface.BOLD)
             setTextColor(0xFF0F172A.toInt())
         }
         val priceSubView = TextView(activity).apply {
-            text = "or $9.99/month • Includes 7-day free trial for eligible new subscribers"
+            text = "Fetching localized subscription pricing & trial availability from Google Play…"
             textSize = 12.5f
             setTextColor(0xFF475569.toInt())
             setPadding(0, dp(2), 0, 0)
         }
         val annualBtn = TextView(activity).apply {
-            text = "$49.99/year — Annual Plan\n7-day free trial, then $49.99/year"
+            text = "Loading Annual Plan…"
             textSize = 14.5f
             setTypeface(null, Typeface.BOLD)
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
+            isEnabled = false
+            alpha = 0.6f
             setPadding(dp(16), dp(14), dp(16), dp(14))
             background = GradientDrawable().apply {
                 setColor(0xFF16A34A.toInt())
@@ -106,11 +263,13 @@ object PlayBillingCoordinator {
             ).apply { bottomMargin = dp(8) }
         }
         val monthlyBtn = TextView(activity).apply {
-            text = "$9.99/month — Monthly Plan"
+            text = "Loading Monthly Plan…"
             textSize = 14f
             setTypeface(null, Typeface.BOLD)
             setTextColor(0xFF0F172A.toInt())
             gravity = Gravity.CENTER
+            isEnabled = false
+            alpha = 0.6f
             setPadding(dp(16), dp(12), dp(16), dp(12))
             background = GradientDrawable().apply {
                 setColor(Color.WHITE)
@@ -122,43 +281,88 @@ object PlayBillingCoordinator {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = dp(10) }
         }
+        val retryBtn = TextView(activity).apply {
+            text = "Retry Loading Google Play Plans"
+            textSize = 13f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(0xFF0F7A4A.toInt())
+            gravity = Gravity.CENTER
+            visibility = View.GONE
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = GradientDrawable().apply {
+                setColor(0xFFECFDF5.toInt())
+                setStroke(dp(1), 0xFF86EFAC.toInt())
+                cornerRadius = dp(12).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(10) }
+        }
         val disclosureView = TextView(activity).apply {
-            text = "Auto-renewable subscription billed through Google Play: 7-day free trial for eligible new subscribers, then $49.99/year (or $9.99/month). Subscription renews automatically unless canceled in Google Play → Payments & subscriptions before renewal."
+            text = "Auto-renewable subscription billed through Google Play. Localized pricing, billing period, and any introductory trial eligibility are loaded directly from Google Play. Subscription renews automatically unless canceled in Google Play → Payments & subscriptions before renewal."
             textSize = 11f
             setTextColor(0xFF64748B.toInt())
             setPadding(0, dp(8), 0, dp(4))
         }
 
-        fun formatRecurringPrice(details: ProductDetails?, fallback: String): String {
-            val phases = details?.subscriptionOfferDetails
-                ?.firstOrNull()
-                ?.pricingPhases
-                ?.pricingPhaseList
-                .orEmpty()
-            val paidPhase = phases.lastOrNull { it.priceAmountMicros > 0L } ?: phases.lastOrNull()
-            return paidPhase?.formattedPrice?.takeIf { it.isNotBlank() } ?: fallback
+        fun setPlanButtonsEnabled(enabled: Boolean) {
+            val canAnnual = enabled && annualDetails != null
+            val canMonthly = enabled && monthlyDetails != null
+            annualBtn.isEnabled = canAnnual
+            annualBtn.alpha = if (canAnnual) 1f else 0.6f
+            monthlyBtn.isEnabled = canMonthly
+            monthlyBtn.alpha = if (canMonthly) 1f else 0.6f
         }
 
-        fun handleVerifiedPurchases(client: BillingClient, purchases: List<Purchase>, isRestore: Boolean) {
+        fun handlePurchases(client: BillingClient, purchases: List<Purchase>, isRestore: Boolean) {
             val activePurchases = purchases.filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
+            val pendingPurchases = purchases.filter { it.purchaseState == Purchase.PurchaseState.PENDING }
+
             if (activePurchases.isEmpty()) {
-                if (isRestore) {
-                    mainHandler.post {
+                mainHandler.post {
+                    setPlanButtonsEnabled(true)
+                    if (pendingPurchases.isNotEmpty()) {
+                        statusView.text = "Payment pending in Google Play — Family Pro will unlock automatically once Google Play completes the charge."
+                    } else if (isRestore) {
                         statusView.text = "No active Google Play subscription found on this Google account."
                     }
                 }
                 return
             }
+
+            mainHandler.post {
+                setPlanButtonsEnabled(false)
+                statusView.text = "Verifying your Google Play subscription…"
+            }
+
             for (purchase in activePurchases) {
                 val productId = purchase.products.firstOrNull().orEmpty()
                 val orderId = purchase.orderId.orEmpty()
                 val token = purchase.purchaseToken
-                if (!purchase.isAcknowledged) {
-                    val ackParams = AcknowledgePurchaseParams.newBuilder()
-                        .setPurchaseToken(token)
-                        .build()
-                    client.acknowledgePurchase(ackParams) { /* handled alongside server verification */ }
+                inFlightOps.incrementAndGet()
+
+                fun finishOp() {
+                    mainHandler.post {
+                        if (inFlightOps.decrementAndGet() <= 0) {
+                            safeEndConnectionIfIdle(client)
+                        }
+                    }
                 }
+
+                fun completeProUnlock() {
+                    mainHandler.post {
+                        Toast.makeText(appCtx, "HeyBroc Family Pro activated!", Toast.LENGTH_LONG).show()
+                        if (!dialogDismissed.get()) {
+                            runCatching { dialogRef?.dismiss() }
+                        }
+                        onProActivated?.invoke()
+                        if (inFlightOps.decrementAndGet() <= 0) {
+                            safeEndConnectionIfIdle(client)
+                        }
+                    }
+                }
+
                 Thread {
                     val verified = ScanApi.verifyGooglePlayPurchase(
                         ctx = appCtx,
@@ -166,16 +370,47 @@ object PlayBillingCoordinator {
                         productId = productId,
                         orderId = orderId
                     )
-                    mainHandler.post {
-                        if (verified?.optBoolean("active", false) == true) {
-                            Toast.makeText(appCtx, "HeyBroc Family Pro activated!", Toast.LENGTH_LONG).show()
-                            dialogRef?.dismiss()
-                            onProActivated?.invoke()
-                        } else {
-                            val err = verified?.optString("error").orEmpty()
-                                .ifBlank { "Purchase recorded on Google Play. Syncing your Pro access…" }
+                    val serverOk = verified?.optBoolean("ok", false) == true &&
+                        verified.optBoolean("active", false)
+                    if (!serverOk) {
+                        val err = verified?.optString("error").orEmpty()
+                            .ifBlank { "Purchase recorded in Google Play, but verification did not finish yet. Tap Restore Purchases to retry." }
+                        mainHandler.post {
+                            setPlanButtonsEnabled(true)
                             statusView.text = err
                         }
+                        finishOp()
+                        return@Thread
+                    }
+
+                    if (!purchase.isAcknowledged) {
+                        mainHandler.post {
+                            if (!client.isReady) {
+                                setPlanButtonsEnabled(true)
+                                statusView.text = "Purchase verified, waiting for Google Play confirmation — tap Restore Purchases to retry."
+                                if (inFlightOps.decrementAndGet() <= 0) {
+                                    safeEndConnectionIfIdle(client)
+                                }
+                                return@post
+                            }
+                            val ackParams = AcknowledgePurchaseParams.newBuilder()
+                                .setPurchaseToken(token)
+                                .build()
+                            client.acknowledgePurchase(ackParams) { ackResult ->
+                                if (ackResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                                    completeProUnlock()
+                                } else {
+                                    val detail = ackResult.debugMessage.takeIf { it.isNotBlank() }?.let { " ($it)" }.orEmpty()
+                                    mainHandler.post {
+                                        setPlanButtonsEnabled(true)
+                                        statusView.text = "Purchase verified, but Google Play confirmation did not complete$detail. Tap Restore Purchases to retry."
+                                    }
+                                    finishOp()
+                                }
+                            }
+                        }
+                    } else {
+                        completeProUnlock()
                     }
                 }.start()
             }
@@ -185,14 +420,40 @@ object PlayBillingCoordinator {
             when (billingResult.responseCode) {
                 BillingClient.BillingResponseCode.OK -> {
                     if (!purchases.isNullOrEmpty()) {
-                        billingClient?.let { handleVerifiedPurchases(it, purchases, isRestore = false) }
+                        billingClient?.let { handlePurchases(it, purchases, isRestore = false) }
+                    }
+                }
+                BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED -> {
+                    mainHandler.post {
+                        statusView.text = "Subscription already owned on this Google account — syncing Pro access…"
+                    }
+                    billingClient?.let { activeClient ->
+                        if (activeClient.isReady) {
+                            val qParams = QueryPurchasesParams.newBuilder()
+                                .setProductType(BillingClient.ProductType.SUBS)
+                                .build()
+                            activeClient.queryPurchasesAsync(qParams) { res, list ->
+                                if (res.responseCode == BillingClient.BillingResponseCode.OK) {
+                                    handlePurchases(activeClient, list, isRestore = true)
+                                } else {
+                                    mainHandler.post {
+                                        setPlanButtonsEnabled(true)
+                                        statusView.text = "Unable to sync your existing subscription right now. Tap Restore Purchases to retry."
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 BillingClient.BillingResponseCode.USER_CANCELED -> {
-                    mainHandler.post { statusView.text = "No charge made — continue scanning free anytime." }
+                    mainHandler.post {
+                        setPlanButtonsEnabled(true)
+                        statusView.text = "No charge made — continue scanning free anytime."
+                    }
                 }
                 else -> {
                     mainHandler.post {
+                        setPlanButtonsEnabled(true)
                         statusView.text = billingResult.debugMessage.ifBlank { "Google Play Billing could not complete right now." }
                     }
                 }
@@ -209,9 +470,139 @@ object PlayBillingCoordinator {
             .build()
         billingClient = client
 
+        fun loadGooglePlayPlans() {
+            if (!client.isReady) {
+                mainHandler.post {
+                    statusView.text = "Connecting to Google Play…"
+                    retryBtn.visibility = View.GONE
+                }
+                client.startConnection(object : BillingClientStateListener {
+                    override fun onBillingSetupFinished(billingResult: BillingResult) {
+                        if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
+                            mainHandler.post {
+                                priceHeadlineView.text = "Google Play Billing unavailable"
+                                priceSubView.text = "Tap Retry below, sign in to sync an existing Pro account, or continue free."
+                                annualBtn.text = "Annual Plan — Unavailable"
+                                monthlyBtn.text = "Monthly Plan — Unavailable"
+                                setPlanButtonsEnabled(false)
+                                retryBtn.visibility = View.VISIBLE
+                                statusView.text = "Google Play Billing unavailable on this device right now."
+                            }
+                            return
+                        }
+                        loadGooglePlayPlans()
+                    }
+
+                    override fun onBillingServiceDisconnected() {
+                        mainHandler.post {
+                            retryBtn.visibility = View.VISIBLE
+                            statusView.text = "Google Play connection interrupted — tap Retry to reconnect."
+                        }
+                    }
+                })
+                return
+            }
+
+            val productList = listOf(
+                QueryProductDetailsParams.Product.newBuilder()
+                    .setProductId(ANNUAL_PRODUCT_ID)
+                    .setProductType(BillingClient.ProductType.SUBS)
+                    .build(),
+                QueryProductDetailsParams.Product.newBuilder()
+                    .setProductId(MONTHLY_PRODUCT_ID)
+                    .setProductType(BillingClient.ProductType.SUBS)
+                    .build()
+            )
+            val params = QueryProductDetailsParams.newBuilder()
+                .setProductList(productList)
+                .build()
+            client.queryProductDetailsAsync(params) { res, detailsList ->
+                mainHandler.post {
+                    if (res.responseCode == BillingClient.BillingResponseCode.OK) {
+                        annualDetails = detailsList.firstOrNull { it.productId == ANNUAL_PRODUCT_ID }
+                        monthlyDetails = detailsList.firstOrNull { it.productId == MONTHLY_PRODUCT_ID }
+                        val annualOffer = extractOfferDisplay(annualDetails)
+                        val monthlyOffer = extractOfferDisplay(monthlyDetails)
+
+                        if (annualOffer != null) {
+                            priceHeadlineView.text = "${annualOffer.recurringPrice}/year"
+                            annualBtn.text = if (annualOffer.freeTrialLabel != null) {
+                                "${annualOffer.recurringPrice}/year — Annual Plan\n${annualOffer.freeTrialLabel}, then ${annualOffer.recurringPrice}/year"
+                            } else {
+                                "${annualOffer.recurringPrice}/year — Annual Plan"
+                            }
+                        } else {
+                            annualBtn.text = "Annual Plan — Unavailable"
+                        }
+
+                        if (monthlyOffer != null) {
+                            monthlyBtn.text = if (monthlyOffer.freeTrialLabel != null) {
+                                "${monthlyOffer.recurringPrice}/month — Monthly Plan\n${monthlyOffer.freeTrialLabel}, then ${monthlyOffer.recurringPrice}/month"
+                            } else {
+                                "${monthlyOffer.recurringPrice}/month — Monthly Plan"
+                            }
+                        } else {
+                            monthlyBtn.text = "Monthly Plan — Unavailable"
+                        }
+
+                        if (annualOffer != null && monthlyOffer != null) {
+                            priceSubView.text = annualOffer.freeTrialLabel?.let {
+                                "or ${monthlyOffer.recurringPrice}/month • Includes $it for eligible new subscribers"
+                            } ?: "or ${monthlyOffer.recurringPrice}/month • Billed through Google Play"
+                            val trialClause = annualOffer.freeTrialLabel?.let { "$it for eligible new subscribers, then " }.orEmpty()
+                            disclosureView.text = "Auto-renewable subscription billed through Google Play: $trialClause${annualOffer.recurringPrice}/year (or ${monthlyOffer.recurringPrice}/month). Subscription renews automatically unless canceled in Google Play → Payments & subscriptions before renewal."
+                            cachedPricingSummary = "${annualOffer.recurringPrice}/year or ${monthlyOffer.recurringPrice}/month via Google Play. Cancel anytime in Google Play."
+                            retryBtn.visibility = View.GONE
+                            statusView.text = "Choose a Google Play plan below, or continue free anytime."
+                        } else if (annualOffer != null) {
+                            priceSubView.text = annualOffer.freeTrialLabel?.let {
+                                "Includes $it for eligible new subscribers"
+                            } ?: "Billed annually through Google Play"
+                            val trialClause = annualOffer.freeTrialLabel?.let { "$it for eligible new subscribers, then " }.orEmpty()
+                            disclosureView.text = "Auto-renewable subscription billed through Google Play: $trialClause${annualOffer.recurringPrice}/year. Subscription renews automatically unless canceled in Google Play → Payments & subscriptions before renewal."
+                            cachedPricingSummary = "${annualOffer.recurringPrice}/year via Google Play. Cancel anytime in Google Play."
+                            retryBtn.visibility = View.GONE
+                            statusView.text = "Choose a Google Play plan below, or continue free anytime."
+                        } else if (monthlyOffer != null) {
+                            priceHeadlineView.text = "${monthlyOffer.recurringPrice}/month"
+                            priceSubView.text = monthlyOffer.freeTrialLabel?.let {
+                                "Includes $it for eligible new subscribers"
+                            } ?: "Billed monthly through Google Play"
+                            val trialClause = monthlyOffer.freeTrialLabel?.let { "$it for eligible new subscribers, then " }.orEmpty()
+                            disclosureView.text = "Auto-renewable subscription billed through Google Play: $trialClause${monthlyOffer.recurringPrice}/month. Subscription renews automatically unless canceled in Google Play → Payments & subscriptions before renewal."
+                            cachedPricingSummary = "${monthlyOffer.recurringPrice}/month via Google Play. Cancel anytime in Google Play."
+                            retryBtn.visibility = View.GONE
+                            statusView.text = "Choose a Google Play plan below, or continue free anytime."
+                        } else {
+                            priceHeadlineView.text = "Google Play plans unavailable"
+                            priceSubView.text = "Localized plans could not be loaded in this region right now."
+                            retryBtn.visibility = View.VISIBLE
+                            statusView.text = "Google Play plans are currently unavailable. Tap Retry to try again."
+                        }
+                        setPlanButtonsEnabled(inFlightOps.get() == 0)
+                    } else {
+                        priceHeadlineView.text = "Unable to load Google Play plans"
+                        priceSubView.text = "Check your connection and tap Retry below."
+                        setPlanButtonsEnabled(false)
+                        retryBtn.visibility = View.VISIBLE
+                        statusView.text = "Unable to load Google Play plans right now."
+                    }
+                }
+            }
+        }
+
         fun launchPurchase(details: ProductDetails?) {
+            if (inFlightOps.get() > 0) {
+                statusView.text = "Finishing verification of your current purchase…"
+                return
+            }
             if (details == null) {
                 Toast.makeText(activity, "Google Play plans are still loading. Please try again in a moment.", Toast.LENGTH_SHORT).show()
+                return
+            }
+            if (!client.isReady) {
+                statusView.text = "Reconnecting to Google Play…"
+                loadGooglePlayPlans()
                 return
             }
             val offerToken = details.subscriptionOfferDetails?.firstOrNull()?.offerToken
@@ -227,11 +618,15 @@ object PlayBillingCoordinator {
             val flowParams = BillingFlowParams.newBuilder()
                 .setProductDetailsParamsList(listOf(productParams))
                 .build()
-            client.launchBillingFlow(activity, flowParams)
+            val launchRes = client.launchBillingFlow(activity, flowParams)
+            if (launchRes.responseCode != BillingClient.BillingResponseCode.OK) {
+                statusView.text = launchRes.debugMessage.ifBlank { "Unable to open Google Play checkout right now." }
+            }
         }
 
         annualBtn.setOnClickListener { launchPurchase(annualDetails) }
         monthlyBtn.setOnClickListener { launchPurchase(monthlyDetails) }
+        retryBtn.setOnClickListener { loadGooglePlayPlans() }
 
         val card = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -281,6 +676,7 @@ object PlayBillingCoordinator {
                 ).apply { bottomMargin = dp(8) }
             })
             addView(statusView)
+            addView(retryBtn)
             addView(annualBtn)
             addView(monthlyBtn)
 
@@ -294,13 +690,18 @@ object PlayBillingCoordinator {
                     setTextColor(0xFF0F7A4A.toInt())
                     setPadding(dp(10), dp(8), dp(10), dp(8))
                     setOnClickListener {
+                        if (!client.isReady) {
+                            statusView.text = "Reconnecting to Google Play…"
+                            loadGooglePlayPlans()
+                            return@setOnClickListener
+                        }
                         statusView.text = "Checking Google Play purchases…"
                         val qParams = QueryPurchasesParams.newBuilder()
                             .setProductType(BillingClient.ProductType.SUBS)
                             .build()
                         client.queryPurchasesAsync(qParams) { res, list ->
                             if (res.responseCode == BillingClient.BillingResponseCode.OK) {
-                                handleVerifiedPurchases(client, list, isRestore = true)
+                                handlePurchases(client, list, isRestore = true)
                             } else {
                                 mainHandler.post { statusView.text = "Unable to query Google Play right now." }
                             }
@@ -349,62 +750,14 @@ object PlayBillingCoordinator {
             .setNegativeButton("Continue with Free Plan", null)
             .create()
         dlg.setOnDismissListener {
-            runCatching { client.endConnection() }
+            dialogDismissed.set(true)
+            pendingDisconnect.set(true)
+            safeEndConnectionIfIdle(client)
         }
         dialogRef = dlg
         ScanApi.trackEvent(activity, "paywall_viewed")
         dlg.show()
 
-        client.startConnection(object : BillingClientStateListener {
-            override fun onBillingSetupFinished(billingResult: BillingResult) {
-                if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
-                    mainHandler.post {
-                        statusView.text = "Google Play Billing unavailable on this device. Sign in to sync an existing Pro account or continue free."
-                    }
-                    return
-                }
-                val productList = listOf(
-                    QueryProductDetailsParams.Product.newBuilder()
-                        .setProductId(ANNUAL_PRODUCT_ID)
-                        .setProductType(BillingClient.ProductType.SUBS)
-                        .build(),
-                    QueryProductDetailsParams.Product.newBuilder()
-                        .setProductId(MONTHLY_PRODUCT_ID)
-                        .setProductType(BillingClient.ProductType.SUBS)
-                        .build()
-                )
-                val params = QueryProductDetailsParams.newBuilder()
-                    .setProductList(productList)
-                    .build()
-                client.queryProductDetailsAsync(params) { res, detailsList ->
-                    mainHandler.post {
-                        if (res.responseCode == BillingClient.BillingResponseCode.OK) {
-                            annualDetails = detailsList.firstOrNull { it.productId == ANNUAL_PRODUCT_ID }
-                            monthlyDetails = detailsList.firstOrNull { it.productId == MONTHLY_PRODUCT_ID }
-                            val annualPrice = formatRecurringPrice(annualDetails, "$49.99")
-                            val monthlyPrice = formatRecurringPrice(monthlyDetails, "$9.99")
-                            priceHeadlineView.text = "$annualPrice/year"
-                            priceSubView.text = "or $monthlyPrice/month • Includes 7-day free trial for eligible new subscribers"
-                            annualBtn.text = "$annualPrice/year — Annual Plan\n7-day free trial, then $annualPrice/year"
-                            monthlyBtn.text = "$monthlyPrice/month — Monthly Plan"
-                            disclosureView.text = "Auto-renewable subscription billed through Google Play: 7-day free trial for eligible new subscribers, then $annualPrice/year (or $monthlyPrice/month). Subscription renews automatically unless canceled in Google Play → Payments & subscriptions before renewal."
-                            statusView.text = if (annualDetails != null || monthlyDetails != null) {
-                                "Choose a Google Play plan below, or continue free anytime."
-                            } else {
-                                "Google Play plans are currently unavailable in this region."
-                            }
-                        } else {
-                            statusView.text = "Unable to load Google Play plans right now."
-                        }
-                    }
-                }
-            }
-
-            override fun onBillingServiceDisconnected() {
-                mainHandler.post {
-                    statusView.text = "Google Play connection interrupted — tap again to retry."
-                }
-            }
-        })
+        loadGooglePlayPlans()
     }
 }

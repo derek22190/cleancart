@@ -331,7 +331,10 @@ export async function POST(req: Request) {
   const rcEnv = String(ev.environment || "").trim().toUpperCase();
   const isProductionStoreEnv = rcEnv === "PRODUCTION";
 
-  // Credit creator / referral on first paid billing cycle only (rc_orig:<origTxId>), strictly for PRODUCTION store events
+  const storeUpper = String(ev.store || "").trim().toUpperCase();
+  const isPlayStore = storeUpper === "PLAY_STORE";
+
+  // Credit creator / referral on first paid billing cycle only (canonical ios_orig / google_orig + rc_orig), strictly for PRODUCTION store events
   if (
     eventType === "INITIAL_PURCHASE" ||
     eventType === "RENEWAL" ||
@@ -352,15 +355,26 @@ export async function POST(req: Request) {
             undefined,
             customerEmail,
             {
+              additionalIdempotencyKeys: isPlayStore
+                ? [`google_trial:${origTxId}`, `rc_trial:${origTxId}`]
+                : [
+                    `ios_trial:${origTxId}`,
+                    `apple_trial:${origTxId}`,
+                    `rc_trial:${origTxId}`,
+                  ],
               buyerUserId: userId,
               buyerDeviceId: deviceId,
             }
           );
         }
       } else {
-        const alreadyCreditedAcrossPipelines =
-          (await hasSubscriptionFirstPaidCredit(`apple_orig:${origTxId}`)) ||
-          (await hasSubscriptionFirstPaidCredit(`rc_orig:${origTxId}`));
+        const alreadyCreditedAcrossPipelines = isPlayStore
+          ? (await hasSubscriptionFirstPaidCredit(`google_orig:${origTxId}`)) ||
+            (await hasSubscriptionFirstPaidCredit(`google_order:${origTxId}`)) ||
+            (await hasSubscriptionFirstPaidCredit(`rc_orig:${origTxId}`))
+          : (await hasSubscriptionFirstPaidCredit(`ios_orig:${origTxId}`)) ||
+            (await hasSubscriptionFirstPaidCredit(`apple_orig:${origTxId}`)) ||
+            (await hasSubscriptionFirstPaidCredit(`rc_orig:${origTxId}`));
         if (!alreadyCreditedAcrossPipelines) {
           const creatorEvent =
             plan === "annual" ? "paid_annual" : "paid_monthly";
@@ -373,7 +387,12 @@ export async function POST(req: Request) {
             {
               creditedTransactionId: txId,
               creditedEventId: eventId,
-              subscriptionKey: `rc_orig:${origTxId}`,
+              subscriptionKey: isPlayStore
+                ? `google_orig:${origTxId}`
+                : `ios_orig:${origTxId}`,
+              additionalSubscriptionKeys: isPlayStore
+                ? [`rc_orig:${origTxId}`, `google_order:${origTxId}`]
+                : [`rc_orig:${origTxId}`, `apple_orig:${origTxId}`],
               buyerUserId: userId,
               buyerDeviceId: deviceId,
             }
@@ -407,7 +426,10 @@ export async function POST(req: Request) {
   } else if (isImmediateRefundEvent) {
     const convMeta =
       (await getCreatorConversionMeta(`rc_orig:${origTxId}`)) ??
-      (await getCreatorConversionMeta(`apple_orig:${origTxId}`));
+      (await getCreatorConversionMeta(`apple_orig:${origTxId}`)) ??
+      (await getCreatorConversionMeta(`ios_orig:${origTxId}`)) ??
+      (await getCreatorConversionMeta(`google_orig:${origTxId}`)) ??
+      (await getCreatorConversionMeta(`google_order:${origTxId}`));
     const effectiveCreatorCode = creatorCode || convMeta?.code;
 
     if (
@@ -453,7 +475,9 @@ export async function POST(req: Request) {
           {
             buyerEmail: customerEmail || convMeta?.buyerEmail,
             originalConversionKey: `rc_orig:${origTxId}`,
-            fallbackConversionKeys: [`apple_orig:${origTxId}`],
+            fallbackConversionKeys: isPlayStore
+              ? [`google_orig:${origTxId}`, `google_order:${origTxId}`]
+              : [`apple_orig:${origTxId}`, `ios_orig:${origTxId}`],
             refundedTransactionId: ev.transaction_id?.trim() || undefined,
             originalPreTaxUsd: convMeta?.grossUsd,
             refundRatio,

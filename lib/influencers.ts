@@ -109,6 +109,8 @@ const CREATOR_HASH_PREFIX = "heybroc:creator:item:";
 const CREATOR_PAYOUTS_PREFIX = "heybroc:creator:payouts:";
 const PENDING_PAYOUT_PREFIX = "heybroc:creator:pending_payout:";
 const SUB_FIRST_PAID_PREFIX = "heybroc:creator:sub_first_paid:";
+const CONV_ONCE_PREFIX = "heybroc:creator:conv:";
+const REFUND_TX_PREFIX = "heybroc:creator:refund_tx:";
 const RECENT_PAYOUTS_KEY = "heybroc:creator:payouts:__recent__";
 const CREATORS_SEEDED_KEY = "heybroc:creators:seeded:v2";
 const PAYOUT_TTL_SECONDS = 5 * 365 * 86400; // Retain payout tax/audit records for 5 years
@@ -637,8 +639,12 @@ export interface CreatorConversionOptions {
   creditedInvoiceId?: string;
   creditedTransactionId?: string;
   creditedEventId?: string;
-  /** Subscription-level key (`stripe_sub:sub_...`, `rc_orig:...`, `apple_orig:...`) enforcing first-paid-billing-cycle-only commissions. */
+  /** Subscription-level key (`stripe_sub:sub_...`, `ios_orig:...`, `google_orig:...`, `rc_orig:...`, `apple_orig:...`) enforcing first-paid-billing-cycle-only commissions. */
   subscriptionKey?: string;
+  /** Additional subscription-level lock keys checked and claimed atomically alongside `subscriptionKey` on paid events. */
+  additionalSubscriptionKeys?: string[];
+  /** Additional conversion idempotency keys (`CONV_ONCE_PREFIX`) checked and claimed atomically alongside `idempotencyKey` (including on trial events). */
+  additionalIdempotencyKeys?: string[];
   buyerUserId?: string;
   buyerDeviceId?: string;
   checkoutIp?: string;
@@ -727,12 +733,18 @@ export async function getPendingCreatorPayout(
 }
 
 /**
- * Records a funnel event using atomic Redis Hash increments (`HINCRBY` / `HINCRBYFLOAT`).
+ * Records a non-financial engagement funnel event (`"click"` or `"trial"`) using atomic Redis Hash increments.
+ * Paid conversions cannot be simulated via `trackEvent`; financial credits require verified billing webhooks.
  */
 export async function trackEvent(
   code: string,
   event: CreatorEvent
 ): Promise<Creator> {
+  if (event !== "click" && event !== "trial") {
+    throw new Error(
+      "Paid conversions cannot be simulated via trackEvent; financial credits require verified billing webhooks."
+    );
+  }
   await ensureInitialized();
   const norm = normalizeCode(code);
   const c = await getCreator(norm);
@@ -740,42 +752,10 @@ export async function trackEvent(
 
   const key = creatorKey(norm);
 
-  const creditPlan = async (plan: PlanId) => {
-    const price = plan === "annual" ? PRICING.annual : PRICING.monthly;
-    const comm = commissionFor(plan, c.commissionPct);
-    await kvHIncrByFloat(key, "grossRevenue", price);
-    await kvHIncrByFloat(key, "commissionEarned", comm);
-    await kvHIncrByFloat(key, "commissionOwed", comm);
-    const trackMetaKey = `heybroc:creator:conv_meta:track_${norm}_${Date.now().toString(36)}_${crypto.randomBytes(4).toString("hex")}`;
-    await kvSet<CreatorConversionMeta>(
-      trackMetaKey,
-      {
-        code: norm,
-        blockedSelfDeal: false,
-        commissionCents: Math.round(comm * 100),
-        grossUsd: price,
-        plan,
-        clawedBackCents: 0,
-        clawedBackGrossUsd: 0,
-      },
-      CONV_META_TTL_SECONDS
-    ).catch(() => {});
-  };
-
   if (event === "click") {
     await kvHIncrBy(key, "clicks", 1);
-  } else if (event === "trial") {
+  } else {
     await kvHIncrBy(key, "trials", 1);
-  } else if (event === "paid_annual") {
-    await kvHIncrBy(key, "paidAnnual", 1);
-    await creditPlan("annual");
-  } else if (event === "checkout_annual") {
-    await kvHIncrBy(key, "trials", 1);
-    await kvHIncrBy(key, "paidAnnual", 1);
-    await creditPlan("annual");
-  } else if (event === "paid_monthly") {
-    await kvHIncrBy(key, "paidMonthly", 1);
-    await creditPlan("monthly");
   }
 
   const updated = await getCreator(norm);
@@ -917,7 +897,7 @@ export async function recordStripeCreatorConversionOnce(
     return creator;
   }
 
-  const markerKey = `heybroc:creator:conv:${idempotencyKey}`;
+  const markerKey = `${CONV_ONCE_PREFIX}${idempotencyKey}`;
   const key = creatorKey(norm);
   const deltas: Array<{ field: string; delta: number; isFloat?: boolean }> = [];
   let recordedGross = 0;
@@ -982,13 +962,36 @@ export async function recordStripeCreatorConversionOnce(
     );
   }
 
-  const subKey =
-    isPaidEvent && options?.subscriptionKey?.trim()
-      ? `${SUB_FIRST_PAID_PREFIX}${options.subscriptionKey.trim()}`
-      : "";
+  const extraLockSet = new Set<string>();
+  const subKeyAliases: string[] = [];
+  if (isPaidEvent) {
+    const primarySub = options?.subscriptionKey?.trim();
+    if (primarySub) {
+      extraLockSet.add(`${SUB_FIRST_PAID_PREFIX}${primarySub}`);
+      subKeyAliases.push(primarySub);
+    }
+    for (const rawSub of options?.additionalSubscriptionKeys ?? []) {
+      const cleanSub = rawSub?.trim();
+      if (cleanSub) {
+        extraLockSet.add(`${SUB_FIRST_PAID_PREFIX}${cleanSub}`);
+        subKeyAliases.push(cleanSub);
+      }
+    }
+  }
+  for (const rawIdem of options?.additionalIdempotencyKeys ?? []) {
+    const cleanIdem = rawIdem?.trim();
+    if (cleanIdem) {
+      const fullKey = `${CONV_ONCE_PREFIX}${cleanIdem}`;
+      if (fullKey !== markerKey) {
+        extraLockSet.add(fullKey);
+      }
+    }
+  }
+  extraLockSet.delete(markerKey);
+  const extraLockKeys = Array.from(extraLockSet);
 
   let applied = false;
-  if (!subKey) {
+  if (extraLockKeys.length === 0) {
     applied = await kvAtomicHashUpdateOnce(
       markerKey,
       key,
@@ -998,9 +1001,13 @@ export async function recordStripeCreatorConversionOnce(
   } else {
     const convLua = [
       'if redis.call("EXISTS", KEYS[1]) == 1 then return 0 end',
-      'if redis.call("EXISTS", KEYS[3]) == 1 then return 0 end',
+      "for i = 3, #KEYS do",
+      '  if redis.call("EXISTS", KEYS[i]) == 1 then return 0 end',
+      "end",
       'redis.call("SET", KEYS[1], \'"1"\', "EX", tonumber(ARGV[1]))',
-      'redis.call("SET", KEYS[3], \'"1"\', "EX", tonumber(ARGV[1]))',
+      "for i = 3, #KEYS do",
+      '  redis.call("SET", KEYS[i], \'"1"\', "EX", tonumber(ARGV[1]))',
+      "end",
       "for i = 2, #ARGV, 3 do",
       "  local f = ARGV[i]",
       "  local d = ARGV[i + 1]",
@@ -1027,13 +1034,15 @@ export async function recordStripeCreatorConversionOnce(
 
     const evalRes = await kvEvalLua<number>(
       convLua,
-      [markerKey, key, subKey],
+      [markerKey, key, ...extraLockKeys],
       luaArgs,
       async () => {
         const existingMarker = await kvGet<string | number>(markerKey);
         if (existingMarker !== null) return 0;
-        const existingSub = await kvGet<string | number>(subKey);
-        if (existingSub !== null) return 0;
+        for (const lockKey of extraLockKeys) {
+          const existingLock = await kvGet<string | number>(lockKey);
+          if (existingLock !== null) return 0;
+        }
         for (const item of deltas) {
           if (item.isFloat) {
             await kvHIncrByFloat(key, item.field, item.delta);
@@ -1042,7 +1051,9 @@ export async function recordStripeCreatorConversionOnce(
           }
         }
         await kvSet(markerKey, "1", CONV_META_TTL_SECONDS);
-        await kvSet(subKey, "1", CONV_META_TTL_SECONDS);
+        for (const lockKey of extraLockKeys) {
+          await kvSet(lockKey, "1", CONV_META_TTL_SECONDS);
+        }
         return 1;
       }
     );
@@ -1082,6 +1093,18 @@ export async function recordStripeCreatorConversionOnce(
         CONV_META_TTL_SECONDS
       ).catch(() => {});
     }
+    const seenSubAliases = new Set<string>();
+    for (const subAlias of subKeyAliases) {
+      if (!subAlias || subAlias === idempotencyKey || seenSubAliases.has(subAlias)) {
+        continue;
+      }
+      seenSubAliases.add(subAlias);
+      await kvSet(
+        `heybroc:creator:conv_alias:${subAlias}`,
+        idempotencyKey,
+        CONV_META_TTL_SECONDS
+      ).catch(() => {});
+    }
   }
   return getCreator(norm);
 }
@@ -1090,9 +1113,9 @@ export const recordCreatorConversion = recordStripeCreatorConversionOnce;
 
 /**
  * Idempotently claws back creator revenue & proportional commission when a credited first-cycle charge
- * is refunded or disputed. Uses recorded `convMeta.commissionCents` so creator rate changes (`30% -> 10%`
- * or `10% -> 30%`) never skew clawbacks, guards against renewal #2+ false clawbacks, and allows
- * `commissionOwed` to carry forward negative balances after post-payout refunds.
+ * is refunded or disputed. Executes idempotency checks (including canonical transaction refund lock),
+ * live creator & `convMeta` reads, remaining-cap & ratio math, hash decrements, and `convMeta` JSON
+ * updates atomically inside a single `kvEvalLua` script (with a mutex-serialized local fallback).
  */
 export async function recordStripeCreatorRefundOnce(
   idempotencyKey: string,
@@ -1112,29 +1135,24 @@ export async function recordStripeCreatorRefundOnce(
       : maybeOptions;
   const norm = normalizeCode(code);
   if (!norm) return null;
-  const creator = await getCreator(norm);
-  if (!creator) return null;
+  await ensureInitialized();
+
+  const hasValidRatio =
+    typeof options?.refundRatio === "number" &&
+    Number.isFinite(options.refundRatio) &&
+    options.refundRatio >= 0;
+
+  if (hasValidRatio && options!.refundRatio! <= 0) {
+    return getCreator(norm);
+  }
+
+  const normalizedExplicitRatio = hasValidRatio
+    ? Math.max(0, Math.min(1, options!.refundRatio!))
+    : undefined;
 
   const cleanBuyerEmail = options?.buyerEmail?.trim().toLowerCase() || "";
-  if (
-    cleanBuyerEmail &&
-    creator.payoutEmail &&
-    cleanBuyerEmail === creator.payoutEmail.trim().toLowerCase()
-  ) {
-    return creator;
-  }
-
-  const markerKey = `heybroc:creator:refund:${idempotencyKey}`;
-  const alreadyRefunded = await kvGet<string | number>(markerKey).catch(
-    () => null
-  );
-  if (alreadyRefunded !== null) {
-    return creator;
-  }
-
-  const refundedInvoiceId = options?.refundedInvoiceId?.trim() || undefined;
-  const refundedTransactionId =
-    options?.refundedTransactionId?.trim() || undefined;
+  const refundedInvoiceId = options?.refundedInvoiceId?.trim() || "";
+  const refundedTransactionId = options?.refundedTransactionId?.trim() || "";
 
   const metaCandidates: Array<string | undefined> = [
     options?.originalConversionKey,
@@ -1143,178 +1161,448 @@ export async function recordStripeCreatorRefundOnce(
     refundedTransactionId ? `tx:${refundedTransactionId}` : undefined,
   ];
   const resolvedMeta = await resolveCreatorConversionMetaInternal(metaCandidates);
-  const convMeta = resolvedMeta?.meta ?? null;
-  const convMetaKey = resolvedMeta?.metaKey ?? null;
+  const fallbackDirectMetaKey = options?.originalConversionKey?.trim()
+    ? `heybroc:creator:conv_meta:${options.originalConversionKey.trim()}`
+    : "";
+  const convMetaKey = resolvedMeta?.metaKey ?? fallbackDirectMetaKey;
 
-  if (convMeta) {
-    if (convMeta.blockedSelfDeal || convMeta.commissionCents <= 0) {
-      return creator;
-    }
-    // Renewal #2+ false-clawback guard: if a later uncredited renewal invoice/transaction is refunded,
-    // never claw back the first billing cycle's commission.
-    if (
-      convMeta.creditedInvoiceId &&
-      refundedInvoiceId &&
-      convMeta.creditedInvoiceId !== refundedInvoiceId
-    ) {
-      return creator;
-    }
-    if (
-      convMeta.creditedTransactionId &&
-      refundedTransactionId &&
-      convMeta.creditedTransactionId !== refundedTransactionId
-    ) {
-      return creator;
-    }
-  }
-
-  const effectivePlan: PlanId = convMeta?.plan ?? plan;
-  const planPriceCap =
-    options?.otoOffer === "oto_gift_year"
-      ? PRICING.otoExtraYearPass
-      : options?.otoOffer === "oto_annual"
-        ? PRICING.otoAnnualLockIn
-        : effectivePlan === "annual"
-          ? PRICING.annual
-          : PRICING.monthly;
-  const effectiveCap =
-    convMeta && typeof convMeta.grossUsd === "number" && convMeta.grossUsd > 0
-      ? Math.min(planPriceCap, convMeta.grossUsd)
-      : options?.originalPreTaxUsd && options.originalPreTaxUsd > 0
-        ? Math.min(planPriceCap, round2(options.originalPreTaxUsd))
-        : planPriceCap;
-
-  const hasValidRatio =
-    typeof options?.refundRatio === "number" &&
-    Number.isFinite(options.refundRatio) &&
-    options.refundRatio >= 0;
-
-  if (hasValidRatio && options!.refundRatio! <= 0) {
-    return creator;
-  }
-
-  const normalizedExplicitRatio = hasValidRatio
-    ? Math.max(0, Math.min(1, options!.refundRatio!))
-    : undefined;
-
-  const requestedGross =
-    normalizedExplicitRatio !== undefined &&
-    (refundAmountUsd === undefined || round2(refundAmountUsd) > effectiveCap)
-      ? round2(effectiveCap * normalizedExplicitRatio)
-      : refundAmountUsd !== undefined && refundAmountUsd > 0
-        ? Math.min(effectiveCap, round2(refundAmountUsd))
-        : effectiveCap;
-
-  const ratio = Math.max(
-    0,
-    Math.min(
-      1,
-      normalizedExplicitRatio ??
-        (convMeta && convMeta.grossUsd > 0
-          ? requestedGross / convMeta.grossUsd
-          : effectiveCap > 0
-            ? requestedGross / effectiveCap
-            : 1)
-    )
-  );
-
-  let grossDelta: number;
-  let cappedCommDelta: number;
-  let nextClawedBackCents = convMeta?.clawedBackCents ?? 0;
-  let nextClawedBackGrossUsd = convMeta?.clawedBackGrossUsd ?? 0;
-
-  if (convMeta && convMeta.commissionCents > 0) {
-    const remainingCommCents = Math.max(
-      0,
-      convMeta.commissionCents - (convMeta.clawedBackCents ?? 0)
-    );
-    const targetClawbackCents = Math.round(convMeta.commissionCents * ratio);
-    const actualClawbackCents = Math.min(remainingCommCents, targetClawbackCents);
-    cappedCommDelta = round2(actualClawbackCents / 100);
-    nextClawedBackCents = (convMeta.clawedBackCents ?? 0) + actualClawbackCents;
-
-    const remainingConvGross = Math.max(
-      0,
-      round2(convMeta.grossUsd - (convMeta.clawedBackGrossUsd ?? 0))
-    );
-    const targetGross = round2(convMeta.grossUsd * ratio);
-    grossDelta = Math.min(
-      creator.grossRevenue,
-      Math.min(remainingConvGross, targetGross)
-    );
-    nextClawedBackGrossUsd = round2(
-      (convMeta.clawedBackGrossUsd ?? 0) + grossDelta
-    );
-  } else {
-    // Legacy fallback ONLY when convMeta does not exist
-    grossDelta = Math.min(creator.grossRevenue, requestedGross);
-    cappedCommDelta = round2(grossDelta * (creator.commissionPct / 100));
-  }
-
-  const earnedDelta = Math.min(
-    Math.max(0, creator.commissionEarned),
-    cappedCommDelta
-  );
-  // Unconditional owedDelta so post-payout refunds carry forward as a negative commissionOwed balance
-  const owedDelta = cappedCommDelta;
-
-  const cumulativeRefundComplete = convMeta
-    ? nextClawedBackCents >= convMeta.commissionCents ||
-      nextClawedBackGrossUsd >= convMeta.grossUsd * 0.99
-    : grossDelta >= effectiveCap * 0.99 ||
-      requestedGross >= PRICING.otoExtraYearPass * 0.99;
-
-  const isFullRefund = isFullRefundOverride ?? cumulativeRefundComplete;
-  const planField = effectivePlan === "annual" ? "paidAnnual" : "paidMonthly";
-  const currentPlanCount =
-    effectivePlan === "annual" ? creator.paidAnnual : creator.paidMonthly;
-  const shouldDecrementPaidSub =
-    isFullRefund &&
-    currentPlanCount > 0 &&
-    !convMeta?.paidSubDecremented &&
-    (grossDelta > 0 || cappedCommDelta > 0);
-
-  const deltas: Array<{ field: string; delta: number; isFloat?: boolean }> = [];
-  if (shouldDecrementPaidSub) {
-    deltas.push({ field: planField, delta: -1 });
-  }
-  if (grossDelta > 0) {
-    deltas.push({ field: "grossRevenue", delta: -grossDelta, isFloat: true });
-  }
-  if (earnedDelta > 0) {
-    deltas.push({
-      field: "commissionEarned",
-      delta: -earnedDelta,
-      isFloat: true,
-    });
-  }
-  if (owedDelta > 0) {
-    deltas.push({ field: "commissionOwed", delta: -owedDelta, isFloat: true });
-  }
-
-  if (deltas.length === 0) {
-    return creator;
-  }
-
+  const markerKey = `heybroc:creator:refund:${idempotencyKey}`;
   const key = creatorKey(norm);
-  const applied = await kvAtomicHashUpdateOnce(
-    markerKey,
-    key,
-    deltas,
-    CONV_META_TTL_SECONDS
+  const txRefundMarkerKey = refundedTransactionId
+    ? `${REFUND_TX_PREFIX}${refundedTransactionId}`
+    : "";
+
+  const luaKeys: string[] = [markerKey, key];
+  let convMetaKeyIdx = 0;
+  if (convMetaKey) {
+    luaKeys.push(convMetaKey);
+    convMetaKeyIdx = luaKeys.length;
+  }
+  let txMarkerKeyIdx = 0;
+  if (txRefundMarkerKey && txRefundMarkerKey !== markerKey) {
+    luaKeys.push(txRefundMarkerKey);
+    txMarkerKeyIdx = luaKeys.length;
+  }
+
+  const originalPreTaxArg =
+    options?.originalPreTaxUsd &&
+    Number.isFinite(options.originalPreTaxUsd) &&
+    options.originalPreTaxUsd > 0
+      ? String(round2(options.originalPreTaxUsd))
+      : "";
+  const refundAmountArg =
+    refundAmountUsd !== undefined &&
+    Number.isFinite(refundAmountUsd) &&
+    refundAmountUsd > 0
+      ? String(round2(refundAmountUsd))
+      : "";
+  const explicitRatioArg =
+    normalizedExplicitRatio !== undefined ? String(normalizedExplicitRatio) : "";
+  const isFullOverrideArg =
+    isFullRefundOverride === true
+      ? "1"
+      : isFullRefundOverride === false
+        ? "0"
+        : "";
+
+  const atomicRefundLua = [
+    "local function round2(n)",
+    "  local r = math.floor(n * 100 + 0.5) / 100",
+    "  if r == 0 then return 0 end",
+    "  return r",
+    "end",
+    "local function clampPct(n)",
+    "  local v = math.floor(n * 10 + 0.5) / 10",
+    "  if v < 0 then return 0 end",
+    "  if v > 90 then return 90 end",
+    "  return v",
+    "end",
+    "local ttl = tonumber(ARGV[1]) or 34560000",
+    "local convMetaIdx = tonumber(ARGV[2]) or 0",
+    "local txMarkerIdx = tonumber(ARGV[3]) or 0",
+    'local cleanBuyerEmail = ARGV[4] or ""',
+    'local refundedInvoiceId = ARGV[5] or ""',
+    'local refundedTransactionId = ARGV[6] or ""',
+    'local fallbackPlan = ARGV[7] or "annual"',
+    'local otoOffer = ARGV[8] or ""',
+    "local pricingAnnual = tonumber(ARGV[9]) or 49.99",
+    "local pricingMonthly = tonumber(ARGV[10]) or 9.99",
+    "local pricingOtoAnnual = tonumber(ARGV[11]) or 29.99",
+    "local pricingOtoGift = tonumber(ARGV[12]) or 29.99",
+    "local defaultCommPct = tonumber(ARGV[13]) or 35",
+    'local originalPreTaxStr = ARGV[14] or ""',
+    'local refundAmountStr = ARGV[15] or ""',
+    'local explicitRatioStr = ARGV[16] or ""',
+    'local isFullOverrideStr = ARGV[17] or ""',
+    'local creatorCode = redis.call("HGET", KEYS[2], "code")',
+    'if not creatorCode or creatorCode == "" then return "NO_CREATOR" end',
+    'if cleanBuyerEmail ~= "" then',
+    '  local payoutEmail = redis.call("HGET", KEYS[2], "payoutEmail")',
+    '  if payoutEmail and string.lower(string.gsub(payoutEmail, "^%s*(.-)%s*$", "%1")) == cleanBuyerEmail then',
+    '    return "SKIPPED"',
+    "  end",
+    "end",
+    'if redis.call("EXISTS", KEYS[1]) == 1 then return "DUPLICATE" end',
+    'if txMarkerIdx > 0 and redis.call("EXISTS", KEYS[txMarkerIdx]) == 1 then return "DUPLICATE" end',
+    "local convMeta = nil",
+    "if convMetaIdx > 0 then",
+    '  local rawMeta = redis.call("GET", KEYS[convMetaIdx])',
+    '  if rawMeta and type(rawMeta) == "string" and rawMeta ~= "" then',
+    "    local okMeta, parsedMeta = pcall(cjson.decode, rawMeta)",
+    '    if okMeta and type(parsedMeta) == "table" then convMeta = parsedMeta end',
+    "  end",
+    "end",
+    "if convMeta ~= nil then",
+    '  if convMeta["blockedSelfDeal"] == true or (tonumber(convMeta["commissionCents"]) or 0) <= 0 then',
+    '    return "SKIPPED"',
+    "  end",
+    '  local creditedInv = convMeta["creditedInvoiceId"]',
+    '  if type(creditedInv) == "string" and creditedInv ~= "" and refundedInvoiceId ~= "" and creditedInv ~= refundedInvoiceId then',
+    '    return "SKIPPED"',
+    "  end",
+    '  local creditedTx = convMeta["creditedTransactionId"]',
+    '  if type(creditedTx) == "string" and creditedTx ~= "" and refundedTransactionId ~= "" and creditedTx ~= refundedTransactionId then',
+    '    return "SKIPPED"',
+    "  end",
+    "end",
+    'local creatorGross = math.max(0, round2(tonumber(redis.call("HGET", KEYS[2], "grossRevenue") or "0") or 0))',
+    'local creatorPaid = math.max(0, round2(tonumber(redis.call("HGET", KEYS[2], "commissionPaid") or "0") or 0))',
+    'local creatorOwed = round2(tonumber(redis.call("HGET", KEYS[2], "commissionOwed") or "0") or 0)',
+    'local creatorEarnedRaw = redis.call("HGET", KEYS[2], "commissionEarned")',
+    "local creatorEarned",
+    "if creatorEarnedRaw ~= false and creatorEarnedRaw ~= nil then",
+    "  creatorEarned = math.max(0, round2(tonumber(creatorEarnedRaw) or 0))",
+    "else",
+    "  creatorEarned = math.max(0, round2(creatorOwed + creatorPaid))",
+    "end",
+    'local creatorPctRaw = redis.call("HGET", KEYS[2], "commissionPct")',
+    "local creatorPct = defaultCommPct",
+    "if creatorPctRaw ~= false and creatorPctRaw ~= nil then",
+    "  creatorPct = clampPct(tonumber(creatorPctRaw) or 0)",
+    "end",
+    'local paidAnnual = math.max(0, math.floor(tonumber(redis.call("HGET", KEYS[2], "paidAnnual") or "0") or 0))',
+    'local paidMonthly = math.max(0, math.floor(tonumber(redis.call("HGET", KEYS[2], "paidMonthly") or "0") or 0))',
+    "local effectivePlan = fallbackPlan",
+    'if convMeta ~= nil and (convMeta["plan"] == "annual" or convMeta["plan"] == "monthly") then',
+    '  effectivePlan = convMeta["plan"]',
+    "end",
+    "local planPriceCap",
+    'if otoOffer == "oto_gift_year" then',
+    "  planPriceCap = pricingOtoGift",
+    'elseif otoOffer == "oto_annual" then',
+    "  planPriceCap = pricingOtoAnnual",
+    'elseif effectivePlan == "annual" then',
+    "  planPriceCap = pricingAnnual",
+    "else",
+    "  planPriceCap = pricingMonthly",
+    "end",
+    'local convMetaGross = convMeta ~= nil and (tonumber(convMeta["grossUsd"]) or 0) or 0',
+    "local effectiveCap = planPriceCap",
+    "if convMeta ~= nil and convMetaGross > 0 then",
+    "  effectiveCap = math.min(planPriceCap, convMetaGross)",
+    'elseif originalPreTaxStr ~= "" then',
+    "  local origPreTax = round2(tonumber(originalPreTaxStr) or 0)",
+    "  if origPreTax > 0 then effectiveCap = math.min(planPriceCap, origPreTax) end",
+    "end",
+    'local hasExplicitRatio = explicitRatioStr ~= ""',
+    "local explicitRatio = hasExplicitRatio and tonumber(explicitRatioStr) or nil",
+    'local hasRefundAmt = refundAmountStr ~= ""',
+    "local refundAmtVal = hasRefundAmt and tonumber(refundAmountStr) or nil",
+    "local requestedGross",
+    "if hasExplicitRatio and (not hasRefundAmt or round2(refundAmtVal) > effectiveCap) then",
+    "  requestedGross = round2(effectiveCap * explicitRatio)",
+    "elseif hasRefundAmt and refundAmtVal > 0 then",
+    "  requestedGross = math.min(effectiveCap, round2(refundAmtVal))",
+    "else",
+    "  requestedGross = effectiveCap",
+    "end",
+    "local rawRatio",
+    "if hasExplicitRatio then",
+    "  rawRatio = explicitRatio",
+    "elseif convMeta ~= nil and convMetaGross > 0 then",
+    "  rawRatio = requestedGross / convMetaGross",
+    "elseif effectiveCap > 0 then",
+    "  rawRatio = requestedGross / effectiveCap",
+    "else",
+    "  rawRatio = 1",
+    "end",
+    "local ratio = math.max(0, math.min(1, rawRatio))",
+    "local grossDelta = 0",
+    "local cappedCommDelta = 0",
+    "local nextClawedBackCents = 0",
+    "local nextClawedBackGrossUsd = 0",
+    'local convCommCents = convMeta ~= nil and math.floor((tonumber(convMeta["commissionCents"]) or 0) + 0.5) or 0',
+    "if convMeta ~= nil and convCommCents > 0 then",
+    '  local prevClawedCents = math.floor((tonumber(convMeta["clawedBackCents"]) or 0) + 0.5)',
+    "  local remainingCommCents = math.max(0, convCommCents - prevClawedCents)",
+    "  local targetClawbackCents = math.floor(convCommCents * ratio + 0.5)",
+    "  local actualClawbackCents = math.min(remainingCommCents, targetClawbackCents)",
+    "  cappedCommDelta = round2(actualClawbackCents / 100)",
+    "  nextClawedBackCents = prevClawedCents + actualClawbackCents",
+    '  local prevClawedGross = round2(tonumber(convMeta["clawedBackGrossUsd"]) or 0)',
+    "  local remainingConvGross = math.max(0, round2(convMetaGross - prevClawedGross))",
+    "  local targetGross = round2(convMetaGross * ratio)",
+    "  grossDelta = math.min(creatorGross, math.min(remainingConvGross, targetGross))",
+    "  nextClawedBackGrossUsd = round2(prevClawedGross + grossDelta)",
+    "else",
+    "  grossDelta = math.min(creatorGross, requestedGross)",
+    "  cappedCommDelta = round2(grossDelta * (creatorPct / 100))",
+    "end",
+    "local earnedDelta = math.min(math.max(0, creatorEarned), cappedCommDelta)",
+    "local owedDelta = cappedCommDelta",
+    "local cumulativeRefundComplete",
+    "if convMeta ~= nil then",
+    "  cumulativeRefundComplete = (nextClawedBackCents >= convCommCents) or (nextClawedBackGrossUsd >= convMetaGross * 0.99)",
+    "else",
+    "  cumulativeRefundComplete = (grossDelta >= effectiveCap * 0.99) or (requestedGross >= pricingOtoGift * 0.99)",
+    "end",
+    "local isFullRefund",
+    'if isFullOverrideStr == "1" then',
+    "  isFullRefund = true",
+    'elseif isFullOverrideStr == "0" then',
+    "  isFullRefund = false",
+    "else",
+    "  isFullRefund = cumulativeRefundComplete",
+    "end",
+    'local planField = effectivePlan == "annual" and "paidAnnual" or "paidMonthly"',
+    'local currentPlanCount = effectivePlan == "annual" and paidAnnual or paidMonthly',
+    'local prevPaidSubDec = convMeta ~= nil and convMeta["paidSubDecremented"] == true',
+    "local shouldDecrementPaidSub = isFullRefund and (currentPlanCount > 0) and (not prevPaidSubDec) and (grossDelta > 0 or cappedCommDelta > 0)",
+    'if (not shouldDecrementPaidSub) and grossDelta <= 0 and earnedDelta <= 0 and owedDelta <= 0 then return "NOOP" end',
+    'redis.call("SET", KEYS[1], \'"1"\', "EX", ttl)',
+    "if txMarkerIdx > 0 then",
+    '  redis.call("SET", KEYS[txMarkerIdx], \'"1"\', "EX", ttl)',
+    "end",
+    "if shouldDecrementPaidSub then",
+    '  redis.call("HINCRBY", KEYS[2], planField, -1)',
+    "end",
+    "if grossDelta > 0 then",
+    '  redis.call("HINCRBYFLOAT", KEYS[2], "grossRevenue", string.format("%.2f", -grossDelta))',
+    "end",
+    "if earnedDelta > 0 then",
+    '  redis.call("HINCRBYFLOAT", KEYS[2], "commissionEarned", string.format("%.2f", -earnedDelta))',
+    "end",
+    "if owedDelta > 0 then",
+    '  redis.call("HINCRBYFLOAT", KEYS[2], "commissionOwed", string.format("%.2f", -owedDelta))',
+    "end",
+    "if convMeta ~= nil and convMetaIdx > 0 then",
+    '  convMeta["clawedBackCents"] = nextClawedBackCents',
+    '  convMeta["clawedBackGrossUsd"] = nextClawedBackGrossUsd',
+    '  convMeta["paidSubDecremented"] = (prevPaidSubDec or shouldDecrementPaidSub) and true or false',
+    '  redis.call("SET", KEYS[convMetaIdx], cjson.encode(convMeta), "EX", ttl)',
+    "end",
+    'return "APPLIED"',
+  ].join("\n");
+
+  const luaArgs: (string | number)[] = [
+    Math.floor(CONV_META_TTL_SECONDS),
+    convMetaKeyIdx,
+    txMarkerKeyIdx,
+    cleanBuyerEmail,
+    refundedInvoiceId,
+    refundedTransactionId,
+    plan,
+    options?.otoOffer || "",
+    PRICING.annual,
+    PRICING.monthly,
+    PRICING.otoAnnualLockIn,
+    PRICING.otoExtraYearPass,
+    PRICING.defaultCommissionPct,
+    originalPreTaxArg,
+    refundAmountArg,
+    explicitRatioArg,
+    isFullOverrideArg,
+  ];
+
+  const evalStatus = await kvEvalLua<string>(
+    atomicRefundLua,
+    luaKeys,
+    luaArgs,
+    async () => {
+      const liveCreator = await getCreator(norm);
+      if (!liveCreator) return "NO_CREATOR";
+
+      if (
+        cleanBuyerEmail &&
+        liveCreator.payoutEmail &&
+        cleanBuyerEmail === liveCreator.payoutEmail.trim().toLowerCase()
+      ) {
+        return "SKIPPED";
+      }
+
+      const existingMarker = await kvGet<string | number>(markerKey);
+      if (existingMarker !== null) return "DUPLICATE";
+      if (txRefundMarkerKey && txRefundMarkerKey !== markerKey) {
+        const existingTxMarker = await kvGet<string | number>(txRefundMarkerKey);
+        if (existingTxMarker !== null) return "DUPLICATE";
+      }
+
+      const liveConvMeta = convMetaKey
+        ? await kvGet<CreatorConversionMeta>(convMetaKey)
+        : null;
+      const convMeta =
+        liveConvMeta && typeof liveConvMeta === "object" ? liveConvMeta : null;
+
+      if (convMeta) {
+        if (convMeta.blockedSelfDeal || convMeta.commissionCents <= 0) {
+          return "SKIPPED";
+        }
+        if (
+          convMeta.creditedInvoiceId &&
+          refundedInvoiceId &&
+          convMeta.creditedInvoiceId !== refundedInvoiceId
+        ) {
+          return "SKIPPED";
+        }
+        if (
+          convMeta.creditedTransactionId &&
+          refundedTransactionId &&
+          convMeta.creditedTransactionId !== refundedTransactionId
+        ) {
+          return "SKIPPED";
+        }
+      }
+
+      const effectivePlan: PlanId = convMeta?.plan ?? plan;
+      const planPriceCap =
+        options?.otoOffer === "oto_gift_year"
+          ? PRICING.otoExtraYearPass
+          : options?.otoOffer === "oto_annual"
+            ? PRICING.otoAnnualLockIn
+            : effectivePlan === "annual"
+              ? PRICING.annual
+              : PRICING.monthly;
+      const effectiveCap =
+        convMeta && typeof convMeta.grossUsd === "number" && convMeta.grossUsd > 0
+          ? Math.min(planPriceCap, convMeta.grossUsd)
+          : options?.originalPreTaxUsd && options.originalPreTaxUsd > 0
+            ? Math.min(planPriceCap, round2(options.originalPreTaxUsd))
+            : planPriceCap;
+
+      const requestedGross =
+        normalizedExplicitRatio !== undefined &&
+        (refundAmountUsd === undefined || round2(refundAmountUsd) > effectiveCap)
+          ? round2(effectiveCap * normalizedExplicitRatio)
+          : refundAmountUsd !== undefined && refundAmountUsd > 0
+            ? Math.min(effectiveCap, round2(refundAmountUsd))
+            : effectiveCap;
+
+      const ratio = Math.max(
+        0,
+        Math.min(
+          1,
+          normalizedExplicitRatio ??
+            (convMeta && convMeta.grossUsd > 0
+              ? requestedGross / convMeta.grossUsd
+              : effectiveCap > 0
+                ? requestedGross / effectiveCap
+                : 1)
+        )
+      );
+
+      let grossDelta: number;
+      let cappedCommDelta: number;
+      let nextClawedBackCents = convMeta?.clawedBackCents ?? 0;
+      let nextClawedBackGrossUsd = convMeta?.clawedBackGrossUsd ?? 0;
+
+      if (convMeta && convMeta.commissionCents > 0) {
+        const prevClawedCents = Math.round(convMeta.clawedBackCents ?? 0);
+        const remainingCommCents = Math.max(
+          0,
+          convMeta.commissionCents - prevClawedCents
+        );
+        const targetClawbackCents = Math.round(convMeta.commissionCents * ratio);
+        const actualClawbackCents = Math.min(
+          remainingCommCents,
+          targetClawbackCents
+        );
+        cappedCommDelta = round2(actualClawbackCents / 100);
+        nextClawedBackCents = prevClawedCents + actualClawbackCents;
+
+        const prevClawedGross = round2(convMeta.clawedBackGrossUsd ?? 0);
+        const remainingConvGross = Math.max(
+          0,
+          round2(convMeta.grossUsd - prevClawedGross)
+        );
+        const targetGross = round2(convMeta.grossUsd * ratio);
+        grossDelta = Math.min(
+          liveCreator.grossRevenue,
+          Math.min(remainingConvGross, targetGross)
+        );
+        nextClawedBackGrossUsd = round2(prevClawedGross + grossDelta);
+      } else {
+        grossDelta = Math.min(liveCreator.grossRevenue, requestedGross);
+        cappedCommDelta = round2(grossDelta * (liveCreator.commissionPct / 100));
+      }
+
+      const earnedDelta = Math.min(
+        Math.max(0, liveCreator.commissionEarned),
+        cappedCommDelta
+      );
+      const owedDelta = cappedCommDelta;
+
+      const cumulativeRefundComplete = convMeta
+        ? nextClawedBackCents >= convMeta.commissionCents ||
+          nextClawedBackGrossUsd >= convMeta.grossUsd * 0.99
+        : grossDelta >= effectiveCap * 0.99 ||
+          requestedGross >= PRICING.otoExtraYearPass * 0.99;
+
+      const isFullRefund = isFullRefundOverride ?? cumulativeRefundComplete;
+      const planField = effectivePlan === "annual" ? "paidAnnual" : "paidMonthly";
+      const currentPlanCount =
+        effectivePlan === "annual"
+          ? liveCreator.paidAnnual
+          : liveCreator.paidMonthly;
+      const shouldDecrementPaidSub =
+        isFullRefund &&
+        currentPlanCount > 0 &&
+        !convMeta?.paidSubDecremented &&
+        (grossDelta > 0 || cappedCommDelta > 0);
+
+      if (
+        !shouldDecrementPaidSub &&
+        grossDelta <= 0 &&
+        earnedDelta <= 0 &&
+        owedDelta <= 0
+      ) {
+        return "NOOP";
+      }
+
+      await kvSet(markerKey, "1", CONV_META_TTL_SECONDS);
+      if (txRefundMarkerKey && txRefundMarkerKey !== markerKey) {
+        await kvSet(txRefundMarkerKey, "1", CONV_META_TTL_SECONDS);
+      }
+      if (shouldDecrementPaidSub) {
+        await kvHIncrBy(key, planField, -1);
+      }
+      if (grossDelta > 0) {
+        await kvHIncrByFloat(key, "grossRevenue", -grossDelta);
+      }
+      if (earnedDelta > 0) {
+        await kvHIncrByFloat(key, "commissionEarned", -earnedDelta);
+      }
+      if (owedDelta > 0) {
+        await kvHIncrByFloat(key, "commissionOwed", -owedDelta);
+      }
+      if (convMeta && convMetaKey) {
+        await kvSet<CreatorConversionMeta>(
+          convMetaKey,
+          {
+            ...convMeta,
+            clawedBackCents: nextClawedBackCents,
+            clawedBackGrossUsd: nextClawedBackGrossUsd,
+            paidSubDecremented:
+              Boolean(convMeta.paidSubDecremented) || shouldDecrementPaidSub,
+          },
+          CONV_META_TTL_SECONDS
+        );
+      }
+      return "APPLIED";
+    }
   );
-  if (applied && convMeta && convMetaKey) {
-    await kvSet<CreatorConversionMeta>(
-      convMetaKey,
-      {
-        ...convMeta,
-        clawedBackCents: nextClawedBackCents,
-        clawedBackGrossUsd: nextClawedBackGrossUsd,
-        paidSubDecremented:
-          Boolean(convMeta.paidSubDecremented) || shouldDecrementPaidSub,
-      },
-      CONV_META_TTL_SECONDS
-    ).catch(() => {});
+
+  if (evalStatus === "NO_CREATOR") {
+    return null;
   }
   return getCreator(norm);
 }
@@ -1952,19 +2240,59 @@ export async function createStripeConnectOnboardingLink(params: {
 export async function resetStats(): Promise<void> {
   await ensureInitialized();
   const creators = await listCreators();
+  const resetLua = [
+    'if redis.call("EXISTS", KEYS[1]) == 0 then return 0 end',
+    'if redis.call("EXISTS", KEYS[2]) == 1 then return 0 end',
+    'local fields = {"commissionPaid", "commissionOwed", "commissionEarned", "grossRevenue", "paidAnnual", "paidMonthly"}',
+    'for _, f in ipairs(fields) do',
+    '  local v = tonumber(redis.call("HGET", KEYS[1], f) or "0") or 0',
+    '  if math.abs(v) > 0.0001 then return 0 end',
+    'end',
+    'redis.call("HSET", KEYS[1], "clicks", "0", "trials", "0")',
+    'return 1',
+  ].join("\n");
+
   for (const c of creators) {
-    // Only reset zero-paid / non-paid test counters so real paid creator payouts are never erased accidentally
-    if (c.commissionPaid > 0) continue;
-    await saveCreatorHash({
-      ...blank(c.code, c.name, c.commissionPct),
-      payoutEmail: c.payoutEmail,
-      payoutEmailVerified: c.payoutEmailVerified,
-      payoutMethod: c.payoutMethod,
-      payoutHandle: c.payoutHandle,
-      stripeConnectAccountId: c.stripeConnectAccountId,
-      tokenNonce: c.tokenNonce,
-      createdAt: c.createdAt,
-    });
+    // Only reset non-financial engagement counters (clicks, trials) on creators with zero financial activity
+    // so paid/unpaid/negative balances, sales counts, and operational fields (active, payoutApproved, payout details)
+    // are never erased or overwritten.
+    if (
+      c.commissionPaid !== 0 ||
+      c.commissionOwed !== 0 ||
+      c.commissionEarned !== 0 ||
+      c.grossRevenue !== 0 ||
+      c.paidAnnual !== 0 ||
+      c.paidMonthly !== 0
+    ) {
+      continue;
+    }
+    const norm = normalizeCode(c.code);
+    if (!norm) continue;
+    const key = creatorKey(norm);
+    const pendingKey = `${PENDING_PAYOUT_PREFIX}${norm}`;
+    await kvEvalLua<number>(
+      resetLua,
+      [key, pendingKey],
+      [],
+      async () => {
+        const live = await getCreator(norm);
+        if (!live) return 0;
+        const pending = await kvGet<PendingCreatorPayout>(pendingKey);
+        if (pending) return 0;
+        if (
+          live.commissionPaid !== 0 ||
+          live.commissionOwed !== 0 ||
+          live.commissionEarned !== 0 ||
+          live.grossRevenue !== 0 ||
+          live.paidAnnual !== 0 ||
+          live.paidMonthly !== 0
+        ) {
+          return 0;
+        }
+        await kvHSet(key, { clicks: 0, trials: 0 });
+        return 1;
+      }
+    );
   }
 }
 

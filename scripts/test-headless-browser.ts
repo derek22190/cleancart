@@ -2344,6 +2344,121 @@ async function main() {
     );
     console.log(`   ✓ P2-3 plain-div Saved for later & Buy it again excluded from cart (${p23Cart.join(", ")})!`);
 
+    // 4K. Release Audit P1 #2: Hidden display:none ingredient panels must NEVER attach to the visible hero product
+    // across Android live_store_detector.js, iOS detectorJS, and Chrome/Safari Extension content.js.
+    const p12HiddenIngHtml = `
+      <main>
+        <h1>Quaker Old Fashioned Oats, 42 oz</h1>
+        <img src=${JSON.stringify(placeholderSvgDataUrl)} width="280" height="280" alt="Quaker Old Fashioned Oats" />
+        <button type="button">Add to cart</button>
+        <div id="stale-hidden-panel" style="display:none">
+          <h2>Ingredients</h2>
+          <p>Water, Sugar, Corn Syrup, Red 40, Artificial Flavor.</p>
+        </div>
+        <div id="aria-hidden-panel" aria-hidden="true">
+          <h3>Ingredients</h3>
+          <div>High Fructose Corn Syrup, Yellow 5, Blue 1, Sodium Benzoate.</div>
+        </div>
+      </main>
+    `;
+
+    // Surface 1: Android live_store_detector.js
+    await storePage.navigate("https://www.walmart.com/ip/Quaker-Old-Fashioned-Oats-42-oz/10312440");
+    await storePage.eval(`
+      document.body.innerHTML = ${JSON.stringify(p12HiddenIngHtml)};
+      window.__p12AndroidProduct = null;
+      window.heybrocAndroidBridge = {
+        postMessage: function(rawJson) {
+          const msg = JSON.parse(rawJson);
+          if (msg._hbSec !== ${JSON.stringify(androidBridgeSecret)}) return;
+          if (msg.kind === "product") window.__p12AndroidProduct = msg;
+        }
+      };
+    `);
+    await storePage.eval(androidDetectorJS, false);
+    const p12Android = await storePage.waitFor<{ title?: string; ingredients?: string }>(
+      `window.__p12AndroidProduct && /Quaker/i.test(window.__p12AndroidProduct.title || "") ? window.__p12AndroidProduct : null`,
+      "P1 #2 Android hidden ingredient isolation",
+      6000,
+    );
+    assert(
+      !p12Android.ingredients || !/Red 40|Corn Syrup|Yellow 5/i.test(p12Android.ingredients),
+      `P1 #2 Android detector leaked hidden ingredients: ${JSON.stringify(p12Android)}`,
+    );
+
+    // Surface 2: iOS detectorJS
+    await storePage.navigate("https://www.walmart.com/ip/Quaker-Old-Fashioned-Oats-42-oz/10312441");
+    await storePage.eval(`
+      document.body.innerHTML = ${JSON.stringify(p12HiddenIngHtml)};
+      window.__p12IosProduct = null;
+      window.webkit = {
+        messageHandlers: {
+          heybrocStoreBridge: {
+            postMessage: function(msg) {
+              if (msg && msg.kind === "product") window.__p12IosProduct = msg;
+            }
+          }
+        }
+      };
+    `);
+    await storePage.eval(detectorJS, false);
+    const p12Ios = await storePage.waitFor<{ title?: string; ingredients?: string }>(
+      `window.__p12IosProduct && /Quaker/i.test(window.__p12IosProduct.title || "") ? window.__p12IosProduct : null`,
+      "P1 #2 iOS hidden ingredient isolation",
+      6000,
+    );
+    assert(
+      !p12Ios.ingredients || !/Red 40|Corn Syrup|Yellow 5/i.test(p12Ios.ingredients),
+      `P1 #2 iOS detector leaked hidden ingredients: ${JSON.stringify(p12Ios)}`,
+    );
+
+    // Surface 3: Chrome/Safari Extension content.js
+    await storePage.navigate("https://www.walmart.com/ip/Quaker-Old-Fashioned-Oats-42-oz/10312442");
+    await storePage.eval(`
+      document.body.innerHTML = ${JSON.stringify(p12HiddenIngHtml)};
+      window.__p12ExtScanPayload = null;
+      window.__heybrocApiBase = "https://www.heybroc.com";
+      window.__heybrocOverlayCssUrl = ${JSON.stringify(extOverlayCssDataUrl)};
+      window.__heybrocExtStorage = { cc_photo_badges_enabled: true };
+      window.chrome = {
+        storage: {
+          local: {
+            get: function(keys, cb) { const out = Object.assign({}, window.__heybrocExtStorage); if (cb) setTimeout(() => cb(out), 1); return Promise.resolve(out); },
+            set: function(items, cb) { Object.assign(window.__heybrocExtStorage, items || {}); if (cb) setTimeout(() => cb(), 1); return Promise.resolve(); },
+            remove: function(_k, cb) { if (cb) setTimeout(() => cb(), 1); return Promise.resolve(); }
+          },
+          onChanged: { addListener: function() {} }
+        },
+        runtime: {
+          id: "cleancart-p12-ext",
+          getURL: function(p) { return p === "overlay.css" ? window.__heybrocOverlayCssUrl : ("https://www.heybroc.com/" + p); },
+          sendMessage: function(msg, cb) {
+            if (msg && msg.type === "CLEANCART_SCAN" && msg.payload) {
+              window.__p12ExtScanPayload = msg.payload;
+              const okResp = { ok: true, result: { score: 90, rating: "Excellent", flagged: [] }, product: { title: "Quaker Old Fashioned Oats", ingredients: "Whole grain rolled oats." } };
+              if (cb) setTimeout(() => cb(okResp), 2);
+              return Promise.resolve(okResp);
+            }
+            const empty = { ok: true, results: {} };
+            if (cb) setTimeout(() => cb(empty), 2);
+            return Promise.resolve(empty);
+          },
+          onMessage: { addListener: function() {} }
+        }
+      };
+    `);
+    await storePage.eval(extContentJS, false);
+    const p12Ext = await storePage.waitFor<{ productTitle?: string; rawIngredients?: string }>(
+      `window.__p12ExtScanPayload && /Quaker/i.test(window.__p12ExtScanPayload.productTitle || "") ? window.__p12ExtScanPayload : null`,
+      "P1 #2 Chrome/Safari extension hidden ingredient isolation",
+      6000,
+    );
+    assert(
+      !p12Ext.rawIngredients || !/Red 40|Corn Syrup|Yellow 5/i.test(p12Ext.rawIngredients),
+      `P1 #2 Chrome/Safari extension leaked hidden ingredients: ${JSON.stringify(p12Ext)}`,
+    );
+    console.log("   ✓ P1 #2 Hidden ingredient panels ignored across Android, iOS, and Chrome/Safari extension detectors!");
+
     storePage.close();
 
     console.log("\n✅ ALL HEADLESS BROWSER E2E SUITES PASSED (iPhone + Android + Safari/Chrome Extension)!");

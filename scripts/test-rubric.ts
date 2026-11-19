@@ -1747,9 +1747,11 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         auditClaimRes.device.referredByCode === "BROC-AUDIT7" &&
         !auditSelfClaimRes.ok &&
         prodImgRouteTs.includes('"public/swaps/fruitbar.png"') &&
-        seoSwapsPageTsx.includes('{ id: "sams", label: "Sam\'s Club" }') &&
-        seoSwapsPageTsx.includes('{ id: "aldi", label: "ALDI" }') &&
-        seoSwapsPageTsx.includes('{ id: "bjs", label: "BJ\'s" }')
+        seoSwapsPageTsx.includes("STORES.map(") &&
+        seoSwapsPageTsx.includes("STORE_META[id]") &&
+        ["sams", "aldi", "bjs", "ubereats"].every((id) =>
+          (fs.readFileSync("lib/swaps.ts", "utf8")).includes(`"${id}"`),
+        )
     )
   );
 
@@ -9071,15 +9073,15 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
 
     check(
-      "Target Carousel Stationary Badge, Walmart Grid Coverage, Organic Whole-Food 100/100 & Instacart In-App OAuth Popup: all 7 Walmart cards resolve, organic whole produce scores 100/100 while conventional produce & purified water score 90/100, carousel badges climb above horizontal slide tracks, and in-app OAuth popup + last-URL persistence are active",
+      "Target Carousel Stationary Badge, Walmart Grid Coverage, Unverified Organic Whole-Food 90/100 Guard & Instacart In-App OAuth Popup: all 7 Walmart cards resolve, generic 'Organic ...' whole-food fallbacks never assert unverified USDA Organic certification (score 90/100, organicScore 0) while conventional produce & purified water score 90/100, carousel badges climb above horizontal slide tracks, and in-app OAuth popup + last-URL persistence are active",
       allWalmartReportedResolved &&
         orgCarrotsScan.ok &&
-        orgCarrotsScan.result.score === 100 &&
-        orgCarrotsScan.result.yukaBreakdown?.organicScore === 10 &&
+        orgCarrotsScan.result.score === 90 &&
+        orgCarrotsScan.result.yukaBreakdown?.organicScore === 0 &&
         orgCarrotsScan.product.brand === "Good & Gather" &&
         orgChardScan.ok &&
-        orgChardScan.result.score === 100 &&
-        orgChardScan.result.yukaBreakdown?.organicScore === 10 &&
+        orgChardScan.result.score === 90 &&
+        orgChardScan.result.yukaBreakdown?.organicScore === 0 &&
         convStrawberriesScan.ok &&
         convStrawberriesScan.result.score === 90 &&
         convStrawberriesScan.result.yukaBreakdown?.organicScore === 0 &&
@@ -9338,7 +9340,10 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           !playCoord.includes("upgradeUrl") &&
           !playCoord.includes("billingPortalUrl") &&
           !/stripe/i.test(playCoord) &&
-          directCoord.includes("ScanApi.upgradeUrl") &&
+          !fsNode.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/ScanApi.kt", "utf8").includes("fun upgradeUrl") &&
+          !fsNode.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/ScanApi.kt", "utf8").includes("fun billingPortalUrl") &&
+          directCoord.includes("fun upgradeUrl") &&
+          directCoord.includes("fun billingPortalUrl") &&
           !mainAct.includes("isInstalledFromPlayStore") &&
           !mainAct.includes("ScanApi.upgradeUrl") &&
           !liveStoreAct.includes("isInstalledFromPlayStore") &&
@@ -9365,7 +9370,8 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           !iosLive.includes('applicationNameForUserAgent = "Version/17.0') &&
           iosLive.includes("import SafariServices") &&
           iosLive.includes("isExternalOAuthHost") &&
-          iosLive.includes("SFSafariViewController(url: url)") &&
+          iosLive.includes("topMostPresenter") &&
+          iosLive.includes("UIApplication.shared.open(targetUrl") &&
           !androidLive.includes("buildAuthCompatibleUserAgent") &&
           !androidLive.includes("WEBVIEW_WV_TOKEN_RE") &&
           androidLive.includes("isExternalOAuthHost") &&
@@ -10035,7 +10041,8 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         productSitemapEntries.length >= 25 &&
         !swapsClientSrc.includes("filtered.slice(0, 8)") &&
         swapsClientSrc.includes('isCollapsedHidden ? "none" : "grid"') &&
-        swapsSlugSrc.includes('{ id: "ubereats", label: "Uber Eats" }') &&
+        swapsSlugSrc.includes("STORES.map(") &&
+        swapsSlugSrc.includes("STORE_META[id]") &&
         swapsSlugSrc.includes('"@type": "BreadcrumbList"') &&
         swapsSlugSrc.includes('"@type": "Review"') &&
         swapsSlugSrc.includes("openGraph:") &&
@@ -10059,7 +10066,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     const wildcardRule = rules.find((r) => r.userAgent === "*");
     const aiRule = rules.find((r) => Array.isArray(r.userAgent) && r.userAgent.includes("OAI-SearchBot"));
     const aiAgents = Array.isArray(aiRule?.userAgent) ? aiRule.userAgent : [];
-    const expectedDisallow = ["/api/", "/admin", "/login", "/r/"];
+    const expectedDisallow = ["/api/", "/admin", "/login", "/r/", "/auth/"];
     const expectedAllow = ["/", "/llms.txt", "/llms-full.txt", "/api/product-image"];
     const expectedAiBots = [
       "OAI-SearchBot",
@@ -11166,6 +11173,444 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           gradleWrapperProps.includes("distributionSha256Sum=f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6"),
       );
     }
+  }
+
+  // =========================================================================
+  // RELEASE AUDIT REMEDIATION SUITE (P1 #1-#13 & P2 #1-#12 + Adjacent Fixes)
+  // =========================================================================
+  {
+    const fsNode = await import("node:fs");
+    const { lookupIngredients: lookupAudit, resetLookupRuntimeForTests: resetLookupAudit } = await import("../lib/lookup");
+    const { lookupOffPhotoIndexSync: lookupPhotoSyncAudit } = await import("../lib/off-photo-index");
+    const { runBatchScan: runBatchScanAudit, MAX_BATCH_SCAN_ITEMS: maxBatchAudit } = await import("../lib/scan");
+    const { POST: scanPostAudit } = await import("../app/api/scan/route");
+    const { POST: googleWebhookPostAudit } = await import("../app/api/google/webhook/route");
+    const {
+      createCreator: createCreatorAudit,
+      updateCreator: updateCreatorAudit,
+      deleteCreator: deleteCreatorAudit,
+      getCreator: getCreatorAudit,
+      recordStripeCreatorConversionOnce: recordConvAudit,
+      recordStripeCreatorRefundOnce: recordRefundAudit,
+      trackEvent: trackEventAudit,
+      resetStats: resetStatsAudit,
+    } = await import("../lib/influencers");
+    const { kvGet: kvGetAudit } = await import("../lib/storage");
+    const {
+      ensureReferralCodeRegistered: regRefAudit,
+      getOrCreateDevice: getOrCreateDevAudit,
+      applyOrActivateReferral: applyRefAudit,
+      getExistingDevice: getExistingDevAudit,
+    } = await import("../lib/referrals");
+    const { SCORE_TIER_THRESHOLDS: tierThresholdsAudit, ratingFor: ratingForAudit } = await import("../lib/rubric");
+    const auditRun = `${Date.now().toString(36).slice(-5)}${Math.floor(Math.random() * 1000)}`.toUpperCase();
+
+    // 1. P1 #1: Barcode lookup enforces variant & dietary compatibility safeguards
+    resetLookupAudit();
+    const prevFetchAudit1 = globalThis.fetch;
+    try {
+      globalThis.fetch = (async (input: RequestInfo | URL) => {
+        const u = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        if (u.includes("0078742351865")) {
+          return Response.json({
+            status: 1,
+            product: {
+              product_name: "Great Value Whole Milk",
+              brands: "Great Value",
+              ingredients_text: "Milk, Vitamin D3.",
+              nutriments: { "energy-kcal_100g": 61, "saturated-fat_100g": 1.9, sugars_100g: 5 },
+            },
+          });
+        }
+        if (u.includes("0078742123456")) {
+          return Response.json({
+            status: 1,
+            product: {
+              product_name: "Great Value Sweetened Original Almondmilk",
+              brands: "Great Value",
+              ingredients_text: "Almondmilk (Filtered Water, Almonds), Cane Sugar, Sea Salt.",
+              nutriments: { "energy-kcal_100g": 25, sugars_100g: 3 },
+            },
+          });
+        }
+        if (u.includes("0078742654321")) {
+          return Response.json({
+            status: 1,
+            product: {
+              product_name: "Great Value Original Cola",
+              brands: "Great Value",
+              ingredients_text: "Carbonated Water, High Fructose Corn Syrup, Caramel Color, Phosphoric Acid.",
+              nutriments: { "energy-kcal_100g": 42, sugars_100g: 11 },
+            },
+          });
+        }
+        return Response.json({ status: 0, hits: [], products: [], foods: [] });
+      }) as typeof fetch;
+
+      const milkConflict = await lookupAudit({ productTitle: "Great Value 2% Reduced Fat Milk", barcode: "0078742351865" });
+      const almondConflict = await lookupAudit({ productTitle: "Great Value Unsweetened Original Almondmilk", barcode: "0078742123456" });
+      const colaConflict = await lookupAudit({ productTitle: "Great Value Zero Sugar Cola", barcode: "0078742654321" });
+      check(
+        "Audit P1 #1: Barcode lookup rejects variant & dietary conflicts (2% vs Whole Milk, Unsweetened vs Cane Sugar Almondmilk, Zero Sugar vs HFCS Cola)",
+        (!milkConflict || !/whole milk/i.test(milkConflict.productTitle)) &&
+          (!almondConflict || !/cane sugar/i.test(almondConflict.ingredients)) &&
+          (!colaConflict || !/high fructose corn syrup/i.test(colaConflict.ingredients)),
+      );
+    } finally {
+      globalThis.fetch = prevFetchAudit1;
+      resetLookupAudit();
+    }
+
+    // 2. P1 #2: All 4 detectors enforce hidden/cart/modal container isolation & Chrome/Safari byte parity
+    const androidDetAudit = fsNode.readFileSync("android-app/app/src/main/assets/live_store_detector.js", "utf8");
+    const iosLiveAudit = fsNode.readFileSync("ios-app/App/LiveStoreBrowserViewController.swift", "utf8");
+    const chromeExtAudit = fsNode.readFileSync("chrome-extension/content.js", "utf8");
+    const safariExtAudit = fsNode.readFileSync("ios-app/SafariExtension/Resources/content.js", "utf8");
+    check(
+      "Audit P1 #2: Android, iOS, Chrome & Safari detectors reject hidden/cart/inactive ingredient panels and Chrome/Safari content.js are byte-identical",
+      androidDetAudit.includes("isInsideHiddenOrCartContainer") &&
+        !androidDetAudit.includes("root.innerText || root.textContent") &&
+        iosLiveAudit.includes("isInsideHiddenOrCartContainer") &&
+        !iosLiveAudit.includes("root.innerText || root.textContent") &&
+        chromeExtAudit.includes("isInsideHiddenOrCartContainer") &&
+        chromeExtAudit === safariExtAudit,
+    );
+
+    // 3. P1 #3: Android Accessibility visible-only scope, v3 consent, 20-item cart cap, protected grandchild & startInAppSearch consent guard
+    const a11yConsentKt = fsNode.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/AccessibilityConsent.kt", "utf8");
+    const screenReaderKt = fsNode.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/GroceryScreenReaderService.kt", "utf8");
+    const stringsXmlAudit = fsNode.readFileSync("android-app/app/src/main/res/values/strings.xml", "utf8");
+    const mainActAudit = fsNode.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/MainActivity.kt", "utf8");
+    check(
+      "Audit P1 #3: Android Accessibility requires current consent VERSION (>= 3), skips invisible nodes, removes <3 fallback, caps cart at 20, guards protected grandchildren & startInAppSearch",
+      a11yConsentKt.includes("private const val VERSION = 3") &&
+        a11yConsentKt.includes("prefs.getInt(KEY, 0) >= VERSION") &&
+        !a11yConsentKt.includes(">= 1") &&
+        screenReaderKt.includes("!node.isVisibleToUser") &&
+        !screenReaderKt.includes("visibleOnly.size >= 3") &&
+        !screenReaderKt.includes("findIngredients(primaryAllNodes)") &&
+        !screenReaderKt.includes("findBarcode(primaryAllNodes)") &&
+        !screenReaderKt.includes("seen.size >= 35") &&
+        screenReaderKt.includes("seen.size >= 20") &&
+        screenReaderKt.includes("!isProtectedNode(gch)") &&
+        screenReaderKt.includes("if (!AccessibilityConsent.granted(this)) return false") &&
+        stringsXmlAudit.includes("15 Android app packages") &&
+        mainActAudit.includes("15 Android app packages"),
+    );
+
+    // 4. P1 #4, P1 #5, P1 #6, P1 #7: Creator accounting atomicity, cross-pipeline dedup, safe reset, blocked paid simulation, concurrent refunds
+    const codeP14 = `AP14${auditRun}`;
+    const codeG14 = `AG14${auditRun}`;
+    const codeZero = `AZER${auditRun}`;
+    const codeP17 = `AP17${auditRun}`;
+    const txP14 = `tx_audit_p14_${auditRun}`;
+    const gpaP14 = `gpa_audit_14_${auditRun}`;
+    const convP17 = `audit_p17_conv_${auditRun}`;
+
+    await createCreatorAudit({ code: codeP14, name: "Audit P14 Creator", commissionPct: 35, payoutApproved: true });
+    await Promise.all([
+      recordConvAudit(`apple_orig:${txP14}`, codeP14, "paid_annual", 49.99, "buyer14@example.com", {
+        creditedTransactionId: txP14,
+        subscriptionKey: `ios_orig:${txP14}`,
+        additionalSubscriptionKeys: [`apple_orig:${txP14}`, `rc_orig:${txP14}`],
+      }),
+      recordConvAudit(`rc_orig:${txP14}`, codeP14, "paid_annual", 49.99, "buyer14@example.com", {
+        creditedTransactionId: txP14,
+        subscriptionKey: `ios_orig:${txP14}`,
+        additionalSubscriptionKeys: [`rc_orig:${txP14}`, `apple_orig:${txP14}`],
+      }),
+      recordConvAudit(`apple_trial:${txP14}`, codeP14, "trial", undefined, "buyer14@example.com", {
+        additionalIdempotencyKeys: [`ios_trial:${txP14}`, `apple_trial:${txP14}`, `rc_trial:${txP14}`],
+      }),
+      recordConvAudit(`rc_trial:${txP14}`, codeP14, "trial", undefined, "buyer14@example.com", {
+        additionalIdempotencyKeys: [`ios_trial:${txP14}`, `apple_trial:${txP14}`, `rc_trial:${txP14}`],
+      }),
+    ]);
+    const c14AfterDedup = await getCreatorAudit(codeP14);
+
+    await createCreatorAudit({ code: codeG14, name: "Audit Google P14", commissionPct: 35, payoutApproved: true });
+    await Promise.all([
+      recordConvAudit(`google_order:${gpaP14}`, codeG14, "paid_annual", 49.99, "g14@example.com", {
+        creditedTransactionId: gpaP14,
+        subscriptionKey: `google_orig:${gpaP14}`,
+        additionalSubscriptionKeys: [`google_order:${gpaP14}`, `rc_orig:${gpaP14}`],
+      }),
+      recordConvAudit(`rc_orig:${gpaP14}`, codeG14, "paid_annual", 49.99, "g14@example.com", {
+        creditedTransactionId: gpaP14,
+        subscriptionKey: `google_orig:${gpaP14}`,
+        additionalSubscriptionKeys: [`rc_orig:${gpaP14}`, `google_order:${gpaP14}`],
+      }),
+    ]);
+    const g14AfterDedup = await getCreatorAudit(codeG14);
+    const googleVerifySrcAudit = fsNode.readFileSync("app/api/google/verify/route.ts", "utf8");
+    check(
+      "Audit P1 #4: Concurrent Apple+RevenueCat and Google+RevenueCat conversions credit creator exactly once (paidAnnual=1, gross=49.99, owed=17.50, trials=1)",
+      Boolean(
+        c14AfterDedup &&
+          c14AfterDedup.grossRevenue === 49.99 &&
+          c14AfterDedup.commissionOwed === 17.5 &&
+          c14AfterDedup.paidAnnual === 1 &&
+          c14AfterDedup.trials === 1 &&
+          g14AfterDedup &&
+          g14AfterDedup.grossRevenue === 49.99 &&
+          g14AfterDedup.commissionOwed === 17.5 &&
+          g14AfterDedup.paidAnnual === 1 &&
+          !googleVerifySrcAudit.includes("conv_lock:"),
+      ),
+    );
+
+    // P1 #5 & P1 #6
+    let trackPaidBlocked = false;
+    try {
+      await trackEventAudit(codeP14, "checkout_annual");
+    } catch {
+      trackPaidBlocked = true;
+    }
+    await updateCreatorAudit(codeP14, { active: false });
+    await createCreatorAudit({ code: codeZero, name: "Zero Balance Creator", commissionPct: 35, active: true });
+    await trackEventAudit(codeZero, "click");
+    await trackEventAudit(codeZero, "trial");
+    await updateCreatorAudit(codeZero, { active: false });
+    await resetStatsAudit();
+    const c14AfterReset = await getCreatorAudit(codeP14);
+    const cZeroAfterReset = await getCreatorAudit(codeZero);
+    const infEngineTsxAudit = fsNode.readFileSync("components/InfluencerEngine.tsx", "utf8");
+    const infRouteAudit = fsNode.readFileSync("app/api/influencers/route.ts", "utf8");
+    check(
+      "Audit P1 #5 & P1 #6: resetStats preserves unpaid commissions and active=false while resetting zero-balance clicks/trials, and paid simulation is blocked",
+      trackPaidBlocked &&
+        Boolean(c14AfterReset) &&
+        c14AfterReset!.grossRevenue === 49.99 &&
+        c14AfterReset!.commissionOwed === 17.5 &&
+        c14AfterReset!.paidAnnual === 1 &&
+        c14AfterReset!.active === false &&
+        Boolean(cZeroAfterReset) &&
+        cZeroAfterReset!.clicks === 0 &&
+        cZeroAfterReset!.trials === 0 &&
+        cZeroAfterReset!.active === false &&
+        !infEngineTsxAudit.includes("+$49.99 Test") &&
+        infRouteAudit.includes('!["click", "trial"].includes(body.event)'),
+    );
+
+    // P1 #7: Concurrent partial refunds atomically reconcile money, metadata, and paidAnnual counter
+    await createCreatorAudit({ code: codeP17, name: "Audit Refund Creator", commissionPct: 35, payoutApproved: true });
+    await recordConvAudit(convP17, codeP17, "paid_annual", 49.99, "buyer17@example.com", {
+      subscriptionKey: `stripe_sub:sub_audit_p17_${auditRun}`,
+    });
+    await Promise.all([
+      recordRefundAudit(`audit_p17_ref_1_${auditRun}`, codeP17, "annual", 25, undefined, {
+        originalConversionKey: convP17,
+        refundRatio: 0.5,
+      }),
+      recordRefundAudit(`audit_p17_ref_2_${auditRun}`, codeP17, "annual", 24.99, undefined, {
+        originalConversionKey: convP17,
+        refundRatio: 0.5,
+      }),
+    ]);
+    const c17AfterRefunds = await getCreatorAudit(codeP17);
+    const meta17AfterRefunds = await kvGetAudit<{
+      clawedBackCents?: number;
+      clawedBackGrossUsd?: number;
+      paidSubDecremented?: boolean;
+    }>(`heybroc:creator:conv_meta:${convP17}`);
+    check(
+      "Audit P1 #7: Two concurrent half-refunds atomically zero balance, decrement paidAnnual to 0, and reconcile full conv_meta (1750 cents / 49.99 gross)",
+      Boolean(c17AfterRefunds && meta17AfterRefunds) &&
+        c17AfterRefunds!.commissionOwed === 0 &&
+        c17AfterRefunds!.grossRevenue === 0 &&
+        c17AfterRefunds!.paidAnnual === 0 &&
+        meta17AfterRefunds!.clawedBackCents === 1750 &&
+        meta17AfterRefunds!.clawedBackGrossUsd === 49.99 &&
+        meta17AfterRefunds!.paidSubDecremented === true,
+    );
+
+    // Clean up temporary audit creators from local cache
+    await Promise.all([
+      deleteCreatorAudit(codeP14).catch(() => {}),
+      deleteCreatorAudit(codeG14).catch(() => {}),
+      deleteCreatorAudit(codeZero).catch(() => {}),
+      deleteCreatorAudit(codeP17).catch(() => {}),
+    ]);
+
+    // 5. P1 #8, #9, #10, #11, #13: iOS StoreKit verification, trial eligibility, fail-closed CI, OAuth
+    const iosVcAudit = fsNode.readFileSync("ios-app/App/ViewController.swift", "utf8");
+    const iosPlistAudit = fsNode.readFileSync("ios-app/App/Info.plist", "utf8");
+    const iosEntAudit = fsNode.readFileSync("ios-app/App/HeyBroc.entitlements", "utf8");
+    const buildIosAudit = fsNode.readFileSync(".github/workflows/build-ios.yml", "utf8");
+    const googleCbAudit = fsNode.readFileSync("app/auth/google-callback/page.tsx", "utf8");
+    const authModalAudit = fsNode.readFileSync("components/AuthModal.tsx", "utf8");
+    const allowedSsoBlockMatch = iosLiveAudit.match(/allowedSsoDomains:\s*\[String\]\s*=\s*\[([\s\S]*?)\]/);
+    const allowedSsoBlock = allowedSsoBlockMatch ? allowedSsoBlockMatch[1] : "";
+    check(
+      "Audit P1 #8, #9, #10, #11, #13: iOS verifies /api/apple/verify before finishing + replays Transaction.unfinished, checks isEligibleForIntroOffer, fail-closed build-ios.yml verifies IPA entitlements/PrivacyInfo, and uses ASWebAuthenticationSession",
+      iosVcAudit.includes("enum AppleVerifySyncResult") &&
+        iosVcAudit.includes("syncUnfinishedStoreKitTransactions") &&
+        iosVcAudit.includes("StoreKit.Transaction.unfinished") &&
+        iosVcAudit.includes("isEligibleForIntroOffer") &&
+        iosVcAudit.includes("introductoryOffer") &&
+        iosVcAudit.includes("ASWebAuthenticationSession") &&
+        iosVcAudit.includes("ASWebAuthenticationPresentationContextProviding") &&
+        iosVcAudit.includes("__HEYBROC_NATIVE_GOOGLE_AUTH__") &&
+        !allowedSsoBlock.includes("accounts.google.com") &&
+        !allowedSsoBlock.includes("appleid.apple.com") &&
+        iosPlistAudit.includes("<string>heybroc</string>") &&
+        iosEntAudit.includes("com.apple.developer.applesignin") &&
+        iosEntAudit.includes("group.com.heybroc.app") &&
+        !buildIosAudit.includes("project.pbxproj.minimal") &&
+        !buildIosAudit.includes("project.pbxproj.no-share") &&
+        !buildIosAudit.includes("project.pbxproj.with-share-no-group") &&
+        !buildIosAudit.includes("HeyBroc.entitlements.no-group") &&
+        buildIosAudit.includes("Verify Exported IPA Integrity") &&
+        buildIosAudit.includes("1C8F.1") &&
+        googleCbAudit.includes("heybroc://auth?") &&
+        authModalAudit.includes("__HEYBROC_NATIVE_GOOGLE_AUTH__"),
+    );
+
+    // 6. P1 #12: PlayBillingCoordinator hardening + POST /api/google/webhook RTDN
+    const playCoordAudit = fsNode.readFileSync("android-app/app/src/play/java/com/cleancart/overlay/PlayBillingCoordinator.kt", "utf8");
+    const privacyAudit = fsNode.readFileSync("app/privacy/page.tsx", "utf8");
+    const prevRtdnToken = process.env.GOOGLE_PLAY_RTDN_TOKEN;
+    delete process.env.GOOGLE_PLAY_RTDN_TOKEN;
+    const rtdn503 = await googleWebhookPostAudit(
+      new Request("https://www.heybroc.com/api/google/webhook", { method: "POST", body: "{}" }),
+    );
+    process.env.GOOGLE_PLAY_RTDN_TOKEN = "audit-rtdn-secret-token";
+    const rtdn401 = await googleWebhookPostAudit(
+      new Request("https://www.heybroc.com/api/google/webhook", {
+        method: "POST",
+        headers: { Authorization: "Bearer wrong-token", "Content-Type": "application/json" },
+        body: "{}",
+      }),
+    );
+    const rtdnTestPayload = Buffer.from(
+      JSON.stringify({ packageName: "com.cleancart.overlay", testNotification: { version: "1.0" } }),
+    ).toString("base64");
+    const rtdn200 = await googleWebhookPostAudit(
+      new Request("https://www.heybroc.com/api/google/webhook", {
+        method: "POST",
+        headers: { Authorization: "Bearer audit-rtdn-secret-token", "Content-Type": "application/json" },
+        body: JSON.stringify({ message: { messageId: `msg-audit-test-${auditRun}`, data: rtdnTestPayload } }),
+      }),
+    );
+    if (prevRtdnToken === undefined) delete process.env.GOOGLE_PLAY_RTDN_TOKEN;
+    else process.env.GOOGLE_PLAY_RTDN_TOKEN = prevRtdnToken;
+    check(
+      "Audit P1 #12: PlayBillingCoordinator handles ack result, PENDING state, in-flight disconnect guard & startup sync; /api/google/webhook enforces auth & handles RTDN; privacy copy accurate",
+      playCoordAudit.includes("PurchaseState.PENDING") &&
+        playCoordAudit.includes("syncExistingPurchases") &&
+        playCoordAudit.includes("inFlightOps") &&
+        playCoordAudit.includes("BillingResponseCode.OK") &&
+        mainActAudit.includes("PlayBillingCoordinator.syncExistingPurchases") &&
+        privacyAudit.includes("Google Play Developer API") &&
+        rtdn503.status === 503 &&
+        rtdn401.status === 401 &&
+        rtdn200.status === 200,
+    );
+
+    // 7. P2 #1 & P2 #2: Pending payout reconciliation UI/API & atomic concurrent referrals
+    const refCodeP22 = `BROC-${auditRun.slice(0, 6)}`;
+    const inviterIdP22 = `user:audit-inviter-p22-${auditRun}`;
+    await regRefAudit(refCodeP22, inviterIdP22);
+    const f22A = await getOrCreateDevAudit(`dev-audit-p22-a-${auditRun}`, "sec-p22-a");
+    const f22B = await getOrCreateDevAudit(`dev-audit-p22-b-${auditRun}`, "sec-p22-b");
+    const [refResA, refResB] = await Promise.all([
+      applyRefAudit({ deviceId: f22A.deviceId, deviceSecret: "sec-p22-a", referralCode: refCodeP22, activateNow: true }),
+      applyRefAudit({ deviceId: f22B.deviceId, deviceSecret: "sec-p22-b", referralCode: refCodeP22, activateNow: true }),
+    ]);
+    const inviterAfterP22 = await getExistingDevAudit(inviterIdP22);
+    check(
+      "Audit P2 #1 & P2 #2: Pending payout reconciliation is exposed in API & UI independent of commissionOwed, and concurrent referral activations credit both friends (+14 days / 2 referrals)",
+      infRouteAudit.includes("getPendingCreatorPayout") &&
+        infEngineTsxAudit.includes("handleReconcilePendingPayout") &&
+        infEngineTsxAudit.includes("c.pendingPayout") &&
+        refResA.ok &&
+        refResA.rewardedNow &&
+        refResB.ok &&
+        refResB.rewardedNow &&
+        Boolean(inviterAfterP22) &&
+        inviterAfterP22!.referralsCompleted === 2 &&
+        inviterAfterP22!.proUntil >= Date.now() + 13.5 * 86_400_000,
+    );
+
+    // 8. P2 #3, P2 #4, P2 #5, P2 #6: Barcode photo brand guard, whole-food organic guard, batch truncation/concurrency/deadline, product-image total budget
+    const badPhotoBrand = lookupPhotoSyncAudit({
+      barcode: "0071100003116",
+      title: "Great Value Original Ranch Salad Dressing",
+      brand: "Great Value",
+    });
+    const orgAlmonds = await lookupAudit({ productTitle: "Organic Raw Almonds" });
+    const orgChicken = await lookupAudit({ productTitle: "Organic Chicken Breast Fillets" });
+    const batch13Items = Array.from({ length: 13 }, (_, idx) => ({
+      id: `aud_${idx + 1}`,
+      productTitle: "Coca-Cola Classic",
+    }));
+    const batch13Res = await runBatchScanAudit({ store: "walmart", skipAnalytics: true }, batch13Items);
+    const httpBatch13Res = await scanPostAudit(
+      new Request("https://www.heybroc.com/api/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ store: "walmart", items: batch13Items }),
+      }),
+    );
+    const prodImgSrcAudit = fsNode.readFileSync("app/api/product-image/route.ts", "utf8");
+    const scanLibSrcAudit = fsNode.readFileSync("lib/scan.ts", "utf8");
+    check(
+      "Audit P2 #3, #4, #5, #6: Barcode photo rejects brand mismatch, generic whole-food fallback sets isOrganic:false, batch surfaces truncated/omittedIds (400 over 12 on HTTP) & runs single-wave with deadline, product-image enforces total budget",
+      (!badPhotoBrand || !/0071100003116/.test(badPhotoBrand.imageUrl)) &&
+        Boolean(orgAlmonds && orgAlmonds.nutrition?.isOrganic === false) &&
+        Boolean(orgChicken && orgChicken.nutrition?.isOrganic === false) &&
+        batch13Res.truncated === true &&
+        batch13Res.maxItems === maxBatchAudit &&
+        Array.isArray(batch13Res.omittedIds) &&
+        batch13Res.omittedIds.includes("aud_13") &&
+        !("aud_13" in batch13Res.results) &&
+        httpBatch13Res.status === 400 &&
+        scanLibSrcAudit.includes("BATCH_WALL_BUDGET_MS") &&
+        scanLibSrcAudit.includes("const CONCURRENCY = MAX_BATCH_SCAN_ITEMS;") &&
+        prodImgSrcAudit.includes("PRODUCT_IMAGE_TOTAL_BUDGET_MS") &&
+        prodImgSrcAudit.includes("buildBoundedSignal"),
+    );
+
+    // 9. P2 #8, P2 #9, P2 #11, P2 #12: Per-route OpenGraph URLs, admin/auth noindex, 3-tier methodology match, Simulator tier alignment
+    const layoutAudit = fsNode.readFileSync("app/layout.tsx", "utf8");
+    const layoutOgBlockMatch = layoutAudit.match(/openGraph:\s*\{[\s\S]*?\n\s*\},/);
+    const layoutOgBlock = layoutOgBlockMatch ? layoutOgBlockMatch[0] : "";
+    const adminLayoutAudit = fsNode.readFileSync("app/admin/layout.tsx", "utf8");
+    const authCbLayoutAudit = fsNode.readFileSync("app/auth/google-callback/layout.tsx", "utf8");
+    const llmsFullAudit = fsNode.readFileSync("public/llms-full.txt", "utf8");
+    const simAudit = fsNode.readFileSync("components/Simulator.tsx", "utf8");
+    const subpageOgFiles = [
+      ["app/test/page.tsx", "https://www.heybroc.com/test"],
+      ["app/privacy/page.tsx", "https://www.heybroc.com/privacy"],
+      ["app/terms/page.tsx", "https://www.heybroc.com/terms"],
+      ["app/creators/layout.tsx", "https://www.heybroc.com/creators"],
+      ["app/tools/page.tsx", "https://www.heybroc.com/tools"],
+      ["app/swaps/page.tsx", "https://www.heybroc.com/swaps"],
+      ["app/independence/page.tsx", "https://www.heybroc.com/independence"],
+      ["app/delete-account/page.tsx", "https://www.heybroc.com/delete-account"],
+    ] as const;
+    const allSubpagesHaveOwnOgUrl = subpageOgFiles.every(([file, url]) => {
+      const src = fsNode.readFileSync(file, "utf8");
+      return src.includes("openGraph:") && src.includes(`url: "${url}"`);
+    });
+    check(
+      "Audit P2 #8, #9, #11, #12: Root layout omits og:url leak, all 8 subpages define route-specific openGraph.url, /admin & /auth/google-callback are noindex, and llms-full.txt & Simulator match 3-tier rubric",
+      Boolean(layoutOgBlock) &&
+        !layoutOgBlock.includes('url: "https://www.heybroc.com"') &&
+        allSubpagesHaveOwnOgUrl &&
+        adminLayoutAudit.includes("index: false") &&
+        authCbLayoutAudit.includes("index: false") &&
+        tierThresholdsAudit.EXCELLENT_MIN === 75 &&
+        tierThresholdsAudit.MEDIOCRE_MIN === 50 &&
+        ratingForAudit(75).rating === "Excellent" &&
+        ratingForAudit(50).rating === "Mediocre" &&
+        ratingForAudit(49).rating === "Poor" &&
+        llmsFullAudit.includes("50–74 (Mediocre") &&
+        llmsFullAudit.includes("0–49 (Poor") &&
+        !llmsFullAudit.includes("50–74 (Good") &&
+        !llmsFullAudit.includes("25–49 (Mediocre") &&
+        !simAudit.includes('score.score < 25 ? "Bad"'),
+    );
   }
 
   console.log("Checks executed:", checks);

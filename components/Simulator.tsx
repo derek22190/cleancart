@@ -5,6 +5,7 @@ import {
   ALL_CATEGORIES,
   CATEGORY_LABELS,
   DEFAULT_WATCHLIST,
+  ratingFor,
   scoreProductYuka,
   type Category,
   type FlaggedAdditive,
@@ -3825,7 +3826,7 @@ export default function Simulator({
                                     : "#991b1b",
                             }}
                           >
-                            {score.score < 25 ? "Bad" : score.rating}
+                            {score.rating}
                           </span>
                         </div>
                       </div>
@@ -3982,7 +3983,7 @@ export default function Simulator({
                                 {swap.title}
                               </b>
                               <span style={{ display: "inline-block", marginTop: 4, fontSize: 13.5, fontWeight: 800, color: "#15803d" }}>
-                                {swap.score}/100 {swap.score >= 75 ? "Excellent" : swap.score >= 50 ? "Good" : "Mediocre"}
+                                {swap.score}/100 {ratingFor(swap.score).rating}
                               </span>
                               {swap.flaggedAdditives && swap.flaggedAdditives.length > 0 && (
                                 <span style={{ display: "block", marginTop: 3, fontSize: 11.5, fontWeight: 600, color: "#92400e" }}>
@@ -4151,7 +4152,7 @@ export default function Simulator({
                       rightStatValue={swap ? `${swap.score}/100` : "✓ Clean"}
                       rightStatLabel={swap ? "Swap Score" : "Top Pick"}
                       score={score.score}
-                      scoreSublabel={`Clean Score · ${score.score < 25 ? "Bad" : score.rating}`}
+                      scoreSublabel={`Clean Score · ${score.rating}`}
                       miniRings={[
                         {
                           label: "Nutrition",
@@ -5579,7 +5580,7 @@ export default function Simulator({
                                 <span className={`yuka-dot tone-${score.color}`} />
                                 <div>
                                   <strong>{score.score}/100</strong>
-                                  <em>{score.score < 25 ? "Bad" : score.rating}</em>
+                                  <em>{score.rating}</em>
                                 </div>
                               </div>
                             </div>
@@ -5668,7 +5669,7 @@ export default function Simulator({
                                   <div className="swap-info-copy">
                                     <span className="eyebrow eyebrow--green" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                                       <UiIcon name="lock" size={12} />
-                                      <span>Clean Swap Locked · {swap.score}/100 {swap.score >= 75 ? "Excellent" : swap.score >= 50 ? "Good" : "Mediocre"}</span>
+                                      <span>Clean Swap Locked · {swap.score}/100 {ratingFor(swap.score).rating}</span>
                                     </span>
                                     <b>{swap.score}/100 Clean Replacement Available</b>
                                     <span className="swap-score">All {weeklySwapLimit} free Clean Swaps used · <em>Unlock Unlimited with Pro →</em></span>
@@ -5714,7 +5715,7 @@ export default function Simulator({
                                     )}
                                     <b>{swap.title}</b>
                                     <span className="swap-score">
-                                      {swap.score}/100 {swap.score >= 75 ? "Excellent" : swap.score >= 50 ? "Good" : "Mediocre"} · <em>Tap to inspect →</em>
+                                      {swap.score}/100 {ratingFor(swap.score).rating} · <em>Tap to inspect →</em>
                                     </span>
                                     {swap.flaggedAdditives && swap.flaggedAdditives.length > 0 && (
                                       <span style={{ display: "block", marginTop: 2, fontSize: 11, fontWeight: 600, color: "#92400e" }}>
@@ -5821,7 +5822,7 @@ export default function Simulator({
                               rightStatValue={swap ? `${swap.score}/100` : "✓ Clean"}
                               rightStatLabel={swap ? "Swap Score" : "Top Pick"}
                               score={score.score}
-                              scoreSublabel={`Clean Score · ${score.score < 25 ? "Bad" : score.rating}`}
+                              scoreSublabel={`Clean Score · ${score.rating}`}
                               miniRings={[
                                 {
                                   label: "Nutrition",
@@ -6122,7 +6123,7 @@ export default function Simulator({
                                         <span className="yuka-history-brand">{hp.brand}</span>
                                         <span className="yuka-history-rating">
                                           <i className={`yuka-dot tone-${hs.color}`} />
-                                          {hs.score < 25 ? "Bad" : hs.rating} · {hs.score}/100
+                                          {hs.rating} · {hs.score}/100
                                         </span>
                                         <small className="yuka-history-time" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                                           <UiIcon name="clock" size={12} />
@@ -6185,7 +6186,7 @@ export default function Simulator({
                                     <small className="yuka-rec-brand">{dirtyProd.brand}</small>
                                     <span className="yuka-rec-status">
                                       <i className={`yuka-dot tone-${dirtyScore.color}`} />
-                                      {dirtyScore.score < 25 ? "Bad" : dirtyScore.rating} ({dirtyScore.score})
+                                      {dirtyScore.rating} ({dirtyScore.score})
                                     </span>
                                   </button>
 

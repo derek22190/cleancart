@@ -30,7 +30,6 @@ export const metadata: Metadata = {
   ],
   openGraph: {
     type: "website",
-    url: "https://www.heybroc.com",
     siteName: "HeyBroc",
     title: "HeyBroc - Online Food Scanner | Shop Clean. Skip the Junk.",
     description:

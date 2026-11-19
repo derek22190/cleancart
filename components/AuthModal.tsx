@@ -568,9 +568,25 @@ export default function AuthModal({
       setError("Could not initialize secure Google Sign-In session. Please check your connection and try again.");
       return;
     }
+    const win = window as unknown as {
+      __HEYBROC_NATIVE_GOOGLE_AUTH__?: boolean;
+      webkit?: {
+        messageHandlers?: {
+          controller?: { postMessage?: (msg: unknown) => void };
+          heybrocNative?: { postMessage?: (msg: unknown) => void };
+        };
+      };
+    };
+    const controllerBridge =
+      win.webkit?.messageHandlers?.controller ?? win.webkit?.messageHandlers?.heybrocNative;
+    const useNativeIosGoogle = Boolean(
+      win.__HEYBROC_NATIVE_GOOGLE_AUTH__ && typeof controllerBridge?.postMessage === "function"
+    );
+
     const randomBytes = new Uint8Array(16);
     window.crypto.getRandomValues(randomBytes);
-    const state = `hb_${Array.from(randomBytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
+    const hex = Array.from(randomBytes, (b) => b.toString(16).padStart(2, "0")).join("");
+    const state = useNativeIosGoogle ? `ios_${hex}` : `hb_${hex}`;
     window.sessionStorage.setItem("heybroc_oauth_state", state);
     window.sessionStorage.setItem("heybroc_oauth_nonce", nonce);
 
@@ -583,6 +599,22 @@ export default function AuthModal({
     authUrl.searchParams.set("prompt", "select_account");
     authUrl.searchParams.set("nonce", nonce);
     authUrl.searchParams.set("state", state);
+
+    if (useNativeIosGoogle && controllerBridge?.postMessage) {
+      setGoogleBusy(true);
+      try {
+        controllerBridge.postMessage({
+          action: "googleSignIn",
+          authUrl: authUrl.toString(),
+          state,
+        });
+        return;
+      } catch {
+        setGoogleBusy(false);
+        setError("Could not launch Google Sign-In. Please try again or continue with email.");
+        return;
+      }
+    }
 
     const width = 500;
     const height = 620;

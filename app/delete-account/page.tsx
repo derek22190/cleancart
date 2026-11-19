@@ -9,6 +9,22 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "https://www.heybroc.com/delete-account",
   },
+  openGraph: {
+    type: "website",
+    url: "https://www.heybroc.com/delete-account",
+    siteName: "HeyBroc",
+    title: "Delete Your HeyBroc Account & Data",
+    description:
+      "Request permanent deletion of your HeyBroc account, synced Family Watchlist, and associated cloud profile data from the web without reinstalling the app.",
+    images: ["/og-banner.png"],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Delete Your HeyBroc Account & Data",
+    description:
+      "Request permanent deletion of your HeyBroc account, synced Family Watchlist, and associated cloud profile data from the web without reinstalling the app.",
+    images: ["/og-banner.png"],
+  },
 };
 
 export default function DeleteAccountPage() {

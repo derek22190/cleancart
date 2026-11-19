@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 export default function GoogleOAuthCallbackPage() {
   const [status, setStatus] = useState("Completing Google Sign-In…");
-  const [androidReturnHref, setAndroidReturnHref] = useState("");
+  const [appReturnHref, setAppReturnHref] = useState("");
 
   useEffect(() => {
     try {
@@ -34,13 +34,29 @@ export default function GoogleOAuthCallbackPage() {
         const intentUrl =
           `intent://auth?${query}#Intent;scheme=heybroc;package=com.cleancart.overlay;` +
           `S.browser_fallback_url=${encodeURIComponent(fallbackWebUrl)};end`;
-        setAndroidReturnHref(intentUrl);
+        setAppReturnHref(intentUrl);
         setStatus(
           err
             ? "Sign-in cancelled. Returning to HeyBroc…"
             : "Signed in with Google! Returning to HeyBroc…"
         );
         window.location.replace(intentUrl);
+        return;
+      }
+
+      if (/^ios_[a-f0-9]{16,64}$/i.test(state)) {
+        const qs = new URLSearchParams();
+        if (idToken && !err) qs.set("id_token", idToken);
+        qs.set("state", state);
+        if (err) qs.set("error", "cancelled");
+        const iosDeepLink = `heybroc://auth?${qs.toString()}`;
+        setAppReturnHref(iosDeepLink);
+        setStatus(
+          err
+            ? "Sign-in cancelled. Returning to HeyBroc…"
+            : "Signed in with Google! Returning to HeyBroc…"
+        );
+        window.location.replace(iosDeepLink);
         return;
       }
 
@@ -98,9 +114,9 @@ export default function GoogleOAuthCallbackPage() {
           style={{ width: 56, height: 56, objectFit: "contain", marginBottom: 12 }}
         />
         <p style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>{status}</p>
-        {androidReturnHref && (
+        {appReturnHref && (
           <a
-            href={androidReturnHref}
+            href={appReturnHref}
             style={{
               display: "inline-block",
               marginTop: 16,

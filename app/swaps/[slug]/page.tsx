@@ -3,26 +3,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import SeoProductThumb from "@/components/SeoProductThumb";
 import { hasValidCatalogProvenance } from "@/lib/drinks-catalog";
-import { CATEGORY_LABELS, RISK_LABEL } from "@/lib/rubric";
+import { CATEGORY_LABELS, RISK_LABEL, SCORE_TIER_THRESHOLDS, ratingFor } from "@/lib/rubric";
 import { SEO_PRODUCTS, evaluateSeoProduct } from "@/lib/seo-catalog";
-import { resolveSwap, type RetailerId } from "@/lib/swaps";
+import { STORES, STORE_META, resolveSwap, type RetailerId } from "@/lib/swaps";
 
 export const revalidate = 86400;
 
-const SEO_RETAILERS: Array<{ id: RetailerId; label: string }> = [
-  { id: "walmart", label: "Walmart" },
-  { id: "target", label: "Target" },
-  { id: "amazon", label: "Amazon Fresh" },
-  { id: "kroger", label: "Kroger" },
-  { id: "sams", label: "Sam's Club" },
-  { id: "costco", label: "Costco" },
-  { id: "aldi", label: "ALDI" },
-  { id: "bjs", label: "BJ's" },
-  { id: "instacart", label: "Instacart" },
-  { id: "shipt", label: "Shipt" },
-  { id: "doordash", label: "DoorDash" },
-  { id: "ubereats", label: "Uber Eats" },
-];
+const SEO_RETAILERS: Array<{ id: RetailerId; label: string }> = STORES.map((id) => ({
+  id,
+  label: STORE_META[id].label,
+}));
 
 export function generateStaticParams() {
   return SEO_PRODUCTS.filter((p) => hasValidCatalogProvenance(p.sourceUrl, p.verifiedAt)).map((p) => ({
@@ -39,7 +29,7 @@ export async function generateMetadata({
   const entry = SEO_PRODUCTS.find((p) => p.slug === slug && hasValidCatalogProvenance(p.sourceUrl, p.verifiedAt));
   if (!entry) return {};
   const { result, swap, imageUrl, imageKind } = evaluateSeoProduct(entry);
-  const canonicalRating = result.score >= 75 ? "Excellent" : result.score >= 50 ? "Mediocre" : "Poor";
+  const canonicalRating = ratingFor(result.score).rating;
   const pageTitle = `${entry.title} Ingredients, ${result.score}/100 Score & Clean Swap`;
   const pageDescription = `Editorial clean-label review of ${entry.title}: HeyBroc scores it ${result.score}/100 (${canonicalRating}) with ${result.flagged.length} watchlist ingredient flags${swap ? ` and recommends ${swap.title} (${swap.score}/100) as a 1-for-1 Clean Swap` : ""}. Includes Sugar & refined-carb note.`;
   const canonicalUrl = `https://www.heybroc.com/swaps/${entry.slug}`;
@@ -83,7 +73,7 @@ export default async function SwapReportPage({
   if (!entry) notFound();
 
   const { result, swap, imageUrl, imageKind, categoryArtUrl } = evaluateSeoProduct(entry);
-  const canonicalRating = result.score >= 75 ? "Excellent" : result.score >= 50 ? "Mediocre" : "Poor";
+  const canonicalRating = ratingFor(result.score).rating;
   const yb = result.yukaBreakdown;
   const productImgSrc = imageUrl
     ? imageUrl.replace(/^https?:\/\/(www\.)?heybroc\.com(?=\/)/i, "")
@@ -290,9 +280,17 @@ export default async function SwapReportPage({
                   fontSize: 15,
                   fontWeight: 900,
                   background:
-                    result.score >= 75 ? "#dcfce7" : result.score >= 50 ? "#fef3c7" : "#fee2e2",
+                    result.score >= SCORE_TIER_THRESHOLDS.EXCELLENT_MIN
+                      ? "#dcfce7"
+                      : result.score >= SCORE_TIER_THRESHOLDS.MEDIOCRE_MIN
+                        ? "#fef3c7"
+                        : "#fee2e2",
                   color:
-                    result.score >= 75 ? "#166534" : result.score >= 50 ? "#92400e" : "#991b1b",
+                    result.score >= SCORE_TIER_THRESHOLDS.EXCELLENT_MIN
+                      ? "#166534"
+                      : result.score >= SCORE_TIER_THRESHOLDS.MEDIOCRE_MIN
+                        ? "#92400e"
+                        : "#991b1b",
                 }}
               >
                 {result.score}/100 · {canonicalRating}

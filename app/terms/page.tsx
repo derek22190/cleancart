@@ -10,6 +10,22 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "https://www.heybroc.com/terms",
   },
+  openGraph: {
+    type: "website",
+    url: "https://www.heybroc.com/terms",
+    siteName: "HeyBroc",
+    title: "Terms of Service & Subscription Terms",
+    description:
+      "Terms of Service for HeyBroc, covering automatic renewal subscriptions, free trials, self-serve cancellation, refunds, limitation of liability, and informational-opinion disclaimers.",
+    images: ["/og-banner.png"],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Terms of Service & Subscription Terms",
+    description:
+      "Terms of Service for HeyBroc, covering automatic renewal subscriptions, free trials, self-serve cancellation, refunds, limitation of liability, and informational-opinion disclaimers.",
+    images: ["/og-banner.png"],
+  },
 };
 
 export default function TermsPage() {

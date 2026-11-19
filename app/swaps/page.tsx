@@ -7,9 +7,25 @@ import SwapsDirectoryClient, { type SwapDirectoryRow } from "./SwapsDirectoryCli
 export const metadata: Metadata = {
   title: "Clean Grocery Swaps Directory (Seed-Oil Free & Dye-Free Alternatives)",
   description:
-    "Browse 1-for-1 healthier grocery swaps and 0–100 ingredient reports for popular snacks, dressings, cereals, yogurts, deli meats, and condiments on Walmart, Target, Kroger, Shipt, DoorDash, Instacart & ALDI.",
+    "Browse 1-for-1 healthier grocery swaps and 0–100 ingredient reports for popular snacks, dressings, cereals, yogurts, deli meats, and condiments across all 12 grocery retailers: Walmart, Target, Instacart, Kroger, ALDI, Costco, Sam's Club, BJ's, Amazon Fresh, Whole Foods, Shipt, DoorDash & Uber Eats.",
   alternates: {
     canonical: "https://www.heybroc.com/swaps",
+  },
+  openGraph: {
+    type: "website",
+    url: "https://www.heybroc.com/swaps",
+    siteName: "HeyBroc",
+    title: "Clean Grocery Swaps Directory (Seed-Oil Free & Dye-Free Alternatives)",
+    description:
+      "Browse 1-for-1 healthier grocery swaps and 0–100 ingredient reports for popular snacks, dressings, cereals, yogurts, deli meats, and condiments across all 12 grocery retailers: Walmart, Target, Instacart, Kroger, ALDI, Costco, Sam's Club, BJ's, Amazon Fresh, Whole Foods, Shipt, DoorDash & Uber Eats.",
+    images: ["/og-banner.png"],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Clean Grocery Swaps Directory (Seed-Oil Free & Dye-Free Alternatives)",
+    description:
+      "Browse 1-for-1 healthier grocery swaps and 0–100 ingredient reports for popular snacks, dressings, cereals, yogurts, deli meats, and condiments across all 12 grocery retailers: Walmart, Target, Instacart, Kroger, ALDI, Costco, Sam's Club, BJ's, Amazon Fresh, Whole Foods, Shipt, DoorDash & Uber Eats.",
+    images: ["/og-banner.png"],
   },
 };
 

@@ -11,7 +11,7 @@ import {
 import { isLikelyNonFoodOrAppliance } from "@/lib/category-art";
 import { hasProductIdentityMatch, passesVariantGuard } from "@/lib/drinks-catalog";
 import { consumeSharedOffBudget, isUsMarketOffProduct, reportSharedOffRateLimited } from "@/lib/lookup";
-import { lookupOffPhotoIndex, offBarcodeFolderPath } from "@/lib/off-photo-index";
+import { lookupOffPhotoIndex, offBarcodeFolderPath, passesBarcodePhotoGuard } from "@/lib/off-photo-index";
 import { checkRateLimitAsync } from "@/lib/scan";
 import { isPersistentKvConfigured, kvGet, kvSet } from "@/lib/storage";
 
@@ -640,19 +640,46 @@ function pickCandidateImageUrls(p: OffImageProductRecord): string[] {
   return out;
 }
 
+function buildBoundedSignal(
+  stepTimeoutMs: number,
+  deadlineMs?: number,
+  signal?: AbortSignal,
+  onOperationalFailure?: () => void,
+): AbortSignal | null {
+  if (signal?.aborted) {
+    onOperationalFailure?.();
+    return null;
+  }
+  let timeoutMs = stepTimeoutMs;
+  if (typeof deadlineMs === "number") {
+    const remaining = deadlineMs - Date.now();
+    if (remaining < 250) {
+      onOperationalFailure?.();
+      return null;
+    }
+    timeoutMs = Math.min(stepTimeoutMs, remaining);
+  }
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  return signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+}
+
 async function fetchAndVerifyImageBytes(
   candidateUrl: string,
   onTransientError?: () => void,
-  maxTimeoutMs = 3200,
+  deadlineMs?: number,
+  signal?: AbortSignal,
 ): Promise<{ bytes: ArrayBuffer; contentType: string; sourceUrl: string } | null> {
   if (!candidateUrl || deadOffUrlSet.has(candidateUrl) || !isAllowedImageUrl(candidateUrl, true)) {
     return null;
   }
-  const timeoutMs = Math.max(500, Math.min(4200, maxTimeoutMs));
+  const fetchSignal = buildBoundedSignal(3200, deadlineMs, signal, onTransientError);
+  if (!fetchSignal) {
+    return null;
+  }
   try {
     const imgRes = await fetch(candidateUrl, {
       headers: { "User-Agent": "HeyBroc/2.1 (https://www.heybroc.com)" },
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: fetchSignal,
     });
     if (!imgRes.ok) {
       if (imgRes.status === 404 || imgRes.status === 410) {
@@ -825,20 +852,31 @@ function matchesPackagePhotoCandidate(
 async function fetchVerifiedImageByBarcodes(
   codes: string[],
   rawQuery: string,
+  rawBrand: string,
   trustExactScannedCode = false,
   onOperationalFailure?: () => void,
+  deadlineMs?: number,
+  signal?: AbortSignal,
 ): Promise<{ bytes: ArrayBuffer; contentType: string; sourceUrl: string } | null> {
-  const expanded = expandBarcodeCandidates(codes);
+  const expanded = expandBarcodeCandidates(codes).slice(0, 3);
   for (const code of expanded) {
+    if (signal?.aborted || (typeof deadlineMs === "number" && deadlineMs - Date.now() < 250)) {
+      onOperationalFailure?.();
+      break;
+    }
     const v2Url = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=code,product_name,product_name_en,brands,countries_tags,selected_images,images,image_front_url,image_front_small_url,image_url`;
     if (!(await consumeSharedOffBudget(v2Url))) {
       onOperationalFailure?.();
       break;
     }
+    const v2Signal = buildBoundedSignal(3600, deadlineMs, signal, onOperationalFailure);
+    if (!v2Signal) {
+      break;
+    }
     try {
       const res = await fetch(v2Url, {
         headers: { "User-Agent": "HeyBroc/2.1 (https://www.heybroc.com)" },
-        signal: AbortSignal.timeout(3600),
+        signal: v2Signal,
       });
       if (!res.ok) {
         if (res.status === 429) {
@@ -854,16 +892,40 @@ async function fetchVerifiedImageByBarcodes(
       const data = (await res.json()) as { status?: number; product?: OffImageProductRecord };
       if (data.status !== 1 || !data.product) continue;
       const p = data.product;
-      if (rawQuery && !trustExactScannedCode) {
-        const brandsStr = Array.isArray(p.brands) ? p.brands.join(" ") : p.brands || "";
-        const candidateTitle = `${brandsStr} ${p.product_name_en || p.product_name || ""}`.trim();
-        if (candidateTitle && /\borganic\b/i.test(candidateTitle) && !/\borganic\b/i.test(rawQuery)) {
+      const brandsStr = Array.isArray(p.brands) ? p.brands.join(" ") : p.brands || "";
+      const prodNameStr = p.product_name_en || p.product_name || "";
+      const candidateTitle = `${brandsStr} ${prodNameStr}`.trim();
+      if (candidateTitle && (rawQuery || rawBrand)) {
+        const combinedQuery =
+          rawBrand && !rawQuery.toLowerCase().includes(rawBrand.toLowerCase())
+            ? `${rawBrand} ${rawQuery}`.trim()
+            : rawQuery || rawBrand;
+        if (
+          rawQuery &&
+          !trustExactScannedCode &&
+          /\borganic\b/i.test(candidateTitle) &&
+          !/\borganic\b/i.test(rawQuery)
+        ) {
+          continue;
+        }
+        if (rawQuery && !passesVariantGuard(rawQuery, candidateTitle)) {
+          continue;
+        }
+        if (
+          (combinedQuery && hasConflictingBrand(combinedQuery, candidateTitle)) ||
+          (rawBrand && hasConflictingBrand(rawBrand, candidateTitle)) ||
+          !passesBarcodePhotoGuard(rawQuery, rawBrand, brandsStr, prodNameStr)
+        ) {
           continue;
         }
       }
-      const urls = pickCandidateImageUrls(p);
+      const urls = pickCandidateImageUrls(p).slice(0, 2);
       for (const candidateUrl of urls) {
-        const verified = await fetchAndVerifyImageBytes(candidateUrl, onOperationalFailure);
+        if (signal?.aborted || (typeof deadlineMs === "number" && deadlineMs - Date.now() < 250)) {
+          onOperationalFailure?.();
+          return null;
+        }
+        const verified = await fetchAndVerifyImageBytes(candidateUrl, onOperationalFailure, deadlineMs, signal);
         if (verified) return verified;
       }
     } catch {
@@ -897,11 +959,36 @@ function cleanProductImageQuery(rawQuery: string): string {
     .trim();
 }
 
+function raceWithCallerAbort(
+  flight: Promise<ResolvedProductMedia>,
+  signal?: AbortSignal,
+): Promise<ResolvedProductMedia> {
+  if (!signal) return flight;
+  if (signal.aborted) return Promise.resolve({ kind: "transient-miss" });
+  return new Promise<ResolvedProductMedia>((resolve, reject) => {
+    const onAbort = () => resolve({ kind: "transient-miss" });
+    signal.addEventListener("abort", onAbort, { once: true });
+    flight.then(
+      (res) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(res);
+      },
+      (err) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(err);
+      },
+    );
+  });
+}
+
 async function resolveVerifiedProductMedia(
   rawQuery: string,
   rawCode: string,
   rawBrand: string,
+  signal?: AbortSignal,
 ): Promise<ResolvedProductMedia> {
+  const PRODUCT_IMAGE_TOTAL_BUDGET_MS = 5000;
+  const requestDeadline = Date.now() + PRODUCT_IMAGE_TOTAL_BUDGET_MS;
   ensureImageCachesFreshForFetch();
   const effectiveBrand = sanitizeExplicitBrand(rawBrand);
   const clean = cleanProductImageQuery(rawQuery);
@@ -923,18 +1010,23 @@ async function resolveVerifiedProductMedia(
   // Coalesce concurrent requests for the exact same product so bursty mobile list loads only hit OFF once
   const existingFlight = inFlightMediaPromises.get(urlCacheKey);
   if (existingFlight) {
-    return existingFlight;
+    return raceWithCallerAbort(existingFlight, signal);
   }
 
-  const flight = resolveVerifiedProductMediaUncached(rawQuery, clean, rawCode, effectiveBrand, urlCacheKey).finally(
-    () => {
-      if (inFlightMediaPromises.get(urlCacheKey) === flight) {
-        inFlightMediaPromises.delete(urlCacheKey);
-      }
-    },
-  );
+  const flight = resolveVerifiedProductMediaUncached(
+    rawQuery,
+    clean,
+    rawCode,
+    effectiveBrand,
+    urlCacheKey,
+    requestDeadline,
+  ).finally(() => {
+    if (inFlightMediaPromises.get(urlCacheKey) === flight) {
+      inFlightMediaPromises.delete(urlCacheKey);
+    }
+  });
   inFlightMediaPromises.set(urlCacheKey, flight);
-  return flight;
+  return raceWithCallerAbort(flight, signal);
 }
 
 async function resolveVerifiedProductMediaUncached(
@@ -943,6 +1035,8 @@ async function resolveVerifiedProductMediaUncached(
   rawCode: string,
   effectiveBrand: string,
   urlCacheKey: string,
+  requestDeadline: number,
+  signal?: AbortSignal,
 ): Promise<ResolvedProductMedia> {
   let hadOperationalFailure = false;
   const markFailure = () => {
@@ -982,7 +1076,7 @@ async function resolveVerifiedProductMediaUncached(
           return { kind: "local", relPath: verifiedUrl.slice("local:".length) };
         }
         if (!BLOCKED_ROTATED_OFF_IMAGE_RE.test(verifiedUrl)) {
-          const directBytes = await fetchAndVerifyImageBytes(verifiedUrl, markFailure);
+          const directBytes = await fetchAndVerifyImageBytes(verifiedUrl, markFailure, requestDeadline, signal);
           if (directBytes) {
             storeInBytesCache(directBytes);
             return { kind: "remote", ...directBytes };
@@ -998,7 +1092,15 @@ async function resolveVerifiedProductMediaUncached(
           }
         }
         if (recoveryCodes.length > 0) {
-          const healed = await fetchVerifiedImageByBarcodes(recoveryCodes, rawQuery, false, markFailure);
+          const healed = await fetchVerifiedImageByBarcodes(
+            recoveryCodes,
+            rawQuery,
+            effectiveBrand,
+            false,
+            markFailure,
+            requestDeadline,
+            signal,
+          );
           if (healed) {
             storeInBytesCache(healed);
             return { kind: "remote", ...healed };
@@ -1038,7 +1140,7 @@ async function resolveVerifiedProductMediaUncached(
     }
   }
   if (cachedUrl) {
-    const verifiedCached = await fetchAndVerifyImageBytes(cachedUrl, markFailure);
+    const verifiedCached = await fetchAndVerifyImageBytes(cachedUrl, markFailure, requestDeadline, signal);
     if (verifiedCached) {
       storeInBytesCache(verifiedCached);
       return { kind: "remote", ...verifiedCached };
@@ -1053,7 +1155,7 @@ async function resolveVerifiedProductMediaUncached(
     brand: effectiveBrand,
   });
   if (indexHit?.imageUrl && !BLOCKED_ROTATED_OFF_IMAGE_RE.test(indexHit.imageUrl)) {
-    const indexBytes = await fetchAndVerifyImageBytes(indexHit.imageUrl, markFailure);
+    const indexBytes = await fetchAndVerifyImageBytes(indexHit.imageUrl, markFailure, requestDeadline, signal);
     if (indexBytes) {
       imageUrlCache.set(urlCacheKey, indexHit.imageUrl);
       if (shouldPersistImageKv()) {
@@ -1077,7 +1179,15 @@ async function resolveVerifiedProductMediaUncached(
     }
   }
   if (barcodeQueue.length > 0) {
-    const byCode = await fetchVerifiedImageByBarcodes(barcodeQueue, rawQuery, rawCode.length >= 8, markFailure);
+    const byCode = await fetchVerifiedImageByBarcodes(
+      barcodeQueue,
+      rawQuery,
+      effectiveBrand,
+      rawCode.length >= 8,
+      markFailure,
+      requestDeadline,
+      signal,
+    );
     if (byCode) {
       imageUrlCache.set(urlCacheKey, byCode.sourceUrl);
       if (shouldPersistImageKv()) {
@@ -1089,7 +1199,7 @@ async function resolveVerifiedProductMediaUncached(
   }
 
   const recordConfirmedOrTransientMiss = (): ResolvedProductMedia => {
-    if (hadOperationalFailure) {
+    if (hadOperationalFailure || signal?.aborted || requestDeadline - Date.now() < 250) {
       return { kind: "transient-miss" };
     }
     if (confirmedMissCache.size >= 1500) {
@@ -1147,12 +1257,13 @@ async function resolveVerifiedProductMediaUncached(
       return bUs - aUs;
     });
 
-  const verifyMatchingHits = async (hits: OffImageProductRecord[]) => {
+  const verifyMatchingHits = async (hits: OffImageProductRecord[], verifyDeadlineMs: number) => {
     const sorted = sortUsFirst(hits);
-    const verifyDeadline = Date.now() + 2600;
+    const candidateUrls: string[] = [];
+    const seenUrls = new Set<string>();
     let inspectedMatches = 0;
     for (const p of sorted) {
-      if (inspectedMatches >= 4 || Date.now() >= verifyDeadline - 250) break;
+      if (inspectedMatches >= 4 || Date.now() >= verifyDeadlineMs - 250) break;
       const urls = pickCandidateImageUrls(p);
       if (urls.length === 0) continue;
       const brandsStr = Array.isArray(p.brands) ? p.brands.join(" ") : p.brands || "";
@@ -1161,33 +1272,60 @@ async function resolveVerifiedProductMediaUncached(
         continue;
       }
       inspectedMatches += 1;
-      for (const candidateUrl of urls.slice(0, 2)) {
-        const remaining = verifyDeadline - Date.now();
-        if (remaining < 250) break;
-        const verified = await fetchAndVerifyImageBytes(candidateUrl, markFailure, Math.min(2200, remaining));
-        if (verified) {
-          if (imageUrlCache.size >= 1000) {
-            const oldest = imageUrlCache.keys().next().value;
-            if (oldest !== undefined) imageUrlCache.delete(oldest);
-          }
-          imageUrlCache.set(urlCacheKey, candidateUrl);
-          if (shouldPersistImageKv()) {
-            kvSet(kvImgKey, candidateUrl, 7 * 24 * 60 * 60).catch(() => {});
-          }
-          storeInBytesCache(verified);
-          return verified;
+      for (const u of urls.slice(0, 2)) {
+        if (!seenUrls.has(u)) {
+          seenUrls.add(u);
+          candidateUrls.push(u);
         }
+      }
+      if (candidateUrls.length >= 6) break;
+    }
+
+    for (let i = 0; i < candidateUrls.length; i += 2) {
+      if (signal?.aborted || verifyDeadlineMs - Date.now() < 250) {
+        markFailure();
+        break;
+      }
+      const batch = candidateUrls.slice(i, i + 2);
+      const batchCtrl = new AbortController();
+      const batchSignal = signal ? AbortSignal.any([signal, batchCtrl.signal]) : batchCtrl.signal;
+      const onBatchTransient = () => {
+        if (!batchCtrl.signal.aborted) markFailure();
+      };
+      let verified: { bytes: ArrayBuffer; contentType: string; sourceUrl: string } | null = null;
+      try {
+        verified = await Promise.any(
+          batch.map(async (candidateUrl) => {
+            const res = await fetchAndVerifyImageBytes(candidateUrl, onBatchTransient, verifyDeadlineMs, batchSignal);
+            if (!res) throw new Error("Unverified candidate image");
+            return res;
+          }),
+        ).catch(() => null);
+      } finally {
+        batchCtrl.abort();
+      }
+      if (verified) {
+        if (imageUrlCache.size >= 1000) {
+          const oldest = imageUrlCache.keys().next().value;
+          if (oldest !== undefined) imageUrlCache.delete(oldest);
+        }
+        imageUrlCache.set(urlCacheKey, verified.sourceUrl);
+        if (shouldPersistImageKv()) {
+          kvSet(kvImgKey, verified.sourceUrl, 7 * 24 * 60 * 60).catch(() => {});
+        }
+        storeInBytesCache(verified);
+        return verified;
       }
     }
     return null;
   };
 
   // 5. Last-resort live Open Food Facts Search-a-licious v3 + CGI fallback within a single 2.5s ceiling
-  const searchDeadline = Date.now() + OFF_IMAGE_SEARCH_DEADLINE_MS;
+  const searchDeadline = Math.min(requestDeadline, Date.now() + OFF_IMAGE_SEARCH_DEADLINE_MS);
   let searchV3Succeeded = false;
   for (const searchQ of queriesToTry.slice(0, 1)) {
     const remainingMs = searchDeadline - Date.now();
-    if (remainingMs < 250) {
+    if (remainingMs < 250 || signal?.aborted) {
       markFailure();
       break;
     }
@@ -1196,15 +1334,19 @@ async function resolveVerifiedProductMediaUncached(
       markFailure();
       break;
     }
+    const searchSignal = buildBoundedSignal(1500, searchDeadline, signal, markFailure);
+    if (!searchSignal) {
+      break;
+    }
     try {
       const res = await fetch(offUrl, {
         headers: { "User-Agent": "HeyBroc/2.1 (https://www.heybroc.com)" },
-        signal: AbortSignal.timeout(Math.min(1500, remainingMs)),
+        signal: searchSignal,
       });
       if (res.ok) {
         searchV3Succeeded = true;
         const data = (await res.json()) as { hits?: OffImageProductRecord[] };
-        const matched = await verifyMatchingHits(data.hits || []);
+        const matched = await verifyMatchingHits(data.hits || [], searchDeadline);
         if (matched) {
           return { kind: "remote", ...matched };
         }
@@ -1223,28 +1365,31 @@ async function resolveVerifiedProductMediaUncached(
   // Fallback to v2 CGI search ONLY if Search v3 failed operationally AND >= 400ms remains in the 2.5s budget
   const cgiTerms = coreWithoutGenericCategory || conciseQuery;
   const cgiRemainingMs = searchDeadline - Date.now();
-  if (!searchV3Succeeded && cgiTerms && cgiRemainingMs >= 400) {
+  if (!searchV3Succeeded && cgiTerms && cgiRemainingMs >= 400 && !signal?.aborted) {
     const cgiUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(cgiTerms)}&search_simple=1&action=process&json=1&page_size=14&fields=code,product_name,product_name_en,brands,countries_tags,image_front_small_url,image_front_url,selected_images,images`;
     if (await consumeSharedOffBudget(cgiUrl)) {
-      try {
-        const res = await fetch(cgiUrl, {
-          headers: { "User-Agent": "HeyBroc/2.1 (https://www.heybroc.com)" },
-          signal: AbortSignal.timeout(cgiRemainingMs),
-        });
-        if (res.ok) {
-          const data = (await res.json()) as { products?: OffImageProductRecord[] };
-          const matched = await verifyMatchingHits(data.products || []);
-          if (matched) {
-            return { kind: "remote", ...matched };
+      const cgiSignal = buildBoundedSignal(cgiRemainingMs, searchDeadline, signal, markFailure);
+      if (cgiSignal) {
+        try {
+          const res = await fetch(cgiUrl, {
+            headers: { "User-Agent": "HeyBroc/2.1 (https://www.heybroc.com)" },
+            signal: cgiSignal,
+          });
+          if (res.ok) {
+            const data = (await res.json()) as { products?: OffImageProductRecord[] };
+            const matched = await verifyMatchingHits(data.products || [], searchDeadline);
+            if (matched) {
+              return { kind: "remote", ...matched };
+            }
+          } else if (res.status === 429) {
+            markFailure();
+            await reportSharedOffRateLimited();
+          } else if (res.status >= 500) {
+            markFailure();
           }
-        } else if (res.status === 429) {
-          markFailure();
-          await reportSharedOffRateLimited();
-        } else if (res.status >= 500) {
+        } catch {
           markFailure();
         }
-      } catch {
-        markFailure();
       }
     } else {
       markFailure();
@@ -1313,7 +1458,7 @@ export async function GET(request: Request) {
     return new NextResponse("Missing query", { status: 400 });
   }
 
-  const resolved = await resolveVerifiedProductMedia(q, rawCode, rawBrand);
+  const resolved = await resolveVerifiedProductMedia(q, rawCode, rawBrand, request.signal);
   if (resolved.kind === "local") {
     if (wants404OnMiss && resolved.relPath.startsWith("public/swaps/")) {
       return missingStatusResponse(false, "category-art");
@@ -1359,7 +1504,7 @@ export async function HEAD(request: Request) {
     return new NextResponse(null, { status: 400 });
   }
 
-  const resolved = await resolveVerifiedProductMedia(q, rawCode, rawBrand);
+  const resolved = await resolveVerifiedProductMedia(q, rawCode, rawBrand, request.signal);
   if (resolved.kind === "local") {
     const relPath = resolved.relPath;
     if (wants404OnMiss && relPath.startsWith("public/swaps/")) {

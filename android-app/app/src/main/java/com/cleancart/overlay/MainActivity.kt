@@ -2456,16 +2456,29 @@ class MainActivity : Activity() {
             rowSub = "Allergens, seed oils, dyes & additives",
             onClick = { showAllergyAndDietModal() }
         )
-        addMenuRow(
-            icon = "🥦",
-            rowTitle = "Live Store Bubble",
-            rowSub = if (bubbleActive) "Active in grocery apps" else "Tap to enable overlay",
-            onClick = {
-                activeTab = 1
-                topSubTab = "Bubble"
-                renderScreen()
-            }
-        )
+        if (BuildConfig.ENABLE_ACCESSIBILITY_OVERLAY) {
+            addMenuRow(
+                icon = "🥦",
+                rowTitle = "Live Store Bubble",
+                rowSub = if (bubbleActive) "Active in grocery apps" else "Tap to enable overlay",
+                onClick = {
+                    activeTab = 1
+                    topSubTab = "Bubble"
+                    renderScreen()
+                }
+            )
+        } else {
+            addMenuRow(
+                icon = "🛒",
+                rowTitle = "Live Shop Browser",
+                rowSub = "Shop 12 grocery stores with 0–100 score badges",
+                onClick = {
+                    activeTab = 1
+                    topSubTab = "Bubble"
+                    renderScreen()
+                }
+            )
+        }
         addMenuRow(
             icon = "🎯",
             rowTitle = "Clean-Eating Goals",
@@ -3647,8 +3660,13 @@ class MainActivity : Activity() {
             }
 
             card.addView(label("Choose How You Want to Start", 21f, 0xFF111814.toInt(), bold = true))
+            val onboardingSubtitle = if (BuildConfig.IS_PLAY_BUILD) {
+                "Explore Family Pro plans in Google Play, or start right away on the Free Plan:"
+            } else {
+                "Try Family Pro free for $effectiveTrialDays days ($0 today), or start right away on the Free Plan:"
+            }
             card.addView(label(
-                "Try Family Pro free for $effectiveTrialDays days ($0 today), or start right away on the Free Plan:",
+                onboardingSubtitle,
                 13f,
                 0xFF4B5563.toInt()
             ).apply { setPadding(0, dp(4), 0, dp(10)) })
@@ -3683,7 +3701,12 @@ class MainActivity : Activity() {
                 addView(label("⭐ HeyBroc Family Pro", 14f, 0xFF14532D.toInt(), bold = true).apply {
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 })
-                addView(label("$effectiveTrialDays DAYS FREE · $0 TODAY", 10f, Color.WHITE, bold = true).apply {
+                val badgeText = if (BuildConfig.IS_PLAY_BUILD) {
+                    "GOOGLE PLAY PLANS"
+                } else {
+                    "$effectiveTrialDays DAYS FREE · $0 TODAY"
+                }
+                addView(label(badgeText, 10f, Color.WHITE, bold = true).apply {
                     setPadding(dp(8), dp(4), dp(8), dp(4))
                     background = GradientDrawable().apply {
                         setColor(0xFF16A34A.toInt())
@@ -3696,7 +3719,11 @@ class MainActivity : Activity() {
             val proFeatures = listOf(
                 Triple("🛒", "Unlimited Clean Swaps", proStoresBullet),
                 Triple("🧾", "Order Audits & 2x Watchlists", "Receipt health grades + double additive penalties"),
-                Triple("🫧", "Live Store Bubble & Cloud Sync", "Auto-grades carts as you shop + syncs across devices")
+                if (BuildConfig.ENABLE_ACCESSIBILITY_OVERLAY) {
+                    Triple("🫧", "Live Store Bubble & Cloud Sync", "Auto-grades carts as you shop + syncs across devices")
+                } else {
+                    Triple("🛍️", "In-App Live Shop & Cloud Sync", "0–100 score badges as you shop + syncs across devices")
+                }
             )
             proFeatures.forEachIndexed { idx, (iconEmoji, featTitle, featSub) ->
                 proCard.addView(LinearLayout(this).apply {
@@ -3739,8 +3766,14 @@ class MainActivity : Activity() {
                     bottomMargin = dp(7)
                 }
             })
+            val planPricingSummary = if (BuildConfig.IS_PLAY_BUILD) {
+                PlayBillingCoordinator.cachedLocalizedPricingSummary()
+                    ?: "View localized plans & trial availability in Google Play. Cancel anytime in Google Play."
+            } else {
+                "$0 due today · Then $4.17/mo ($49.99/yr) or $9.99/mo. Cancel anytime in 1 tap."
+            }
             proCard.addView(label(
-                "$0 due today · Then $4.17/mo ($49.99/yr) or $9.99/mo. Cancel anytime in 1 tap.",
+                planPricingSummary,
                 11f,
                 0xFF15803D.toInt(),
                 bold = true
@@ -3748,7 +3781,12 @@ class MainActivity : Activity() {
             card.addView(proCard)
 
             // Primary CTA: Start Free Pro Trial
-            card.addView(label("Start $effectiveTrialDays-Day Free Pro Trial ($0 Today) →", 15f, Color.WHITE, bold = true).apply {
+            val primaryCtaLabel = if (BuildConfig.IS_PLAY_BUILD) {
+                "View Google Play Plans →"
+            } else {
+                "Start $effectiveTrialDays-Day Free Pro Trial ($0 Today) →"
+            }
+            card.addView(label(primaryCtaLabel, 15f, Color.WHITE, bold = true).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(16), dp(14), dp(16), dp(14))
                 background = GradientDrawable().apply {
@@ -6793,13 +6831,13 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle("Accessibility Service Disclosure")
             .setMessage(
-                "HeyBroc uses the Android AccessibilityService API solely inside 13 supported grocery apps " +
-                    "(Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Shopping / Amazon Fresh, Whole Foods Market, Sam's Club, BJ's, Costco, and Shipt) to:\n" +
-                    "1) Inspect visible, non-editable screen text on device to detect grocery product pages and extract the visible product title and ingredient list,\n" +
-                    "2) Extract visible cart item titles (up to 20 items on Cart screens) and \"in cart\" indicators so your Whole-Cart Health Check reflects your real cart, and\n" +
-                    "3) When you tap \"Find in Store\" or \"Swap in Store\" on a Clean Swap, enter that replacement product into the active store's search bar for you.\n\n" +
-                    "• What is transmitted: Matched grocery product title candidates, extracted ingredient text, active store identifier, your selected additive & allergy watchlist preferences, any claimed referral code, and a random install-scoped device ID (retained for up to 1 year for Pro entitlement and free swap accounting) are sent over HTTPS to heybroc.com/api/scan.\n" +
-                    "• Scope & Safeguards: HeyBroc is restricted by Android package filter to the 13 supported grocery apps above, ignores password fields, payment fields, and chat/message containers on device before candidate extraction, never reads hardware identifiers, and never sells personal data."
+                "HeyBroc uses the Android AccessibilityService API solely inside 12 supported grocery retailers " +
+                    "(15 Android app packages: Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Shopping / Amazon Fresh & Whole Foods Market, Sam's Club, BJ's, Costco, and Shipt) to:\n" +
+                    "1) Inspect visible, non-editable screen text on device to detect grocery product pages and extract the visible product title, visible ingredient list, and visible barcode text (if displayed on screen),\n" +
+                    "2) Extract visible cart item titles (up to 20 visible items on Cart screens) and \"in cart\" indicators so your Whole-Cart Health Check reflects your real cart, and\n" +
+                    "3) Only when you explicitly tap \"Find in Store\" or \"Swap in Store\" on a Clean Swap, enter that replacement product into the active store's search bar for you.\n\n" +
+                    "• What is transmitted: Matched visible grocery product title candidates, visible ingredient text, visible barcode text (if displayed on screen), active store identifier, your selected additive & allergy watchlist preferences, any claimed referral code, and a random install-scoped device ID (retained for up to 1 year for Pro entitlement and free swap accounting) are sent over HTTPS to heybroc.com/api/scan.\n" +
+                    "• Scope & Safeguards: HeyBroc is restricted by Android package filter to the 12 supported grocery retailers (15 Android app packages) above, ignores invisible/off-screen nodes, password fields, payment fields, editable inputs, and chat/message containers on device before candidate extraction, never reads hardware identifiers, and never sells personal data."
             )
             .setCancelable(false)
             .setPositiveButton("I Agree & Continue") { _, _ ->
@@ -7071,6 +7109,11 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         clearScheduledToasts()
+        if (BuildConfig.IS_PLAY_BUILD) {
+            PlayBillingCoordinator.syncExistingPurchases(this) {
+                if (!isDestroyed && !isFinishing) renderScreen()
+            }
+        }
         renderScreen()
         val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
         val savedEmail = prefs.getString("auth_email", null)?.takeIf { it.isNotBlank() }

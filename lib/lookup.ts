@@ -684,7 +684,40 @@ export const OFF_SEARCH_BATCH_MAX_PER_MIN = Math.max(1, OFF_SEARCH_MAX_PER_MIN -
 export const OFF_PRODUCT_MAX_PER_MIN = 14;
 const negativeLookupCache = new Map<string, number>();
 const providerRateWindows = new Map<string, { count: number; resetAt: number }>();
-const lookupAttemptContext = new AsyncLocalStorage<{ hadOperationalFailure: boolean; isBatch?: boolean }>();
+export interface LookupAttemptContext {
+  hadOperationalFailure: boolean;
+  isBatch?: boolean;
+  deadlineMs?: number;
+  onDeadlineExceeded?: () => void;
+}
+const lookupAttemptContext = new AsyncLocalStorage<LookupAttemptContext>();
+
+export function runWithLookupContext<T>(
+  ctx: { isBatch?: boolean; deadlineMs?: number; onDeadlineExceeded?: () => void },
+  fn: () => Promise<T>,
+): Promise<T> {
+  const parent = lookupAttemptContext.getStore();
+  const mergedDeadline =
+    typeof ctx.deadlineMs === "number" && typeof parent?.deadlineMs === "number"
+      ? Math.min(ctx.deadlineMs, parent.deadlineMs)
+      : (ctx.deadlineMs ?? parent?.deadlineMs);
+  return lookupAttemptContext.run(
+    {
+      hadOperationalFailure: false,
+      isBatch: ctx.isBatch ?? parent?.isBatch,
+      deadlineMs: mergedDeadline,
+      onDeadlineExceeded: ctx.onDeadlineExceeded ?? parent?.onDeadlineExceeded,
+    },
+    fn,
+  );
+}
+
+function effectiveLookupStepTimeoutMs(): number {
+  const deadlineMs = lookupAttemptContext.getStore()?.deadlineMs;
+  if (typeof deadlineMs !== "number") return TIMEOUT_MS;
+  return Math.max(1, Math.min(TIMEOUT_MS, deadlineMs - Date.now()));
+}
+
 let trackedLookupFetchRef: unknown = globalThis.fetch;
 let offRateTestEpoch = 0;
 let offUnavailableUntil = 0;
@@ -845,9 +878,12 @@ async function getJson<T>(url: string): Promise<T | null> {
     return null;
   }
   try {
+    const stepTimeoutMs = effectiveLookupStepTimeoutMs();
     const res = await fetch(url, {
       headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
-      signal: providerSignal.getStore() ? AbortSignal.any([providerSignal.getStore()!, AbortSignal.timeout(TIMEOUT_MS)]) : AbortSignal.timeout(TIMEOUT_MS),
+      signal: providerSignal.getStore()
+        ? AbortSignal.any([providerSignal.getStore()!, AbortSignal.timeout(stepTimeoutMs)])
+        : AbortSignal.timeout(stepTimeoutMs),
       cache: "no-store",
     });
     if (!res.ok) {
@@ -1742,6 +1778,8 @@ function doesBarcodeResultMatchTitle(queryTitle: string, found: ProviderResult):
   const qRaw = (queryTitle || "").trim();
   if (!qRaw || /^\d{8,14}$/.test(qRaw)) return true;
   if (!matchesRequestedBrand(qRaw, found.brand || "", found.productTitle)) return false;
+  if (!passesVariantGuard(qRaw, found.productTitle)) return false;
+  if (isDietaryOrVariantMismatch(qRaw, found.productTitle, found.ingredients, found.nutrition)) return false;
   const brandToks = new Set(tokens(`${detectQueryBrand(qRaw)} ${found.brand || ""}`));
   const qAll = tokens(qRaw).filter((t) => !GENERIC.has(t) && !GENERIC_LEADING_MODIFIERS.has(t));
   const fAll = tokens(`${found.brand || ""} ${found.productTitle}`).filter(
@@ -1760,21 +1798,49 @@ function doesBarcodeResultMatchTitle(queryTitle: string, found: ProviderResult):
 
 /** One shared wall-clock budget covers multi-stage provider searches with deterministic quality selection. */
 async function lookupProviders(input: LookupInput): Promise<ProviderResult | null> {
+  const ctx = lookupAttemptContext.getStore();
+  let effectiveTimeoutMs = TIMEOUT_MS;
+  let clampedByBatchDeadline = false;
+  if (typeof ctx?.deadlineMs === "number") {
+    const remainingMs = ctx.deadlineMs - Date.now();
+    if (remainingMs < 250) {
+      markLookupOperationalFailure();
+      ctx.onDeadlineExceeded?.();
+      return null;
+    }
+    if (remainingMs < TIMEOUT_MS) {
+      effectiveTimeoutMs = remainingMs;
+      clampedByBatchDeadline = true;
+    }
+  }
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<null>(resolve => {
-    timer = setTimeout(() => { controller.abort(); resolve(null); }, TIMEOUT_MS);
+    timer = setTimeout(() => {
+      markLookupOperationalFailure();
+      if (clampedByBatchDeadline || (typeof ctx?.deadlineMs === "number" && Date.now() >= ctx.deadlineMs - 50)) {
+        ctx?.onDeadlineExceeded?.();
+      }
+      controller.abort();
+      resolve(null);
+    }, effectiveTimeoutMs);
   });
   const work = providerSignal.run(controller.signal, async () => {
     const normCode = normalizeBarcode(input.barcode);
     const rawTitle = (input.productTitle || "").trim();
     if (normCode) {
-      const byCode = await firstAvailable([
+      const barcodeProviders = [
         offByBarcode(normCode),
         usdaSearch(normCode),
         lookupDsld({ ...input, barcode: normCode }, getJson),
-      ]);
-      if (byCode && (!rawTitle || doesBarcodeResultMatchTitle(rawTitle, byCode))) {
+      ].map((p) =>
+        p.then(
+          (r) => (r && (!rawTitle || doesBarcodeResultMatchTitle(rawTitle, r)) ? r : null),
+          () => null,
+        ),
+      );
+      const byCode = await firstAvailable(barcodeProviders);
+      if (byCode) {
         return byCode;
       }
       if (!rawTitle) return null;
@@ -2169,8 +2235,8 @@ async function postUsdaPortalSearch(
         pageSize,
       }),
       signal: providerSignal.getStore()
-        ? AbortSignal.any([providerSignal.getStore()!, AbortSignal.timeout(TIMEOUT_MS)])
-        : AbortSignal.timeout(TIMEOUT_MS),
+        ? AbortSignal.any([providerSignal.getStore()!, AbortSignal.timeout(effectiveLookupStepTimeoutMs())])
+        : AbortSignal.timeout(effectiveLookupStepTimeoutMs()),
       cache: "no-store",
     });
     if (!res.ok) {
@@ -5393,15 +5459,9 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
     return null;
   }
 
-  // Single-ingredient whole produce, meat/eggs, and raw nuts/seeds (already past PROCESSED_FOOD_GUARD and non-store brand guard)
-  // honor explicit whole-item Organic labeling (e.g. "Fresh Organic Carrots - 1lb - Good & Gather™", "Organic Rainbow Chard Bunch")
-  // while never inferring organic status for conventional items or processed foods.
+  // Generic USDA whole-food fallbacks (produce, meat/eggs, raw nuts/seeds) represent unverified
+  // single-ingredient whole foods and must NEVER assert verified USDA Organic certification from free-text queries.
   const storeHouseBrandLabel = detectedBrandForFallback ? normalizeOffDisplayTitle(detectedBrandForFallback) : "";
-  const storeHouseCertifiedOrganic = /\b(simple\s+truth\s+organic|o\s+organics)\b/i.test(query) && !/\bnon[-\s]*organic\b/i.test(query);
-  const wholeFoodExplicitOrganic =
-    /\borganic\b/i.test(query) &&
-    !/\b(?:non[-\s]*organic|made\s+with\s+organic|less\s+than\s+\d+%\s+organic)\b/i.test(query);
-  const resolvedWholeFoodOrganic = storeHouseCertifiedOrganic || wholeFoodExplicitOrganic;
 
   // 1. Fresh Produce, Fruits, Vegetables, Herbs & Salad Greens (strictly single-ingredient)
   const PRODUCE_NOUN_RE =
@@ -5412,11 +5472,9 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       sourceUrl: "https://fdc.nal.usda.gov/food-details/169247/nutrients",
       productTitle: cleanTitle,
       brand: storeHouseBrandLabel || "Fresh Produce",
-      ingredients: resolvedWholeFoodOrganic
-        ? "100% Organic Fresh Whole Produce (Single-Ingredient Whole Food)."
-        : "100% Fresh Whole Produce (Single-Ingredient Whole Food).",
+      ingredients: "100% Fresh Whole Produce (Single-Ingredient Whole Food).",
       imageUrl: produceCurated?.imageUrl?.startsWith("https://") ? produceCurated.imageUrl : undefined,
-      nutrition: { fruitsVegNutsPct: 100, isWholeFood: true, isOrganic: resolvedWholeFoodOrganic },
+      nutrition: { fruitsVegNutsPct: 100, isWholeFood: true, isOrganic: false },
       source: "catalog",
       sourceUpdatedAt: "2026-11-08",
     };
@@ -5426,20 +5484,19 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
   const MEAT_NOUN_RE =
     /\b(chicken\s+(breasts?|fillets?|cutlets?|thighs?|drumsticks?|wings?|tenderloins?|quarters?|legs?)|whole\s+chicken|young\s+chicken|(?:whole|frozen|young|fresh|antibiotic[- ]?free|organic|pasture[- ]?raised|grade\s+a)\s+turkey|turkey\s+(breasts?|thighs?|drumsticks?|wings?|tenderloins?)|whole\s+turkey|\bturkey\b|ground\s+(beef|chuck|turkey|chicken|pork|bison|lamb)|(?:bottom\s+round|top\s+round|eye\s+of\s+round|rump|chuck|sirloin\s+tip|rib)\s+roast|beef\s+(stew\s+meat|chuck|roast|brisket|sirloin|ribeye|tenderloin|short\s+ribs?|flank|skirt)|stew\s+beef|ribeye|sirloin|filet|new\s+york\s+strip|t-bone|porterhouse|pork\s+(chops?|loin|tenderloin|roast|shoulder|ribs?|belly)|lamb\s+(chops?|leg|shank|rack)|salmon|cod|tilapia|haddock|halibut|trout|mahi|swordfish|catfish|snapper|sea\s+bass|tuna\s+steak|shrimp|scallops?|crab\s+legs?|lobster\s+tails?|large\s+eggs?|white\s+eggs?|brown\s+eggs?|cage[- ]?free\s+eggs?|pasture[- ]?raised\s+eggs?|grade\s+aa?\s+(?:large\s+|extra\s+large\s+|jumbo\s+|medium\s+)?(?:white\s+|brown\s+)?eggs?|\beggs\b)\b/;
   if (MEAT_NOUN_RE.test(s) && hasWholeFoodHeadNoun(query, MEAT_NOUN_RE, { checkBefore: true, allowMeatCuts: true, mode: "meat" })) {
-    const orgPrefix = resolvedWholeFoodOrganic ? "Organic " : "";
     const wholeMeatIng = /\b(beef|angus|wagyu|ribeye|sirloin|tenderloin|brisket|chuck|round\s+roast|rump\s+roast|new\s+york\s+strip|t-bone|porterhouse)\b/i.test(s)
-      ? `100% ${orgPrefix}Beef (Single-Ingredient Unprocessed Whole Food).`
+      ? "100% Beef (Single-Ingredient Unprocessed Whole Food)."
       : /\bchicken\b/i.test(s)
-        ? `100% ${orgPrefix}Chicken (Single-Ingredient Unprocessed Whole Food).`
+        ? "100% Chicken (Single-Ingredient Unprocessed Whole Food)."
         : /\bturkey\b/i.test(s)
-          ? `100% ${orgPrefix}Turkey (Single-Ingredient Unprocessed Whole Food).`
+          ? "100% Turkey (Single-Ingredient Unprocessed Whole Food)."
           : /\bpork\b/i.test(s)
-            ? `100% ${orgPrefix}Pork (Single-Ingredient Unprocessed Whole Food).`
+            ? "100% Pork (Single-Ingredient Unprocessed Whole Food)."
             : /\blamb\b/i.test(s)
-              ? `100% ${orgPrefix}Lamb (Single-Ingredient Unprocessed Whole Food).`
+              ? "100% Lamb (Single-Ingredient Unprocessed Whole Food)."
               : /\beggs?\b/i.test(s)
-                ? `100% ${orgPrefix}Shell Eggs (Single-Ingredient Whole Food).`
-                : `100% ${orgPrefix}Whole Food Protein (Single-Ingredient Unprocessed Meat, Poultry, or Seafood).`;
+                ? "100% Shell Eggs (Single-Ingredient Whole Food)."
+                : "100% Whole Food Protein (Single-Ingredient Unprocessed Meat, Poultry, or Seafood).";
     const meatCurated = lookupCuratedPhoto({ brand: storeHouseBrandLabel || "Fresh Meat & Eggs", title: cleanTitle });
     return {
       sourceUrl: "https://fdc.nal.usda.gov/food-details/171477/nutrients",
@@ -5447,7 +5504,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       brand: storeHouseBrandLabel || "Fresh Meat & Eggs",
       ingredients: wholeMeatIng,
       imageUrl: meatCurated?.imageUrl?.startsWith("https://") ? meatCurated.imageUrl : undefined,
-      nutrition: { fruitsVegNutsPct: 0, isWholeFood: true, isOrganic: resolvedWholeFoodOrganic },
+      nutrition: { fruitsVegNutsPct: 0, isWholeFood: true, isOrganic: false },
       source: "catalog",
       sourceUpdatedAt: "2026-11-08",
     };
@@ -5462,11 +5519,9 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       sourceUrl: "https://fdc.nal.usda.gov/food-details/170567/nutrients",
       productTitle: cleanTitle,
       brand: storeHouseBrandLabel || "Whole Nuts, Seeds & Legumes",
-      ingredients: resolvedWholeFoodOrganic
-        ? "100% Organic Whole Nuts, Seeds, or Legumes (Single-Ingredient Whole Food)."
-        : "100% Whole Nuts, Seeds, or Legumes (Single-Ingredient Whole Food).",
+      ingredients: "100% Whole Nuts, Seeds, or Legumes (Single-Ingredient Whole Food).",
       imageUrl: nutsCurated?.imageUrl?.startsWith("https://") ? nutsCurated.imageUrl : undefined,
-      nutrition: { fruitsVegNutsPct: 100, isWholeFood: true, isOrganic: resolvedWholeFoodOrganic },
+      nutrition: { fruitsVegNutsPct: 100, isWholeFood: true, isOrganic: false },
       source: "catalog",
       sourceUpdatedAt: "2026-11-08",
     };
@@ -5675,7 +5730,13 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   const negExpiresAt = negativeLookupCache.get(key);
   if (!negExpiresAt || Date.now() >= negExpiresAt) {
     if (negExpiresAt) negativeLookupCache.delete(key);
-    const attemptState = { hadOperationalFailure: false, isBatch: Boolean(input.isBatch) };
+    const parentCtx = lookupAttemptContext.getStore();
+    const attemptState: LookupAttemptContext = {
+      hadOperationalFailure: false,
+      isBatch: Boolean(input.isBatch || parentCtx?.isBatch),
+      deadlineMs: parentCtx?.deadlineMs,
+      onDeadlineExceeded: parentCtx?.onDeadlineExceeded,
+    };
     found = await lookupAttemptContext.run(attemptState, () => lookupProviders(normalizedInput));
     if (!found && !providerSignal.getStore()?.aborted && !attemptState.hadOperationalFailure) {
       if (negativeLookupCache.size >= MAX_NEGATIVE_LOOKUP_ENTRIES) {

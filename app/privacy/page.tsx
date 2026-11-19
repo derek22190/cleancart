@@ -7,6 +7,22 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "https://www.heybroc.com/privacy",
   },
+  openGraph: {
+    type: "website",
+    url: "https://www.heybroc.com/privacy",
+    siteName: "HeyBroc",
+    title: "Privacy Policy & Accessibility Disclosure",
+    description:
+      "How HeyBroc processes product titles and ingredient lists across web, Chrome & Safari extensions, iPhone Live Shop, and Android.",
+    images: ["/og-banner.png"],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Privacy Policy & Accessibility Disclosure",
+    description:
+      "How HeyBroc processes product titles and ingredient lists across web, Chrome & Safari extensions, iPhone Live Shop, and Android.",
+    images: ["/og-banner.png"],
+  },
 };
 
 export default function PrivacyPage() {
@@ -36,17 +52,18 @@ export default function PrivacyPage() {
           The <strong>Google Play Store edition</strong> of HeyBroc uses our built-in <strong>Live Shop</strong> browser and requests{" "}
           <strong>zero Android AccessibilityService or system overlay permissions</strong>. Separately, the optional direct-download Android APK
           distributed outside Google Play offers an opt-in Android <code>AccessibilityService</code> floating score bubble while you browse groceries
-          inside 12 supported retail and delivery apps (Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Shopping / Amazon Fresh /
-          Whole Foods Market, Sam&apos;s Club, BJ&apos;s Wholesale, Costco, and Shipt).
+          inside 12 supported grocery retailers (15 Android app packages: Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon
+          Shopping, Whole Foods Market, Sam&apos;s Club [2 packages], BJ&apos;s Wholesale [2 packages], Costco, and Shipt).
         </p>
         <ul>
           <li>
-            <strong>What screen content is accessed (direct-download APK only):</strong> When one of the 12 supported store apps is actively in the
-            foreground and you have explicitly accepted the in-app Accessibility Service disclosure, HeyBroc traverses visible, non-editable accessibility
-            text nodes on device to:
-            (a) detect when a grocery product page or product feed is open and extract candidate <strong>product titles</strong>,{" "}
-            <strong>ingredient text</strong> (if expanded on screen), and active <strong>store identifier</strong>, and
-            (b) extract visible <strong>cart item titles</strong> (up to 20 items when you view your Cart screen) and <em>&ldquo;in cart&rdquo;</em>{" "}
+            <strong>What screen content is accessed (direct-download APK only):</strong> When one of the 12 supported grocery retailers (15 Android app
+            packages listed above) is actively in the foreground and you have explicitly accepted the in-app Accessibility Service
+            disclosure, HeyBroc accesses strictly visible on-screen text only by traversing visible, non-editable accessibility text nodes on device to:
+            (a) detect when a grocery product page or product feed is open and extract visible, non-editable <strong>product titles</strong>,{" "}
+            <strong>ingredient lists</strong> (if expanded on screen), <strong>visible barcode text</strong> (if displayed on screen), and the active{" "}
+            <strong>store identifier</strong>, and
+            (b) extract up to 20 visible <strong>cart items</strong> when you view your Cart screen along with <em>&ldquo;in cart&rdquo;</em>{" "}
             badges so your Whole-Cart Health Check reflects the items currently in your cart.
           </li>
           <li>
@@ -62,8 +79,9 @@ export default function PrivacyPage() {
             <code>ANDROID_ID</code> or IMEI), contacts, system notifications, or SMS apps.
           </li>
           <li>
-            <strong>How extracted product data is transmitted and used:</strong> Matched grocery product title candidates (including visible cart item titles
-            during a cart sync) and ingredient strings are sent over encrypted HTTPS to <code>https://www.heybroc.com/api/scan</code> (and{" "}
+            <strong>How extracted product data is transmitted and used:</strong> Matched grocery product title candidates (including up to 20 visible
+            cart item titles during a cart sync), visible ingredient lists, and visible barcode text (if displayed on screen) are sent over encrypted
+            HTTPS to <code>https://www.heybroc.com/api/scan</code> (and{" "}
             <code>/api/audit</code> when running a Whole-Cart Health Check) together with your active <strong>store identifier</strong>,{" "}
             <strong>ingredient &amp; personal allergy/dietary watchlist preferences</strong> (<code>watchlist</code>, <code>familyWatchlist</code>, and optional <code>dietaryWatchlist</code>), an install-scoped random{" "}
             <strong>device ID</strong> (<code>deviceId</code>, a random UUID generated by the app that can be reset at any time by clearing app data),
@@ -100,9 +118,12 @@ export default function PrivacyPage() {
             and can be disassociated from your device at any time by clearing app storage or browser local storage.
           </li>
           <li>
-            <strong>Subscription, billing &amp; auto-renewal consent records (400 days to 5 years):</strong> When you subscribe via Stripe Checkout or RevenueCat (App Store / Google Play),
-            our server stores your checkout session ID, subscription status, linked <code>deviceId</code>, and checkout email address (<code>customerEmail</code>)
-            in encrypted key-value storage with an automatic 400-day expiration TTL to verify annual and monthly Pro entitlements, and retains your affirmative auto-renewal consent record for up to 5 years to satisfy state and federal auto-renewal recordkeeping laws.
+            <strong>Subscription, billing &amp; auto-renewal consent records (400 days to 5 years):</strong> When you subscribe via Stripe (Web / Direct),
+            Google Play Billing (processed and verified directly through Google Play Billing &amp; the Google Play Developer API), or the Apple App Store
+            (StoreKit with Apple / RevenueCat verification), our server stores your checkout session or purchase verification ID, subscription status,
+            linked <code>deviceId</code>, and checkout email address (<code>customerEmail</code>, when provided) in encrypted key-value storage with an
+            automatic 400-day expiration TTL to verify annual and monthly Pro entitlements, and retains your affirmative auto-renewal consent record for
+            up to 5 years to satisfy state and federal auto-renewal recordkeeping laws.
           </li>
           <li>
             <strong>Optional user accounts (up to 400 days or until deleted):</strong> If you create a HeyBroc account to sync your Family Watchlist and Pro
@@ -136,7 +157,8 @@ export default function PrivacyPage() {
         <p>
           When you explicitly tap a Clean Swap link to view an alternative product in your grocery store app or browser, the link may route through or
           include retail affiliate attribution parameters (such as Walmart Impact or Amazon Associates tags) at no additional cost to you. Subscription
-          payments are processed by Stripe (web) or Apple App Store / Google Play via RevenueCat; HeyBroc never receives or stores your raw credit card number.
+          payments are processed and verified directly through Google Play Billing &amp; the Google Play Developer API (Google Play), Apple App Store
+          StoreKit with Apple / RevenueCat verification (iOS), or Stripe (Web / Direct); HeyBroc never receives or stores your raw credit card number.
         </p>
       </section>
 

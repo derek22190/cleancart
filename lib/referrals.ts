@@ -18,7 +18,7 @@ import "server-only";
 import crypto from "node:crypto";
 import { getDevicePaidEntitlement, normalizeRealDeviceId } from "./entitlements";
 import { PRICING } from "./pricing";
-import { kvDel, kvGet, kvSet, kvSetNx } from "./storage";
+import { kvDel, kvEvalLua, kvGet, kvSet, kvSetNx } from "./storage";
 
 export interface DeviceEntitlement {
   deviceId: string;
@@ -534,8 +534,205 @@ export async function applyOrActivateReferral(params: {
     };
   }
 
-  const inviter = await getExistingDevice(inviterDeviceId);
-  if (!inviter) {
+  const resolvedClaimantUid =
+    (params.userId || "").trim() ||
+    (device.deviceId.startsWith("user:")
+      ? device.deviceId.slice(5)
+      : (await kvGet<string>(`${USER_BY_DEVICE_PREFIX}${device.deviceId}`).catch(
+          () => null
+        )) || "");
+
+  const inviterKey = `heybroc:device:${inviterDeviceId}`;
+  const claimantKey = `heybroc:device:${device.deviceId}`;
+  const deviceLockKey = `${REFERRAL_REWARD_LOCK_PREFIX}${device.deviceId}`;
+  const userLockKey =
+    resolvedClaimantUid && `user:${resolvedClaimantUid}` !== device.deviceId
+      ? `${REFERRAL_REWARD_LOCK_PREFIX}user:${resolvedClaimantUid}`
+      : "";
+
+  const bonusMs = PRICING.referralBonusDays * DAY_MS;
+  const maxProUntil = now + MAX_BANKED_PRO_DAYS * DAY_MS;
+
+  type AtomicReferralResult =
+    | { status: "already_claimed"; scope?: "device" | "account" }
+    | { status: "inviter_missing" }
+    | { status: "cap_reached" }
+    | { status: "ok"; inviter: DeviceEntitlement; claimant: DeviceEntitlement };
+
+  const activateReferralLua = [
+    'if redis.call("EXISTS", KEYS[3]) == 1 then',
+    '  return cjson.encode({ status = "already_claimed", scope = "device" })',
+    "end",
+    'if #KEYS >= 4 and redis.call("EXISTS", KEYS[4]) == 1 then',
+    '  return cjson.encode({ status = "already_claimed", scope = "account" })',
+    "end",
+    'local inviterRaw = redis.call("GET", KEYS[1])',
+    'if not inviterRaw or type(inviterRaw) ~= "string" or inviterRaw == "" then',
+    '  return cjson.encode({ status = "inviter_missing" })',
+    "end",
+    "local okInv, inviter = pcall(cjson.decode, inviterRaw)",
+    'if not okInv or type(inviter) ~= "table" then',
+    '  return cjson.encode({ status = "inviter_missing" })',
+    "end",
+    "local maxReferrals = tonumber(ARGV[1]) or 10",
+    'if (tonumber(inviter["referralsCompleted"]) or 0) >= maxReferrals then',
+    '  return cjson.encode({ status = "cap_reached" })',
+    "end",
+    'local claimantRaw = redis.call("GET", KEYS[2])',
+    "local claimant = nil",
+    'if claimantRaw and type(claimantRaw) == "string" and claimantRaw ~= "" then',
+    "  local okClm, parsedClm = pcall(cjson.decode, claimantRaw)",
+    '  if okClm and type(parsedClm) == "table" then claimant = parsedClm end',
+    "end",
+    "if claimant == nil then",
+    "  claimant = cjson.decode(ARGV[6])",
+    "end",
+    'if claimant["referralActivated"] == true then',
+    '  return cjson.encode({ status = "already_claimed", scope = "device" })',
+    "end",
+    "local nowMs = tonumber(ARGV[2]) or 0",
+    "local bonusMs = tonumber(ARGV[3]) or 0",
+    "local maxProUntil = tonumber(ARGV[4]) or 0",
+    "local activeTtl = tonumber(ARGV[5]) or 31536000",
+    "local inputCode = ARGV[7]",
+    'redis.call("SET", KEYS[3], \'"1"\', "EX", activeTtl)',
+    "if #KEYS >= 4 then",
+    '  redis.call("SET", KEYS[4], \'"1"\', "EX", activeTtl)',
+    "end",
+    'inviter["referralsCompleted"] = (tonumber(inviter["referralsCompleted"]) or 0) + 1',
+    'local invBase = math.max(nowMs, tonumber(inviter["proUntil"]) or 0)',
+    'inviter["proUntil"] = math.min(maxProUntil, invBase + bonusMs)',
+    'claimant["referralActivated"] = true',
+    'claimant["referredByCode"] = inputCode',
+    'local clmBase = math.max(nowMs, tonumber(claimant["proUntil"]) or 0)',
+    'claimant["proUntil"] = math.min(maxProUntil, clmBase + bonusMs)',
+    "local function normalizeWeeklyArray(obj)",
+    '  if type(obj["weeklySwapsUsed"]) ~= "table" then',
+    '    obj["weeklySwapsUsed"] = {}',
+    "  end",
+    '  if next(obj["weeklySwapsUsed"]) == nil and cjson.empty_array then',
+    '    obj["weeklySwapsUsed"] = cjson.empty_array',
+    "  end",
+    "end",
+    "local function encodeSafe(val)",
+    "  if not cjson.empty_array and cjson.encode_empty_table_as_object then",
+    "    cjson.encode_empty_table_as_object(false)",
+    "    local okEnc, encoded = pcall(cjson.encode, val)",
+    "    cjson.encode_empty_table_as_object(true)",
+    "    if okEnc then return encoded end",
+    "  end",
+    "  return cjson.encode(val)",
+    "end",
+    "normalizeWeeklyArray(inviter)",
+    "normalizeWeeklyArray(claimant)",
+    'redis.call("SET", KEYS[1], encodeSafe(inviter), "EX", activeTtl)',
+    'redis.call("SET", KEYS[2], encodeSafe(claimant), "EX", activeTtl)',
+    'return encodeSafe({ status = "ok", inviter = inviter, claimant = claimant })',
+  ].join("\n");
+
+  const luaKeys = [
+    inviterKey,
+    claimantKey,
+    deviceLockKey,
+    ...(userLockKey ? [userLockKey] : []),
+  ];
+
+  const evalRes = await kvEvalLua<string | AtomicReferralResult>(
+    activateReferralLua,
+    luaKeys,
+    [
+      MAX_REFERRALS_PER_DEVICE,
+      Math.floor(now),
+      Math.floor(bonusMs),
+      Math.floor(maxProUntil),
+      Math.floor(ACTIVE_KV_TTL_SECONDS),
+      JSON.stringify(device),
+      inputCode,
+    ],
+    async (): Promise<AtomicReferralResult> => {
+      const existingDeviceLock = await kvGet<string | number>(deviceLockKey);
+      if (existingDeviceLock !== null) {
+        return { status: "already_claimed", scope: "device" };
+      }
+      if (userLockKey) {
+        const existingUserLock = await kvGet<string | number>(userLockKey);
+        if (existingUserLock !== null) {
+          return { status: "already_claimed", scope: "account" };
+        }
+      }
+      const latestInviter = await kvGet<DeviceEntitlement>(inviterKey);
+      if (!latestInviter || typeof latestInviter.deviceId !== "string") {
+        return { status: "inviter_missing" };
+      }
+      if ((latestInviter.referralsCompleted || 0) >= MAX_REFERRALS_PER_DEVICE) {
+        return { status: "cap_reached" };
+      }
+      const latestClaimant =
+        (await kvGet<DeviceEntitlement>(claimantKey)) ?? { ...device };
+      if (latestClaimant.referralActivated) {
+        return { status: "already_claimed", scope: "device" };
+      }
+
+      await kvSet(deviceLockKey, "1", ACTIVE_KV_TTL_SECONDS);
+      if (userLockKey) {
+        await kvSet(userLockKey, "1", ACTIVE_KV_TTL_SECONDS);
+      }
+
+      const updatedInviter: DeviceEntitlement = {
+        ...latestInviter,
+        weeklySwapsUsed: Array.isArray(latestInviter.weeklySwapsUsed)
+          ? latestInviter.weeklySwapsUsed
+          : [],
+        referralsCompleted: (latestInviter.referralsCompleted || 0) + 1,
+        proUntil: Math.min(
+          maxProUntil,
+          Math.max(now, latestInviter.proUntil || 0) + bonusMs
+        ),
+      };
+      const updatedClaimant: DeviceEntitlement = {
+        ...latestClaimant,
+        weeklySwapsUsed: Array.isArray(latestClaimant.weeklySwapsUsed)
+          ? latestClaimant.weeklySwapsUsed
+          : [],
+        referralActivated: true,
+        referredByCode: inputCode,
+        proUntil: Math.min(
+          maxProUntil,
+          Math.max(now, latestClaimant.proUntil || 0) + bonusMs
+        ),
+      };
+
+      await kvSet(inviterKey, updatedInviter, ACTIVE_KV_TTL_SECONDS);
+      await kvSet(claimantKey, updatedClaimant, ACTIVE_KV_TTL_SECONDS);
+      return {
+        status: "ok",
+        inviter: updatedInviter,
+        claimant: updatedClaimant,
+      };
+    }
+  );
+
+  let outcome: AtomicReferralResult;
+  if (typeof evalRes === "string") {
+    outcome = JSON.parse(evalRes) as AtomicReferralResult;
+  } else if (evalRes && typeof evalRes === "object") {
+    outcome = evalRes;
+  } else {
+    outcome = { status: "inviter_missing" };
+  }
+
+  if (outcome.status === "already_claimed") {
+    return {
+      ok: false,
+      device,
+      rewardedNow: false,
+      message:
+        outcome.scope === "account"
+          ? "Referral bonus already activated on this account."
+          : "Referral bonus already activated on this device.",
+    };
+  }
+  if (outcome.status === "inviter_missing") {
     return {
       ok: false,
       device,
@@ -543,8 +740,7 @@ export async function applyOrActivateReferral(params: {
       message: "Inviter account not found.",
     };
   }
-
-  if (inviter.referralsCompleted >= MAX_REFERRALS_PER_DEVICE) {
+  if (outcome.status === "cap_reached") {
     return {
       ok: false,
       device,
@@ -553,62 +749,24 @@ export async function applyOrActivateReferral(params: {
     };
   }
 
-  // Atomic idempotency lock so concurrent `checkout.session.completed` + `invoice.paid` webhooks
-  // never grant +60 days instead of +30 days
-  const deviceLockAcquired = await kvSetNx(
-    `${REFERRAL_REWARD_LOCK_PREFIX}${device.deviceId}`,
-    "1",
-    ACTIVE_KV_TTL_SECONDS
-  );
-  if (!deviceLockAcquired) {
-    return {
-      ok: false,
-      device,
-      rewardedNow: false,
-      message: "Referral bonus already activated on this device.",
-    };
-  }
-
-  const resolvedClaimantUid =
-    (params.userId || "").trim() ||
-    (device.deviceId.startsWith("user:")
-      ? device.deviceId.slice(5)
-      : (await kvGet<string>(`${USER_BY_DEVICE_PREFIX}${device.deviceId}`).catch(
-          () => null
-        )) || "");
-  if (resolvedClaimantUid && `user:${resolvedClaimantUid}` !== device.deviceId) {
-    const userLockAcquired = await kvSetNx(
-      `${REFERRAL_REWARD_LOCK_PREFIX}user:${resolvedClaimantUid}`,
-      "1",
-      ACTIVE_KV_TTL_SECONDS
-    );
-    if (!userLockAcquired) {
-      return {
-        ok: false,
-        device,
-        rewardedNow: false,
-        message: "Referral bonus already activated on this account.",
-      };
-    }
-  }
-
-  const bonusMs = PRICING.referralBonusDays * DAY_MS;
-  const maxProUntil = now + MAX_BANKED_PRO_DAYS * DAY_MS;
-
-  device.referralActivated = true;
-  device.proUntil = Math.min(maxProUntil, Math.max(now, device.proUntil) + bonusMs);
-  await saveDevice(device);
-
-  inviter.proUntil = Math.min(
-    maxProUntil,
-    Math.max(now, inviter.proUntil) + bonusMs
-  );
-  inviter.referralsCompleted += 1;
-  await saveDevice(inviter);
+  const authoritativeInviter: DeviceEntitlement = {
+    ...outcome.inviter,
+    weeklySwapsUsed: Array.isArray(outcome.inviter.weeklySwapsUsed)
+      ? outcome.inviter.weeklySwapsUsed
+      : [],
+  };
+  const authoritativeClaimant: DeviceEntitlement = {
+    ...outcome.claimant,
+    weeklySwapsUsed: Array.isArray(outcome.claimant.weeklySwapsUsed)
+      ? outcome.claimant.weeklySwapsUsed
+      : [],
+  };
+  setMemCache(authoritativeInviter);
+  setMemCache(authoritativeClaimant);
 
   return {
     ok: true,
-    device,
+    device: authoritativeClaimant,
     rewardedNow: true,
     message: `🎉 +${PRICING.referralBonusDays} Free Days of HeyBroc Pro unlocked for you and your friend!`,
   };

@@ -167,7 +167,7 @@ export default function ProductExposeModal({
 
     ctx.fillStyle = "#e2e8f0";
     ctx.font = `800 32px ${font}`;
-    ctx.fillText(score.score < 25 ? "Bad · High-Risk Additives" : score.rating, ratingX, 348);
+    ctx.fillText(score.score < 50 ? `${score.rating} · High-Risk Additives` : score.rating, ratingX, 348);
 
     // Dietary Alerts + Flagged Additives Pills
     let flagY = 412;

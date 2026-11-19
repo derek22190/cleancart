@@ -316,7 +316,8 @@ export async function POST(request: Request) {
 
   const convMeta =
     (await getCreatorConversionMeta(`apple_orig:${origTxId}`)) ??
-    (await getCreatorConversionMeta(`rc_orig:${origTxId}`));
+    (await getCreatorConversionMeta(`rc_orig:${origTxId}`)) ??
+    (await getCreatorConversionMeta(`ios_orig:${origTxId}`));
   const candidateCreatorCode = normalizeCode(
     existing?.creatorCode || convMeta?.code || ""
   );
@@ -371,10 +372,18 @@ export async function POST(request: Request) {
           validCreatorCode,
           "trial",
           undefined,
-          existing?.customerEmail
+          existing?.customerEmail,
+          {
+            additionalIdempotencyKeys: [
+              `ios_trial:${origTxId}`,
+              `apple_trial:${origTxId}`,
+              `rc_trial:${origTxId}`,
+            ],
+          }
         );
       } else if (grossUsd > 0) {
         const alreadyCreditedAcrossPipelines =
+          (await hasSubscriptionFirstPaidCredit(`ios_orig:${origTxId}`)) ||
           (await hasSubscriptionFirstPaidCredit(`apple_orig:${origTxId}`)) ||
           (await hasSubscriptionFirstPaidCredit(`rc_orig:${origTxId}`));
         if (!alreadyCreditedAcrossPipelines) {
@@ -387,7 +396,11 @@ export async function POST(request: Request) {
             {
               creditedTransactionId: txId,
               creditedEventId: notificationUUID || undefined,
-              subscriptionKey: `apple_orig:${origTxId}`,
+              subscriptionKey: `ios_orig:${origTxId}`,
+              additionalSubscriptionKeys: [
+                `apple_orig:${origTxId}`,
+                `rc_orig:${origTxId}`,
+              ],
             }
           );
         }
@@ -425,7 +438,7 @@ export async function POST(request: Request) {
         {
           buyerEmail: existing?.customerEmail || convMeta?.buyerEmail,
           originalConversionKey: `apple_orig:${origTxId}`,
-          fallbackConversionKeys: [`rc_orig:${origTxId}`],
+          fallbackConversionKeys: [`rc_orig:${origTxId}`, `ios_orig:${origTxId}`],
           refundedTransactionId: txId,
           originalPreTaxUsd: convMeta?.grossUsd,
           refundRatio,

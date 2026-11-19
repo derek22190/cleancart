@@ -31,7 +31,7 @@
   function isVisible(el) {
     if (!el || typeof el.getBoundingClientRect !== 'function') return false;
     var st = window.getComputedStyle(el);
-    if (!st || st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) === 0) return false;
+    if (!st || st.display === 'none' || st.visibility === 'hidden' || st.opacity === '0' || (st.opacity !== '' && parseFloat(st.opacity) === 0)) return false;
     var r = el.getBoundingClientRect();
     return r.width > 2 && r.height > 2;
   }
@@ -262,13 +262,275 @@
     return hits >= Math.min(2, tokA.length);
   }
 
+  var CART_DRAWER_META_RE = /\b(cart[-_ ]?(?:drawer|modal|panel|flyout|sidebar)|shopping[-_ ]?cart|mini[-_ ]?cart|bag[-_ ]?drawer)\b/i;
+
+  function isCartDrawerNode(node) {
+    if (!node || node.nodeType !== 1) return false;
+    var cls = typeof node.className === 'string' ? node.className : '';
+    var meta = (node.id || '') + ' ' + cls + ' ' + ((node.getAttribute && node.getAttribute('aria-label')) || '') + ' ' + ((node.getAttribute && node.getAttribute('data-testid')) || '');
+    if (CART_DRAWER_META_RE.test(meta)) return true;
+    var role = node.getAttribute ? String(node.getAttribute('role') || '').toLowerCase() : '';
+    var isContainer =
+      role === 'dialog' ||
+      (node.getAttribute && String(node.getAttribute('aria-modal') || '').toLowerCase() === 'true') ||
+      /^(ASIDE|SECTION)$/i.test(node.tagName || '');
+    return isContainer ? isCartDrawer(node) : false;
+  }
+
+  function isInactiveTabPanel(node) {
+    if (!node || node.nodeType !== 1 || !node.getAttribute) return false;
+    if (String(node.getAttribute('role') || '').toLowerCase() !== 'tabpanel') return false;
+    if (
+      node.hidden === true ||
+      (node.hasAttribute && (node.hasAttribute('hidden') || node.hasAttribute('inert'))) ||
+      String(node.getAttribute('aria-hidden') || '').toLowerCase() === 'true'
+    ) {
+      return true;
+    }
+    var dataState = String(node.getAttribute('data-state') || '').toLowerCase();
+    if (dataState === 'inactive' || dataState === 'closed') return true;
+    if (String(node.getAttribute('aria-selected') || '').toLowerCase() === 'false') return true;
+    if (String(node.getAttribute('aria-expanded') || '').toLowerCase() === 'false') return true;
+    var id = String(node.id || '').trim();
+    if (id && /^[A-Za-z0-9_:-]+$/.test(id)) {
+      var tab = document.querySelector('[role="tab"][aria-controls="' + id + '"]');
+      if (tab && tab.getAttribute && String(tab.getAttribute('aria-selected') || '').toLowerCase() === 'false') {
+        return true;
+      }
+    }
+    var labelledBy = String(node.getAttribute('aria-labelledby') || '').trim();
+    if (labelledBy) {
+      var lblIds = labelledBy.split(/\s+/);
+      for (var i = 0; i < lblIds.length; i++) {
+        var lblEl = document.getElementById(lblIds[i]);
+        if (
+          lblEl &&
+          lblEl.getAttribute &&
+          String(lblEl.getAttribute('role') || '').toLowerCase() === 'tab' &&
+          String(lblEl.getAttribute('aria-selected') || '').toLowerCase() === 'false'
+        ) {
+          return true;
+        }
+      }
+    }
+    return !isVisible(node);
+  }
+
+  function isInsideHiddenOrCartContainer(el, scopeRoot) {
+    if (!el || el.nodeType !== 1) return true;
+    var isModalScope = Boolean(scopeRoot && scopeRoot !== document.body && scopeRoot !== document.documentElement);
+    var cur = el;
+    while (cur && cur.nodeType === 1 && cur !== document.body && cur !== document.documentElement) {
+      if (cur.hidden === true || (cur.hasAttribute && (cur.hasAttribute('hidden') || cur.hasAttribute('inert')))) {
+        return true;
+      }
+      if (cur.getAttribute && String(cur.getAttribute('aria-hidden') || '').toLowerCase() === 'true') {
+        return true;
+      }
+      var st = window.getComputedStyle ? window.getComputedStyle(cur) : null;
+      if (st) {
+        if (st.display === 'none' || st.visibility === 'hidden') return true;
+        if (st.opacity === '0' || (st.opacity !== '' && parseFloat(st.opacity) === 0)) return true;
+      }
+      if (isInactiveTabPanel(cur)) return true;
+      var role = cur.getAttribute ? String(cur.getAttribute('role') || '').toLowerCase() : '';
+      var isDialog = role === 'dialog' || (cur.getAttribute && String(cur.getAttribute('aria-modal') || '').toLowerCase() === 'true');
+      if (!isModalScope) {
+        if (isCartDrawerNode(cur)) return true;
+        if (isDialog && !isVisible(cur)) return true;
+      } else if (cur !== scopeRoot) {
+        if (isCartDrawerNode(cur)) return true;
+        if (isDialog && !isVisible(cur)) return true;
+      }
+      if (isModalScope && cur === scopeRoot) break;
+      cur = cur.parentElement;
+    }
+    return false;
+  }
+
+  function isInsideHiddenDialogTabpanelOrCart(el, scopeRoot) {
+    if (!el || el.nodeType !== 1) return true;
+    var isModalScope = Boolean(scopeRoot && scopeRoot !== document.body && scopeRoot !== document.documentElement);
+    var cur = el;
+    while (cur && cur.nodeType === 1 && cur !== document.body && cur !== document.documentElement) {
+      if (isCartDrawerNode(cur)) return true;
+      if (isInactiveTabPanel(cur)) return true;
+      var role = cur.getAttribute ? String(cur.getAttribute('role') || '').toLowerCase() : '';
+      var isDialog = role === 'dialog' || (cur.getAttribute && String(cur.getAttribute('aria-modal') || '').toLowerCase() === 'true');
+      if (isDialog && (!isModalScope || cur !== scopeRoot) && !isVisible(cur)) {
+        return true;
+      }
+      if (cur !== el) {
+        if (cur.hidden === true || (cur.hasAttribute && (cur.hasAttribute('hidden') || cur.hasAttribute('inert')))) {
+          return true;
+        }
+        if (cur.getAttribute && String(cur.getAttribute('aria-hidden') || '').toLowerCase() === 'true') {
+          return true;
+        }
+        var st = window.getComputedStyle ? window.getComputedStyle(cur) : null;
+        if (st) {
+          if (st.display === 'none' || st.visibility === 'hidden') return true;
+          if (st.opacity === '0' || (st.opacity !== '' && parseFloat(st.opacity) === 0)) return true;
+        }
+      }
+      if (isModalScope && cur === scopeRoot) break;
+      cur = cur.parentElement;
+    }
+    return false;
+  }
+
+  function isDisclosureControl(el) {
+    if (!el || el.nodeType !== 1) return false;
+    var tag = String(el.tagName || '').toUpperCase();
+    if (tag === 'BUTTON' || tag === 'SUMMARY') return true;
+    if (el.getAttribute && String(el.getAttribute('role') || '').toLowerCase() === 'button') return true;
+    if (el.hasAttribute && (el.hasAttribute('aria-expanded') || el.hasAttribute('aria-controls'))) return true;
+    return false;
+  }
+
+  function isControlledDisclosurePanel(controlEl, panelEl) {
+    if (!controlEl || !panelEl || !isDisclosureControl(controlEl)) return false;
+    var controls = controlEl.getAttribute ? String(controlEl.getAttribute('aria-controls') || '').trim() : '';
+    var panelId = String(panelEl.id || '').trim();
+    if (controls && panelId) {
+      var ids = controls.split(/\s+/);
+      for (var i = 0; i < ids.length; i++) {
+        if (ids[i] === panelId) return true;
+      }
+    }
+    if (typeof controlEl.closest === 'function' && typeof panelEl.closest === 'function') {
+      var details = controlEl.closest('details');
+      if (details && details === panelEl.closest('details')) return true;
+    }
+    return false;
+  }
+
+  function isAllowedAmazonInfoNode(amzInfo) {
+    if (!amzInfo || amzInfo.isConnected === false) return false;
+    if (document.body && !document.body.contains(amzInfo)) return false;
+    if (isInsideExcluded(amzInfo, document.body)) return false;
+    if (amzInfo.hasAttribute && amzInfo.hasAttribute('inert')) return false;
+    var parent = amzInfo.parentElement;
+    if (
+      parent &&
+      parent !== document.body &&
+      parent !== document.documentElement &&
+      isInsideHiddenOrCartContainer(parent, null)
+    ) {
+      return false;
+    }
+    if (isVisible(amzInfo) && !isInsideHiddenOrCartContainer(amzInfo, null)) {
+      return true;
+    }
+    if (isInsideHiddenDialogTabpanelOrCart(amzInfo, null)) return false;
+    var expContainer = amzInfo.closest
+      ? amzInfo.closest('.a-expander-container, [data-a-expander-name], [class*="expander" i], [id*="expander" i], details')
+      : null;
+    if (
+      expContainer &&
+      expContainer !== amzInfo &&
+      isVisible(expContainer) &&
+      !isInsideHiddenOrCartContainer(expContainer, null)
+    ) {
+      return true;
+    }
+    var id = String(amzInfo.id || '').trim();
+    if (id && /^[A-Za-z0-9_:-]+$/.test(id)) {
+      var ctrl = document.querySelector('[aria-controls="' + id + '"]');
+      if (ctrl && isVisible(ctrl) && !isInsideHiddenOrCartContainer(ctrl, null)) {
+        return true;
+      }
+    }
+    if (
+      parent &&
+      parent !== document.body &&
+      parent !== document.documentElement &&
+      !/^MAIN$/i.test(parent.tagName || '') &&
+      isVisible(parent) &&
+      !isInsideHiddenOrCartContainer(parent, null)
+    ) {
+      if (id === 'nic-po-expander-content') return true;
+      var toggle = parent.querySelector
+        ? parent.querySelector('.a-expander-header, button[aria-expanded], [role="button"][aria-expanded], summary')
+        : null;
+      if (toggle && isVisible(toggle) && !isInsideHiddenOrCartContainer(toggle, null)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  var VISIBLE_TEXT_BLOCK_TAGS = {
+    P: 1, DIV: 1, LI: 1, DT: 1, DD: 1, H1: 1, H2: 1, H3: 1, H4: 1, H5: 1, H6: 1, SECTION: 1, ARTICLE: 1, TR: 1, BR: 1
+  };
+  var VISIBLE_TEXT_SKIP_TAGS = { SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, TEMPLATE: 1, SVG: 1 };
+
+  function extractVisibleText(container, scopeRoot) {
+    if (!container || container.nodeType !== 1) return '';
+    var stopBoundary = scopeRoot || document.body;
+    var isModalScope = Boolean(scopeRoot && scopeRoot !== document.body && scopeRoot !== document.documentElement);
+    var parts = [];
+    var visits = 0;
+    var charCount = 0;
+
+    function walk(node, isRootNode) {
+      if (!node || visits > 1500 || charCount > 8000) return;
+      if (node.nodeType === 3) {
+        var val = String(node.nodeValue || '');
+        if (val) {
+          parts.push(val);
+          charCount += val.length;
+        }
+        return;
+      }
+      if (node.nodeType !== 1) return;
+      visits++;
+      var tag = String(node.tagName || '').toUpperCase();
+      if (VISIBLE_TEXT_SKIP_TAGS[tag]) return;
+      if (!isRootNode) {
+        if (node.hidden === true || (node.hasAttribute && (node.hasAttribute('hidden') || node.hasAttribute('inert')))) return;
+        if (node.getAttribute && String(node.getAttribute('aria-hidden') || '').toLowerCase() === 'true') return;
+        if (isInactiveTabPanel(node) || isCartDrawerNode(node)) return;
+        if (isInsideExcluded(node, stopBoundary)) return;
+        var st = window.getComputedStyle ? window.getComputedStyle(node) : null;
+        if (st) {
+          if (st.display === 'none' || st.visibility === 'hidden') return;
+          if (st.opacity === '0' || (st.opacity !== '' && parseFloat(st.opacity) === 0)) return;
+        }
+        var role = node.getAttribute ? String(node.getAttribute('role') || '').toLowerCase() : '';
+        var isDialog = role === 'dialog' || (node.getAttribute && String(node.getAttribute('aria-modal') || '').toLowerCase() === 'true');
+        if (isDialog && (!isModalScope || node !== scopeRoot) && !isVisible(node)) return;
+        if (st && st.display !== 'contents' && st.display !== 'inline' && typeof node.getBoundingClientRect === 'function') {
+          var r = node.getBoundingClientRect();
+          if (r.width === 0 && r.height === 0) return;
+        }
+      }
+      var isBlock = !isRootNode && Boolean(VISIBLE_TEXT_BLOCK_TAGS[tag]);
+      if (isBlock) parts.push('\n');
+      if (tag === 'BR') return;
+      for (var child = node.firstChild; child; child = child.nextSibling) {
+        walk(child, false);
+        if (visits > 1500 || charCount > 8000) break;
+      }
+      if (isBlock) parts.push('\n');
+    }
+
+    walk(container, true);
+    return parts.join('');
+  }
+
   function readIngredientsFromScope(modalScope) {
     var root = modalScope || document.querySelector('main') || document.body;
     if (!root) return '';
+    var stopBoundary = modalScope || document.body;
     var stopRe = /\b(Allergens?|Contains\s*:|Warnings?|Directions|Nutrition\s+Facts|Distributed\s+by|Legal\s+Disclaimer)\b/i;
-    if (!modalScope) {
-      var amzInfo = document.querySelector('#importantInformation_feature_div, #nic-po-expander-content');
-      if (amzInfo) {
+    var host = String(location.hostname || '').toLowerCase();
+    var isAmazonHost = /(?:^|\.)amazon\.[a-z.]+$/i.test(host) || host.indexOf('wholefoods') !== -1;
+    if (!modalScope && isAmazonHost) {
+      var amzNodes = document.querySelectorAll('#importantInformation_feature_div, #nic-po-expander-content');
+      for (var a = 0; a < amzNodes.length; a++) {
+        var amzInfo = amzNodes[a];
+        if (!isAllowedAmazonInfoNode(amzInfo)) continue;
         var amzTxt = (amzInfo.textContent || '').replace(/\s+/g, ' ');
         var amzMatch = amzTxt.match(/\bIngredients\s*:?\s*([\s\S]{12,1400})/i);
         if (amzMatch && amzMatch[1]) {
@@ -277,25 +539,73 @@
         }
       }
     }
-    var labels = root.querySelectorAll('h2, h3, h4, dt, strong, b, span, div, p, button');
+    var labels = root.querySelectorAll('h2, h3, h4, dt, strong, b, span, div, p, button, summary');
     for (var i = 0; i < labels.length; i++) {
       var el = labels[i];
-      if (isInsideExcluded(el, modalScope || document.body)) continue;
+      if (!isVisible(el)) continue;
+      if (isInsideExcluded(el, stopBoundary)) continue;
+      if (isInsideHiddenOrCartContainer(el, modalScope)) continue;
       var own = el.children.length <= 2 ? clean(el.textContent) : '';
       if (!/^ingredients\s*:?$/i.test(own)) continue;
+
+      if (isDisclosureControl(el)) {
+        var controls = el.getAttribute ? String(el.getAttribute('aria-controls') || '').trim() : '';
+        if (controls) {
+          var ctrlIds = controls.split(/\s+/);
+          for (var c = 0; c < ctrlIds.length; c++) {
+            var panel = document.getElementById(ctrlIds[c]);
+            if (!panel || !root.contains(panel)) continue;
+            if (isInsideExcluded(panel, stopBoundary)) continue;
+            if (isInsideHiddenDialogTabpanelOrCart(panel, modalScope)) continue;
+            var rawPanel = (isVisible(panel) && !isInsideHiddenOrCartContainer(panel, modalScope))
+              ? extractVisibleText(panel, modalScope)
+              : String(panel.textContent || '');
+            var ctxt = clean(rawPanel.split(stopRe)[0]);
+            if (ctxt.length >= 12 && ctxt.length < 2500 && !NON_TITLE_RE.test(ctxt)) return ctxt;
+          }
+        }
+      }
+
       var sib = el.nextElementSibling;
       for (var k = 0; k < 3 && sib; k++, sib = sib.nextElementSibling) {
-        if (isInsideExcluded(sib, modalScope || document.body)) continue;
-        var stxt = clean(String(sib.textContent || '').split(stopRe)[0]);
+        if (isInsideExcluded(sib, stopBoundary)) continue;
+        var sibVisible = isVisible(sib) && !isInsideHiddenOrCartContainer(sib, modalScope);
+        var sibControlled = !sibVisible && isControlledDisclosurePanel(el, sib) && !isInsideHiddenDialogTabpanelOrCart(sib, modalScope);
+        if (!sibVisible && !sibControlled) continue;
+        var rawSib = sibVisible ? extractVisibleText(sib, modalScope) : String(sib.textContent || '');
+        var stxt = clean(rawSib.split(stopRe)[0]);
         if (stxt.length >= 12 && stxt.length < 2500 && !NON_TITLE_RE.test(stxt)) return stxt;
       }
-      var ptxt = clean(String(el.parentElement ? el.parentElement.textContent : '').replace(/^ingredients\s*:?\s*/i, '').split(stopRe)[0]);
-      if (ptxt.length >= 12 && ptxt.length < 2500 && !NON_TITLE_RE.test(ptxt)) return ptxt;
+
+      var parentEl = el.parentElement;
+      if (
+        parentEl &&
+        isVisible(parentEl) &&
+        !isInsideExcluded(parentEl, stopBoundary) &&
+        !isInsideHiddenOrCartContainer(parentEl, modalScope)
+      ) {
+        var ptxt = clean(extractVisibleText(parentEl, modalScope).replace(/^ingredients\s*:?\s*/i, '').split(stopRe)[0]);
+        if (ptxt.length >= 12 && ptxt.length < 2500 && !NON_TITLE_RE.test(ptxt)) return ptxt;
+      }
     }
-    var rawText = (root.innerText || root.textContent || '');
-    var m = rawText.match(/\bIngredients\s*[:\n]\s*([^\n]{12,1200})/i);
+
+    var inlineNodes = root.querySelectorAll('p, div, span, li, dd');
+    for (var j = 0; j < inlineNodes.length; j++) {
+      var n = inlineNodes[j];
+      if (n.children.length !== 0) continue;
+      if (!isVisible(n) || isInsideExcluded(n, stopBoundary) || isInsideHiddenOrCartContainer(n, modalScope)) continue;
+      var ntxt = clean(n.textContent || '');
+      if (/^ingredients\s*:/i.test(ntxt)) {
+        var candInline = clean(ntxt.replace(/^ingredients\s*:\s*/i, '').split(stopRe)[0]);
+        if (candInline.length >= 12 && candInline.length < 2500 && !NON_TITLE_RE.test(candInline)) return candInline;
+      }
+    }
+
+    var visibleRootText = extractVisibleText(root, modalScope);
+    var m = visibleRootText.match(/\bIngredients\s*[:\n]\s*([^\n]{12,1200})/i);
     if (m && m[1]) {
-      return clean(m[1].split(stopRe)[0]);
+      var candFallback = clean(m[1].split(stopRe)[0]);
+      if (candFallback.length >= 12 && candFallback.length < 2500 && !NON_TITLE_RE.test(candFallback)) return candFallback;
     }
     return '';
   }

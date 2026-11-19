@@ -5,14 +5,20 @@ import { classifyWholeFood, SUPPLEMENT_FORM } from "./nutrition";
  * ----------------------------------------------------------------
  * - `scoreIngredients`: pure additive & ingredient safety rubric (0–100).
  * - `scoreProductYuka`: 3-pillar Yuka-style rubric combining Nutritional Quality
- *   (0–60 pts, Nutri-Score A–E), Additive Safety (0–30 pts), and Certified Organic
- *   / Whole-Food Bonus (0–10 pts), with a 49/100 ceiling when any high-risk additive
- *   is present.
+ *   (0–60 pts, Nutri-Score A–E), Additive Safety (0–30 pts), and USDA Certified
+ *   Organic Bonus (0–10 pts — awarded strictly to products with explicit
+ *   product-level USDA Organic certification), with a 49/100 ceiling when any
+ *   high-risk additive is present.
  *
  * This file is dependency-free and isomorphic (server + browser).
  */
 
 export const RUBRIC_VERSION = "1.1.0";
+
+export const SCORE_TIER_THRESHOLDS = {
+  EXCELLENT_MIN: 75,
+  MEDIOCRE_MIN: 50,
+} as const;
 
 export type RiskLevel = "high" | "moderate" | "low";
 
@@ -887,8 +893,8 @@ const COMPILED = ADDITIVE_RULES.map((rule) => ({
 }));
 
 export function ratingFor(score: number): { rating: Rating; color: RatingColor } {
-  if (score >= 75) return { rating: "Excellent", color: "green" };
-  if (score >= 50) return { rating: "Mediocre", color: "yellow" };
+  if (score >= SCORE_TIER_THRESHOLDS.EXCELLENT_MIN) return { rating: "Excellent", color: "green" };
+  if (score >= SCORE_TIER_THRESHOLDS.MEDIOCRE_MIN) return { rating: "Mediocre", color: "yellow" };
   return { rating: "Poor", color: "red" };
 }
 

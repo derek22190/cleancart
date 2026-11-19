@@ -10,7 +10,12 @@
  */
 
 import offIndexRaw from "../data/off-us-photo-index.json";
-import { hasConflictingBrand, normalizeBrandPhrase } from "./brands";
+import {
+  buildCandidateBrandHaystack,
+  detectFirstBrand,
+  hasConflictingBrand,
+  normalizeBrandPhrase,
+} from "./brands";
 import { hasProductIdentityMatch, passesVariantGuard } from "./drinks-catalog";
 import { isPersistentKvConfigured, kvGet } from "./storage";
 
@@ -171,6 +176,60 @@ function passesIndexCandidateGuard(query: string, rawBrand: string, candBrand: s
   return hasProductIdentityMatch(query, fullCand);
 }
 
+const NON_SPECIFIC_BRAND_LABEL_RE =
+  /^(?:|usda|fresh(?:\s+produce|\s+meat(?:\s*&\s*eggs)?)?|whole\s+nuts.*|produce|organic|unbranded|scanned\s+product|category\s+estimate.*)$/i;
+
+function distinctiveBrandTokensOf(phrase: string): string[] {
+  return normalizeBrandPhrase(phrase)
+    .split(" ")
+    .filter((t) => t.length >= 2 && !GENERIC_BRAND_FILLER_TOKENS.has(t));
+}
+
+export function passesBarcodePhotoGuard(
+  rawTitle: string,
+  rawBrand: string,
+  candBrand: string,
+  candTitle: string,
+): boolean {
+  const title = (rawTitle || "").trim();
+  const brand = (rawBrand || "").trim();
+  if (!title && !brand) return true;
+
+  const fullCand = `${candBrand || ""} ${candTitle || ""}`.trim();
+  if (!fullCand) return false;
+
+  const combinedQuery =
+    brand && !title.toLowerCase().includes(brand.toLowerCase())
+      ? `${brand} ${title}`.trim()
+      : title || brand;
+
+  if (title && !passesVariantGuard(title, fullCand)) return false;
+  if (combinedQuery && hasConflictingBrand(combinedQuery, fullCand)) return false;
+  if (brand && hasConflictingBrand(brand, fullCand)) return false;
+
+  const usableRawBrand = brand && !NON_SPECIFIC_BRAND_LABEL_RE.test(brand) ? brand : "";
+  const requestedBrand = usableRawBrand || (title ? detectFirstBrand(title) : "");
+  const candBrandClean =
+    candBrand && !NON_SPECIFIC_BRAND_LABEL_RE.test(candBrand.trim()) ? candBrand.trim() : "";
+
+  if (requestedBrand && candBrandClean) {
+    const reqDirect = distinctiveBrandTokensOf(requestedBrand);
+    const candDirect = distinctiveBrandTokensOf(candBrandClean);
+    if (reqDirect.length > 0 && candDirect.length > 0) {
+      const reqHaystack = new Set(distinctiveBrandTokensOf(buildCandidateBrandHaystack(requestedBrand)));
+      const candHaystack = new Set(distinctiveBrandTokensOf(buildCandidateBrandHaystack(candBrandClean)));
+      const sharesBrandToken =
+        reqDirect.some((t) => candHaystack.has(t)) ||
+        candDirect.some((t) => reqHaystack.has(t));
+      if (!sharesBrandToken) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
 export function lookupOffPhotoIndexSync(params: {
   barcode?: string | null;
   title?: string | null;
@@ -181,11 +240,8 @@ export function lookupOffPhotoIndexSync(params: {
   const cleanCode = (params.barcode || "").replace(/\D/g, "");
   if (cleanCode.length >= 8) {
     const hit = byBarcode.get(cleanCode);
-    if (hit) {
-      const fullHitTitle = `${hit.brand} ${hit.title}`.trim();
-      if (!rawTitle || passesVariantGuard(rawTitle, fullHitTitle)) {
-        return { imageUrl: hit.imageUrl, barcode: hit.barcode };
-      }
+    if (hit && passesBarcodePhotoGuard(rawTitle, rawBrand, hit.brand, hit.title)) {
+      return { imageUrl: hit.imageUrl, barcode: hit.barcode };
     }
   }
 
@@ -231,11 +287,12 @@ export async function lookupOffPhotoIndex(params: {
     const cleanCode = (params.barcode || "").replace(/\D/g, "");
     if (cleanCode.length >= 8) {
       const kvCodeHit = await kvGet<{ u: string; b?: string; t?: string }>(`heybroc:offidx:bc:${cleanCode}`);
-      if (kvCodeHit?.u && kvCodeHit.u.startsWith("https://")) {
-        const kvFullTitle = `${kvCodeHit.b || ""} ${kvCodeHit.t || ""}`.trim();
-        if (!rawTitle || !kvFullTitle || passesVariantGuard(rawTitle, kvFullTitle)) {
-          return { imageUrl: kvCodeHit.u, barcode: cleanCode };
-        }
+      if (
+        kvCodeHit?.u &&
+        kvCodeHit.u.startsWith("https://") &&
+        passesBarcodePhotoGuard(rawTitle, rawBrand, kvCodeHit.b || "", kvCodeHit.t || "")
+      ) {
+        return { imageUrl: kvCodeHit.u, barcode: cleanCode };
       }
     }
     const combinedQuery =

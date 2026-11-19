@@ -23,7 +23,6 @@ import {
 import type { PlanId } from "@/lib/pricing";
 import { applyOrActivateReferral } from "@/lib/referrals";
 import { checkRateLimitAsync } from "@/lib/scan";
-import { kvGet } from "@/lib/storage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -382,42 +381,43 @@ export async function POST(request: Request) {
   });
 
   if (!sub.isTestPurchase && validCreatorCode && !validCreatorCode.startsWith("BROC")) {
-    const rcAlreadyCredited = Boolean(
-      await kvGet(`heybroc:creator:conv_lock:rc_orig:${stableOrderId}`).catch(
-        () => null
-      )
-    );
-    if (!rcAlreadyCredited) {
-      const verifyIp = getClientIp(request);
-      if (sub.isTrial) {
-        await recordStripeCreatorConversionOnce(
-          `google_trial:${stableOrderId}`,
-          validCreatorCode,
-          "trial",
-          undefined,
-          buyerEmail,
-          {
-            buyerUserId: authedUser?.userId,
-            buyerDeviceId: cleanDeviceId,
-            checkoutIp: verifyIp,
-          }
-        );
-      } else {
-        await recordStripeCreatorConversionOnce(
-          `google_order:${stableOrderId}`,
-          validCreatorCode,
-          plan === "monthly" ? "paid_monthly" : "paid_annual",
-          resolveGoogleGrossUsd(plan),
-          buyerEmail,
-          {
-            creditedTransactionId: stableOrderId,
-            subscriptionKey: `google_order:${stableOrderId}`,
-            buyerUserId: authedUser?.userId,
-            buyerDeviceId: cleanDeviceId,
-            checkoutIp: verifyIp,
-          }
-        );
-      }
+    const verifyIp = getClientIp(request);
+    if (sub.isTrial) {
+      await recordStripeCreatorConversionOnce(
+        `google_trial:${stableOrderId}`,
+        validCreatorCode,
+        "trial",
+        undefined,
+        buyerEmail,
+        {
+          additionalIdempotencyKeys: [
+            `google_trial:${stableOrderId}`,
+            `rc_trial:${stableOrderId}`,
+          ],
+          buyerUserId: authedUser?.userId,
+          buyerDeviceId: cleanDeviceId,
+          checkoutIp: verifyIp,
+        }
+      );
+    } else {
+      await recordStripeCreatorConversionOnce(
+        `google_order:${stableOrderId}`,
+        validCreatorCode,
+        plan === "monthly" ? "paid_monthly" : "paid_annual",
+        resolveGoogleGrossUsd(plan),
+        buyerEmail,
+        {
+          creditedTransactionId: stableOrderId,
+          subscriptionKey: `google_orig:${stableOrderId}`,
+          additionalSubscriptionKeys: [
+            `google_order:${stableOrderId}`,
+            `rc_orig:${stableOrderId}`,
+          ],
+          buyerUserId: authedUser?.userId,
+          buyerDeviceId: cleanDeviceId,
+          checkoutIp: verifyIp,
+        }
+      );
     }
   }
 

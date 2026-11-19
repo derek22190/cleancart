@@ -9,6 +9,7 @@ import {
   executeCreatorPayout,
   generateCreatorTokenNonce,
   getCreator,
+  getPendingCreatorPayout,
   listCreatorPayouts,
   listCreators,
   resetStats,
@@ -105,10 +106,35 @@ export function OPTIONS() {
 }
 
 async function snapshot() {
-  const [creators, recentPayouts] = await Promise.all([
+  const [rawCreators, recentPayouts] = await Promise.all([
     listCreators(),
     listCreatorPayouts(),
   ]);
+  const pendingList = await Promise.all(
+    rawCreators.map((c) => getPendingCreatorPayout(c.code))
+  );
+  const creators = rawCreators.map((c, idx) => {
+    const pending = pendingList[idx];
+    return {
+      ...c,
+      pendingPayout: pending
+        ? {
+            payoutId: pending.payoutId,
+            code: pending.code,
+            requestedAmount: pending.effectiveAmount,
+            effectiveAmount: pending.effectiveAmount,
+            method: pending.method,
+            destination: pending.destination,
+            status: pending.status,
+            createdAt: pending.createdAt,
+            lastError: pending.lastError,
+          }
+        : null,
+    };
+  });
+  const pendingPayouts = creators
+    .map((c) => c.pendingPayout)
+    .filter((p): p is NonNullable<typeof p> => p !== null);
   return {
     ok: true,
     pricing: {
@@ -119,8 +145,9 @@ async function snapshot() {
       ),
     },
     creators,
-    totals: totals(creators),
+    totals: totals(rawCreators),
     recentPayouts,
+    pendingPayouts,
   };
 }
 
@@ -637,16 +664,27 @@ export async function POST(request: Request) {
         break;
       case "track":
         if (
-          !body.event ||
-          ![
-            "click",
-            "trial",
-            "paid_annual",
-            "paid_monthly",
-            "checkout_annual",
-          ].includes(body.event)
+          body.event === "paid_annual" ||
+          body.event === "paid_monthly" ||
+          body.event === "checkout_annual"
         ) {
-          throw new Error("Invalid event.");
+          return NextResponse.json(
+            {
+              ok: false,
+              error:
+                "Paid conversions cannot be simulated via track; financial credits require verified billing webhooks.",
+            },
+            { status: 400, headers: CORS }
+          );
+        }
+        if (!body.event || !["click", "trial"].includes(body.event)) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: 'Invalid event. Only "click" and "trial" are allowed.',
+            },
+            { status: 400, headers: CORS }
+          );
         }
         activeCreator = await trackEvent(body.code || "", body.event);
         break;
@@ -669,6 +707,13 @@ export async function POST(request: Request) {
     const status = /invalid creator code|unknown creator code/i.test(msg)
       ? 404
       : 400;
+    if (isAdmin && body.action === "payout") {
+      const freshSnapshot = await snapshot().catch(() => ({}));
+      return NextResponse.json(
+        { ...freshSnapshot, ok: false, error: msg },
+        { status, headers: CORS }
+      );
+    }
     return NextResponse.json({ ok: false, error: msg }, { status, headers: CORS });
   }
 }

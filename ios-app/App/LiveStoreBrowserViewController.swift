@@ -164,11 +164,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     ]
 
     private static let allowedSsoDomains: [String] = [
-        "accounts.google.com",
-        "accounts.youtube.com",
         "gstatic.com",
         "googleusercontent.com",
-        "appleid.apple.com",
         "login.target.com",
         "identity.walmart.com",
         "paypal.com",
@@ -194,7 +191,10 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     private static let externalOAuthDomains: [String] = [
         "accounts.google.com",
         "accounts.youtube.com",
-        "appleid.apple.com"
+        "oauth2.googleapis.com",
+        "consent.google.com",
+        "appleid.apple.com",
+        "idmsa.apple.com"
     ]
 
     private static func isExternalOAuthHost(_ rawHost: String) -> Bool {
@@ -914,15 +914,98 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             return hits >= Math.min(2, tokA.length);
           }
 
+          function isInsideHiddenModalTabOrCart(el, scopeRoot) {
+            if (!el || el.nodeType !== 1 || !el.isConnected) return true;
+            var stopRoot = scopeRoot || document.body;
+            var isModalScoped = Boolean(scopeRoot && scopeRoot !== document.body);
+            var cur = el;
+            while (cur && cur.nodeType === 1) {
+              var role = String(cur.getAttribute('role') || '').toLowerCase();
+              if (role === 'tabpanel' && (cur.hasAttribute('hidden') || cur.getAttribute('aria-hidden') === 'true' || !isVisible(cur))) {
+                return true;
+              }
+              if (!isModalScoped) {
+                if (isCartDrawer(cur)) return true;
+                if ((role === 'dialog' || cur.getAttribute('aria-modal') === 'true') && !isVisible(cur)) {
+                  return true;
+                }
+              }
+              if (cur === stopRoot || cur === document.body) break;
+              cur = cur.parentElement;
+            }
+            return false;
+          }
+
+          function isInsideHiddenOrCartContainer(el, scopeRoot) {
+            if (!el || el.nodeType !== 1 || !el.isConnected) return true;
+            var stopRoot = scopeRoot || document.body;
+            var isModalScoped = Boolean(scopeRoot && scopeRoot !== document.body);
+            var cur = el;
+            while (cur && cur.nodeType === 1) {
+              if (cur.hasAttribute('hidden') || cur.getAttribute('aria-hidden') === 'true' || cur.hasAttribute('inert')) {
+                return true;
+              }
+              var st = window.getComputedStyle(cur);
+              if (st && (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) === 0)) {
+                return true;
+              }
+              var role = String(cur.getAttribute('role') || '').toLowerCase();
+              if (role === 'tabpanel' && (cur.hasAttribute('hidden') || cur.getAttribute('aria-hidden') === 'true' || !isVisible(cur))) {
+                return true;
+              }
+              if (!isModalScoped) {
+                if (isCartDrawer(cur)) return true;
+                if ((role === 'dialog' || cur.getAttribute('aria-modal') === 'true') && !isVisible(cur)) {
+                  return true;
+                }
+              }
+              if (cur === stopRoot || cur === document.body) break;
+              cur = cur.parentElement;
+            }
+            return false;
+          }
+
+          function isControlledDisclosurePanel(triggerEl, panelEl, scopeRoot) {
+            if (!triggerEl || !panelEl || !panelEl.isConnected) return false;
+            var tag = String(triggerEl.tagName || '').toUpperCase();
+            var isDisclosure =
+              tag === 'BUTTON' ||
+              tag === 'SUMMARY' ||
+              String(triggerEl.getAttribute('role') || '').toLowerCase() === 'button' ||
+              triggerEl.hasAttribute('aria-expanded') ||
+              triggerEl.hasAttribute('aria-controls');
+            if (!isDisclosure) return false;
+            var controlsRaw = String(triggerEl.getAttribute('aria-controls') || '').trim();
+            var panelId = String(panelEl.id || '').trim();
+            var linkedByControls = Boolean(controlsRaw && panelId && controlsRaw.split(/\\s+/).indexOf(panelId) !== -1);
+            var triggerDetails = triggerEl.closest ? triggerEl.closest('details') : null;
+            var panelDetails = panelEl.closest ? panelEl.closest('details') : null;
+            var sharedDetails = Boolean(triggerDetails && panelDetails && triggerDetails === panelDetails);
+            if (!linkedByControls && !sharedDetails) return false;
+            if (isInsideHiddenModalTabOrCart(panelEl, scopeRoot)) return false;
+            if (panelEl.parentElement && isInsideHiddenOrCartContainer(panelEl.parentElement, scopeRoot)) return false;
+            return true;
+          }
+
           function readIngredientsFromScope(modalScope) {
             var root = modalScope || document.querySelector('main') || document.body;
             if (!root) return '';
+            var scopeRoot = modalScope || document.body;
             var stopRe = /\\b(Allergens?|Contains\\s*:|Warnings?|Directions|Nutrition\\s+Facts|Distributed\\s+by|Legal\\s+Disclaimer)\\b/i;
 
-            // Check Amazon mobile collapsed Important Information block first if present
-            if (!modalScope) {
-              var amzInfo = document.querySelector('#importantInformation_feature_div, #nic-po-expander-content');
-              if (amzInfo) {
+            // Check Amazon mobile collapsed Important Information block first if present on Amazon
+            if (!modalScope && /(?:^|\\.)amazon\\.com$/i.test(String(location.hostname || ''))) {
+              var amzCandidates = document.querySelectorAll('#importantInformation_feature_div, #nic-po-expander-content');
+              for (var ai = 0; ai < amzCandidates.length; ai++) {
+                var amzInfo = amzCandidates[ai];
+                if (!amzInfo || !amzInfo.isConnected) continue;
+                if (isInsideExcluded(amzInfo, scopeRoot)) continue;
+                var amzExpander = amzInfo.closest ? amzInfo.closest('.a-expander-container') : null;
+                var amzCheckNode = amzExpander || amzInfo;
+                if (isInsideHiddenModalTabOrCart(amzInfo, scopeRoot)) continue;
+                if (isInsideHiddenOrCartContainer(amzCheckNode, scopeRoot)) continue;
+                var amzTrigger = amzExpander ? amzExpander.querySelector('a.a-expander-header, button[aria-expanded], [data-action*="expander"]') : null;
+                if (!isVisible(amzInfo) && !(amzExpander && isVisible(amzExpander) && amzTrigger && isVisible(amzTrigger))) continue;
                 var amzTxt = (amzInfo.textContent || '').replace(/\\s+/g, ' ');
                 var amzMatch = amzTxt.match(/\\bIngredients\\s*:?\\s*([\\s\\S]{12,1400})/i);
                 if (amzMatch && amzMatch[1]) {
@@ -932,26 +1015,42 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               }
             }
 
-            var labels = root.querySelectorAll('h2, h3, h4, dt, strong, b, span, div, p, button');
+            var labels = root.querySelectorAll('h2, h3, h4, dt, strong, b, span, div, p, button, summary');
             for (var i = 0; i < labels.length; i++) {
               var el = labels[i];
-              if (isInsideExcluded(el, modalScope || document.body)) continue;
+              if (!isVisible(el) || isInsideExcluded(el, scopeRoot) || isInsideHiddenOrCartContainer(el, scopeRoot)) continue;
               var own = el.children.length <= 2 ? clean(el.textContent) : '';
               if (!/^ingredients\\s*:?$/i.test(own)) continue;
               var sib = el.nextElementSibling;
               for (var k = 0; k < 3 && sib; k++, sib = sib.nextElementSibling) {
-                if (isInsideExcluded(sib, modalScope || document.body)) continue;
-                var stxt = clean(String(sib.textContent || '').split(stopRe)[0]);
+                if (isInsideExcluded(sib, scopeRoot)) continue;
+                var sibVisible = isVisible(sib) && !isInsideHiddenOrCartContainer(sib, scopeRoot);
+                var sibDisclosure = !sibVisible && isControlledDisclosurePanel(el, sib, scopeRoot);
+                if (!sibVisible && !sibDisclosure) continue;
+                var sibRaw = sibVisible ? String(sib.innerText || '') : String(sib.textContent || '');
+                var stxt = clean(sibRaw.split(stopRe)[0]);
                 if (stxt.length >= 12 && stxt.length < 2500 && !NON_TITLE_RE.test(stxt)) return stxt;
               }
-              var ptxt = clean(String(el.parentElement ? el.parentElement.textContent : '').replace(/^ingredients\\s*:?\\s*/i, '').split(stopRe)[0]);
-              if (ptxt.length >= 12 && ptxt.length < 2500 && !NON_TITLE_RE.test(ptxt)) return ptxt;
+              if (el.parentElement && isVisible(el.parentElement) && !isInsideHiddenOrCartContainer(el.parentElement, scopeRoot)) {
+                var ptxt = clean(String(el.parentElement.innerText || '').replace(/^ingredients\\s*:?\\s*/i, '').split(stopRe)[0]);
+                if (ptxt.length >= 12 && ptxt.length < 2500 && !NON_TITLE_RE.test(ptxt)) return ptxt;
+              }
             }
 
-            var rawText = (root.innerText || root.textContent || '');
-            var m = rawText.match(/\\bIngredients\\s*[:\\n]\\s*([^\\n]{12,1200})/i);
-            if (m && m[1]) {
-              return clean(m[1].split(stopRe)[0]);
+            var inlineCandidates = root.querySelectorAll('p, dd, li, div, section, article, span');
+            for (var j = 0; j < inlineCandidates.length; j++) {
+              var candEl = inlineCandidates[j];
+              if (candEl === root || !isVisible(candEl) || isInsideExcluded(candEl, scopeRoot) || isInsideHiddenOrCartContainer(candEl, scopeRoot)) continue;
+              if (candEl.querySelector && candEl.querySelector(EXCLUDED_CONTAINER_SEL)) continue;
+              var candRaw = String(candEl.innerText || '');
+              if (!candRaw || candRaw.length < 24 || candRaw.length > 4000) continue;
+              var m = candRaw.match(/\\bIngredients\\s*[:\\n]\\s*([^\\n]{12,1200})/i);
+              if (m && m[1]) {
+                var inlineTxt = clean(m[1].split(stopRe)[0]);
+                if (inlineTxt.length >= 12 && inlineTxt.length < 2500 && !NON_TITLE_RE.test(inlineTxt)) {
+                  return inlineTxt;
+                }
+              }
             }
             return '';
           }
@@ -3501,22 +3600,57 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         respond(.allow)
     }
 
+    private func topMostPresenter() -> UIViewController {
+        var top: UIViewController = self
+        while let presented = top.presentedViewController, !presented.isBeingDismissed {
+            top = presented
+        }
+        return top
+    }
+
     private func presentExternalOAuthPrompt(for url: URL, host: String) {
-        guard !isCleaningUp, presentedViewController == nil else { return }
+        guard !isCleaningUp else { return }
+        dismissAuthPopup()
+        let presenter = topMostPresenter()
+        if presenter is UIAlertController {
+            return
+        }
+
         let provider = host.contains("apple") ? "Apple" : "Google"
+        let storeName = activeStore.label
+        let targetUrl: URL
+        if let currentURL = storeWebView?.url,
+           currentURL.scheme?.lowercased() == "https",
+           let currentHost = currentURL.host?.lowercased(),
+           Self.isAllowedRetailerHost(currentHost) {
+            targetUrl = currentURL
+        } else if let homeURL = URL(string: activeStore.homeURL) {
+            targetUrl = homeURL
+        } else {
+            targetUrl = url
+        }
+
         let alert = UIAlertController(
             title: "Sign in with \(provider) in Safari",
-            message: "\(provider) requires your system browser for sign-in security. You can sign in using your store email & password right here in Live Shop, or open \(provider) Sign-In in Safari.",
+            message: "\(provider) blocks sign-in inside in-app browsers and cannot share sign-in cookies back into Live Shop. Sign in with your \(storeName) email & password right here in Live Shop, or open \(storeName) in Safari (where you can also use the HeyBroc Safari Extension).",
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "Open in Safari", style: .default) { [weak self] _ in
             guard let self = self, !self.isCleaningUp else { return }
-            let safariVC = SFSafariViewController(url: url)
-            safariVC.modalPresentationStyle = .pageSheet
-            self.present(safariVC, animated: true)
+            UIApplication.shared.open(targetUrl, options: [:], completionHandler: nil)
         })
         alert.addAction(UIAlertAction(title: "Use Store Email Instead", style: .cancel))
-        present(alert, animated: true)
+
+        if presenter.viewIfLoaded?.window != nil {
+            presenter.present(alert, animated: true)
+        } else if let presented = presentedViewController, !presented.isBeingDismissed {
+            presented.dismiss(animated: false) { [weak self] in
+                guard let self = self, !self.isCleaningUp else { return }
+                self.present(alert, animated: true)
+            }
+        } else {
+            present(alert, animated: true)
+        }
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
@@ -3566,6 +3700,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             if Self.isExternalOAuthHost(host) {
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self, !self.isCleaningUp else { return }
+                    self.dismissAuthPopup()
                     self.presentExternalOAuthPrompt(for: url, host: host)
                 }
                 return nil

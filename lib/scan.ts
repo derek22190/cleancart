@@ -4,7 +4,7 @@
 import "server-only";
 import type { ImageKind } from "./category-art";
 import { resolveProductMediaFields } from "./curated-product-photos";
-import { isEnglishIngredientText, lookupIngredients, type LookupResult } from "./lookup";
+import { isEnglishIngredientText, lookupIngredients, runWithLookupContext, type LookupResult } from "./lookup";
 import { lookupOffPhotoIndex } from "./off-photo-index";
 import {
   applyOrActivateReferral,
@@ -1151,11 +1151,20 @@ export interface BatchScanItemInput {
 export interface BatchScanResponse {
   ok: true;
   results: Record<string, ScanResponse | ScanError>;
+  truncated?: boolean;
+  maxItems?: number;
+  omittedIds?: string[];
+}
+
+export interface RunBatchScanOptions {
+  resolveVerifiedAccountPro?: () => Promise<boolean>;
+  wallBudgetMs?: number;
 }
 
 const VALID_BATCH_ITEM_ID_RE = /^(?!^(?:__proto__|constructor|prototype)$)[A-Za-z0-9_-]{1,40}$/i;
 export const MAX_BATCH_SCAN_ITEMS = 12;
 const BATCH_ENTITLEMENT_TIMEOUT_MS = 900;
+const BATCH_WALL_BUDGET_MS = 3800;
 
 export const NON_FOOD_GRID_ITEM_RE =
   /\b(?:paper\s+towels?|toilet\s+(?:paper|tissue)|bath\s+tissue|facial\s+tissues?|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|parchment\s+paper|plastic\s+wrap|paper\s+plates?|laundry\s+(?:detergent|pods?|sanitizer)|fabric\s+softener|dryer\s+sheets?|dish\s+(?:soap|detergent)|dishwasher\s+(?:pods?|pac?ks?|detergent)|disinfecting\s+wipes?|bleach|all[- ]purpose\s+cleaner|glass\s+cleaner|toilet\s+bowl\s+cleaner|air\s+freshener|diapers?|pull[- ]ups?|baby\s+wipes?|cat\s+litter|dog\s+(?:food|treats?|pads?)|cat\s+(?:food|treats?)|pet\s+food|alkaline\s+batteries|aa\s+batteries|aaa\s+batteries|motor\s+oil|windshield\s+washer|light\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|body\s+wash|deodorant|antiperspirant|razor\s+blades?|shaving\s+cream|sunscreen|tampons?|maxi\s+pads?|pantiliners?)\b/i;
@@ -1190,13 +1199,16 @@ function stripGatedSwapLinks(s: SwapResult): SwapResult {
 }
 
 /**
- * Scores up to 8 visible store product cards in a single request for On-Photo Score Badges.
- * Resolves device entitlement once per batch (with a 900ms fail-closed swap-link timeout) and sets
- * skipAnalytics: true so passive grid scrolling never inflates single-scan funnel events or consumes free swap unlocks.
+ * Scores up to 12 visible store product cards in a single request for On-Photo Score Badges.
+ * Resolves bearer Pro status and device entitlement concurrently with all deduplicated item workers
+ * (under a 900ms fail-closed entitlement ceiling and a 3800ms aggregate batch wall-clock deadline),
+ * and sets skipAnalytics: true so passive grid scrolling never inflates single-scan funnel events
+ * or consumes free swap unlocks.
  */
 export async function runBatchScan(
   baseReq: ScanRequest,
   rawItems: BatchScanItemInput[],
+  options?: RunBatchScanOptions,
 ): Promise<BatchScanResponse> {
   const results: Record<string, ScanResponse | ScanError> = Object.create(null);
   if (!Array.isArray(rawItems) || rawItems.length === 0) {
@@ -1204,6 +1216,7 @@ export async function runBatchScan(
   }
 
   const validItems: Array<{ id: string; productTitle?: string; barcode?: string; normKey: string }> = [];
+  const omittedIds: string[] = [];
   for (const raw of rawItems) {
     if (!raw || typeof raw !== "object") continue;
     const id = typeof raw.id === "string" ? raw.id.trim() : "";
@@ -1211,6 +1224,10 @@ export async function runBatchScan(
     const productTitle = typeof raw.productTitle === "string" ? raw.productTitle.trim().slice(0, 300) : "";
     const barcode = typeof raw.barcode === "string" ? raw.barcode.replace(/\D/g, "").slice(0, 32) : "";
     if (!productTitle && !barcode) continue;
+    if (validItems.length >= MAX_BATCH_SCAN_ITEMS) {
+      omittedIds.push(id);
+      continue;
+    }
     const normKey = `${productTitle.toLowerCase().replace(/\s+/g, " ")}|${barcode}`;
     validItems.push({
       id,
@@ -1218,12 +1235,17 @@ export async function runBatchScan(
       barcode: barcode || undefined,
       normKey,
     });
-    if (validItems.length >= MAX_BATCH_SCAN_ITEMS) break;
   }
 
   if (validItems.length === 0) {
     return { ok: true, results };
   }
+
+  const wallBudgetMs =
+    typeof options?.wallBudgetMs === "number" && Number.isFinite(options.wallBudgetMs) && options.wallBudgetMs > 0
+      ? options.wallBudgetMs
+      : BATCH_WALL_BUDGET_MS;
+  const batchDeadlineMs = Date.now() + wallBudgetMs;
 
   const rawDev = typeof baseReq.deviceId === "string" ? baseReq.deviceId.trim() : "";
   const isAnonDevice =
@@ -1236,52 +1258,74 @@ export async function runBatchScan(
     deviceId: effectiveDeviceId,
   });
 
+  const entitlementBudgetMs = Math.min(BATCH_ENTITLEMENT_TIMEOUT_MS, Math.max(1, batchDeadlineMs - Date.now()));
+  let verifiedAccountPro = Boolean(baseReq.verifiedAccountPro);
   let entitlement: EntitlementSummary | undefined;
   let entitlementTimedOut = false;
-  if (!isAnonDevice) {
-    const loadEntitlement = async (): Promise<{ ok: true; value?: EntitlementSummary }> => {
-      try {
-        if (baseReq.referredByCode) {
-          const { device } = await applyOrActivateReferral({
-            deviceId: effectiveDeviceId,
-            referralCode: baseReq.referredByCode,
-            activateNow: false,
-            deviceSecret: baseReq.deviceSecret,
-          });
-          return { ok: true, value: await serializeEntitlementWithPaidLookup(device) };
+
+  const bearerAuthTask =
+    !verifiedAccountPro && options?.resolveVerifiedAccountPro
+      ? (async () => {
+          let authTimer: ReturnType<typeof setTimeout> | undefined;
+          const resolver = options.resolveVerifiedAccountPro!;
+          const safeResolve = Promise.resolve()
+            .then(() => resolver())
+            .then((v) => Boolean(v))
+            .catch(() => false);
+          try {
+            const pro = await Promise.race([
+              safeResolve,
+              new Promise<boolean>((resolve) => {
+                authTimer = setTimeout(() => resolve(false), entitlementBudgetMs);
+              }),
+            ]);
+            if (pro) verifiedAccountPro = true;
+          } finally {
+            if (authTimer !== undefined) clearTimeout(authTimer);
+          }
+        })()
+      : Promise.resolve();
+
+  const deviceEntitlementTask = !isAnonDevice
+    ? (async () => {
+        const loadEntitlement = async (): Promise<{ ok: true; value?: EntitlementSummary }> => {
+          try {
+            if (baseReq.referredByCode) {
+              const { device } = await applyOrActivateReferral({
+                deviceId: effectiveDeviceId,
+                referralCode: baseReq.referredByCode,
+                activateNow: false,
+                deviceSecret: baseReq.deviceSecret,
+              });
+              return { ok: true, value: await serializeEntitlementWithPaidLookup(device) };
+            }
+            const device = await getOrCreateDevice(effectiveDeviceId, baseReq.deviceSecret);
+            return { ok: true, value: await serializeEntitlementWithPaidLookup(device) };
+          } catch {
+            return { ok: true, value: undefined };
+          }
+        };
+        let timerId: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const raced = await Promise.race([
+            loadEntitlement(),
+            new Promise<{ ok: false }>((resolve) => {
+              timerId = setTimeout(() => resolve({ ok: false }), entitlementBudgetMs);
+            }),
+          ]);
+          if (raced.ok) {
+            entitlement = raced.value;
+          } else {
+            entitlementTimedOut = true;
+            entitlement = undefined;
+          }
+        } finally {
+          if (timerId !== undefined) clearTimeout(timerId);
         }
-        const device = await getOrCreateDevice(effectiveDeviceId, baseReq.deviceSecret);
-        return { ok: true, value: await serializeEntitlementWithPaidLookup(device) };
-      } catch {
-        return { ok: true, value: undefined };
-      }
-    };
-    let timerId: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const raced = await Promise.race([
-        loadEntitlement(),
-        new Promise<{ ok: false }>((resolve) => {
-          timerId = setTimeout(() => resolve({ ok: false }), BATCH_ENTITLEMENT_TIMEOUT_MS);
-        }),
-      ]);
-      if (raced.ok) {
-        entitlement = raced.value;
-      } else {
-        entitlementTimedOut = true;
-        entitlement = undefined;
-      }
-    } finally {
-      if (timerId !== undefined) clearTimeout(timerId);
-    }
-  }
-  if (baseReq.verifiedAccountPro && entitlement) {
-    entitlement = { ...entitlement, isProActive: true };
-  }
-  const canAccessSwapLinks = entitlementTimedOut
-    ? Boolean(baseReq.verifiedAccountPro)
-    : isAnonDevice
-      ? true
-      : Boolean(baseReq.verifiedAccountPro || (entitlement && (entitlement.isProActive || entitlement.swapsRemaining > 0)));
+      })()
+    : Promise.resolve();
+
+  const authAndEntitlementTask = Promise.all([bearerAuthTask, deviceEntitlementTask]);
 
   const uniqueByNorm = new Map<string, { productTitle?: string; barcode?: string }>();
   for (const it of validItems) {
@@ -1292,7 +1336,7 @@ export async function runBatchScan(
 
   const resolvedByNorm = new Map<string, ScanResponse | ScanError>();
   const entries = Array.from(uniqueByNorm.entries());
-  const CONCURRENCY = 5;
+  const CONCURRENCY = MAX_BATCH_SCAN_ITEMS;
   let cursor = 0;
 
   const workers = Array.from({ length: Math.min(CONCURRENCY, entries.length) }, async () => {
@@ -1307,34 +1351,63 @@ export async function runBatchScan(
         });
         continue;
       }
-      try {
-        const single = await runScan({
-          ...baseReq,
-          productTitle: target.productTitle,
-          barcode: target.barcode,
-          rawIngredients: undefined,
-          rawText: undefined,
-          deviceId: undefined,
-          clientPlatform,
-          format: "json",
-          skipAnalytics: true,
-          isBatch: true,
+      const remainingMs = batchDeadlineMs - Date.now();
+      if (remainingMs <= 0) {
+        resolvedByNorm.set(normKey, {
+          ok: false,
+          status: 504,
+          error: "Batch lookup timed out.",
         });
-        if (single.ok) {
-          const gated: ScanResponse = {
-            ...single,
-            entitlement,
-            ...(canAccessSwapLinks
-              ? {}
-              : {
-                  swap: single.swap ? stripGatedSwapLinks(single.swap) : null,
-                  ...(single.storeBrandSwap ? { storeBrandSwap: stripGatedSwapLinks(single.storeBrandSwap) } : {}),
-                  ...(single.swapCandidates
-                    ? { swapCandidates: single.swapCandidates.map(stripGatedSwapLinks) }
-                    : {}),
-                }),
-          };
-          resolvedByNorm.set(normKey, gated);
+        continue;
+      }
+      let itemTimer: ReturnType<typeof setTimeout> | undefined;
+      let deadlineExceeded = false;
+      try {
+        const scanPromise: Promise<ScanResponse | ScanError> = runWithLookupContext(
+          {
+            isBatch: true,
+            deadlineMs: batchDeadlineMs,
+            onDeadlineExceeded: () => {
+              deadlineExceeded = true;
+            },
+          },
+          () =>
+            runScan({
+              ...baseReq,
+              productTitle: target.productTitle,
+              barcode: target.barcode,
+              rawIngredients: undefined,
+              rawText: undefined,
+              deviceId: undefined,
+              clientPlatform,
+              format: "json",
+              skipAnalytics: true,
+              isBatch: true,
+            }),
+        ).catch(
+          (): ScanError => ({
+            ok: false,
+            status: 500,
+            error: "Batch item scan failed.",
+          }),
+        );
+        const timeoutPromise = new Promise<ScanError>((resolve) => {
+          itemTimer = setTimeout(() => {
+            deadlineExceeded = true;
+            resolve({
+              ok: false,
+              status: 504,
+              error: "Batch lookup timed out.",
+            });
+          }, Math.max(1, remainingMs));
+        });
+        const single = await Promise.race([scanPromise, timeoutPromise]);
+        if (!single.ok && deadlineExceeded && single.status === 404) {
+          resolvedByNorm.set(normKey, {
+            ok: false,
+            status: 504,
+            error: "Batch lookup timed out.",
+          });
         } else {
           resolvedByNorm.set(normKey, single);
         }
@@ -1344,19 +1417,48 @@ export async function runBatchScan(
           status: 500,
           error: "Batch item scan failed.",
         });
+      } finally {
+        if (itemTimer !== undefined) clearTimeout(itemTimer);
       }
     }
   });
 
-  await Promise.all(workers);
+  await Promise.all([authAndEntitlementTask, Promise.all(workers)]);
+
+  if (verifiedAccountPro && entitlement) {
+    entitlement = { ...entitlement, isProActive: true };
+  }
+  const canAccessSwapLinks = entitlementTimedOut
+    ? verifiedAccountPro
+    : isAnonDevice
+      ? true
+      : Boolean(verifiedAccountPro || (entitlement && (entitlement.isProActive || entitlement.swapsRemaining > 0)));
 
   for (const it of validItems) {
     const out = resolvedByNorm.get(it.normKey);
-    if (out) {
+    if (!out) continue;
+    if (out.ok) {
+      results[it.id] = {
+        ...out,
+        entitlement,
+        ...(canAccessSwapLinks
+          ? {}
+          : {
+              swap: out.swap ? stripGatedSwapLinks(out.swap) : null,
+              ...(out.storeBrandSwap ? { storeBrandSwap: stripGatedSwapLinks(out.storeBrandSwap) } : {}),
+              ...(out.swapCandidates
+                ? { swapCandidates: out.swapCandidates.map(stripGatedSwapLinks) }
+                : {}),
+            }),
+      };
+    } else {
       results[it.id] = out;
     }
   }
 
-  return { ok: true, results };
+  return omittedIds.length > 0
+    ? { ok: true, results, truncated: true, maxItems: MAX_BATCH_SCAN_ITEMS, omittedIds }
+    : { ok: true, results };
 }
+
 

@@ -23,7 +23,7 @@ import {
 } from "@/lib/influencers";
 import { PRICING, TERMS_VERSION, type PlanId } from "@/lib/pricing";
 import { applyOrActivateReferral } from "@/lib/referrals";
-import { kvGet, kvSet } from "@/lib/storage";
+import { kvDel, kvEvalLua, kvGet, kvSet } from "@/lib/storage";
 import { verifyStripeWebhookSignature } from "@/lib/stripe-webhook";
 
 interface StripeEventPayload {
@@ -924,6 +924,10 @@ export async function POST(req: Request) {
               {
                 creditedInvoiceId: invoiceId || undefined,
                 subscriptionKey: `stripe_sub:${subscriptionId}`,
+                additionalSubscriptionKeys:
+                  prevSubId && prevSubId !== subscriptionId
+                    ? [`stripe_sub:${prevSubId}`]
+                    : [],
                 buyerUserId: userId,
                 buyerDeviceId: invoiceDeviceId,
                 checkoutIp: metadata.checkout_ip,
@@ -1217,11 +1221,56 @@ export async function POST(req: Request) {
             }
           } else {
             const chargeRefundTrackerKey = `heybroc:charge:refunded:${chargeId}`;
-            const prevRefundedCents =
-              (await kvGet<number>(chargeRefundTrackerKey)) ?? 0;
-            const deltaCents = isDispute
-              ? amountRefundedCents
-              : Math.max(0, amountRefundedCents - prevRefundedCents);
+            const trackerTtlSec = 400 * 24 * 60 * 60;
+            const incomingRefundedCents = Math.max(
+              0,
+              Math.round(amountRefundedCents)
+            );
+            let deltaCents = 0;
+            let prevRefundedCents = 0;
+
+            if (isDispute) {
+              deltaCents = incomingRefundedCents;
+            } else {
+              const advanceRefundTrackerLua = [
+                'local raw = redis.call("GET", KEYS[1])',
+                "local prev = 0",
+                'if raw and type(raw) == "string" and raw ~= "" then',
+                "  prev = math.floor((tonumber(raw) or 0) + 0.5)",
+                "end",
+                "local incoming = math.floor((tonumber(ARGV[1]) or 0) + 0.5)",
+                "if incoming <= prev then",
+                "  return {0, prev}",
+                "end",
+                "local delta = incoming - prev",
+                'redis.call("SET", KEYS[1], string.format("%d", incoming), "EX", tonumber(ARGV[2]))',
+                "return {delta, prev}",
+              ].join("\n");
+
+              const trackerRes = await kvEvalLua<[number, number]>(
+                advanceRefundTrackerLua,
+                [chargeRefundTrackerKey],
+                [incomingRefundedCents, trackerTtlSec],
+                async () => {
+                  const prev = Math.round(
+                    (await kvGet<number>(chargeRefundTrackerKey)) ?? 0
+                  );
+                  if (incomingRefundedCents <= prev) {
+                    return [0, prev];
+                  }
+                  const delta = incomingRefundedCents - prev;
+                  await kvSet(
+                    chargeRefundTrackerKey,
+                    incomingRefundedCents,
+                    trackerTtlSec
+                  );
+                  return [delta, prev];
+                }
+              );
+              deltaCents = Number(trackerRes?.[0] ?? 0);
+              prevRefundedCents = Number(trackerRes?.[1] ?? 0);
+            }
+
             if (deltaCents > 0) {
               const deltaIsFullRefund =
                 isDispute ||
@@ -1230,27 +1279,64 @@ export async function POST(req: Request) {
                 amountCapturedCents > 0
                   ? Math.min(1, deltaCents / amountCapturedCents)
                   : undefined;
-              const recorded = await recordStripeCreatorRefundOnce(
-                `${isDispute ? "dispute" : "refund"}:${chargeId}:${event.id || amountRefundedCents}`,
-                creatorCode,
-                plan,
-                deltaCents / 100,
-                deltaIsFullRefund ? true : undefined,
-                {
-                  buyerEmail,
-                  originalConversionKey,
-                  fallbackConversionKeys,
-                  refundedInvoiceId: invoiceIdForClawback || undefined,
-                  otoOffer: otoOfferMeta,
-                  refundRatio,
-                }
-              );
-              if (recorded && !isDispute) {
-                await kvSet(
-                  chargeRefundTrackerKey,
-                  Math.max(prevRefundedCents, amountRefundedCents),
-                  400 * 24 * 60 * 60
+              try {
+                await recordStripeCreatorRefundOnce(
+                  `${isDispute ? "dispute" : "refund"}:${chargeId}:${event.id || amountRefundedCents}`,
+                  creatorCode,
+                  plan,
+                  deltaCents / 100,
+                  deltaIsFullRefund ? true : undefined,
+                  {
+                    buyerEmail,
+                    originalConversionKey,
+                    fallbackConversionKeys,
+                    refundedInvoiceId: invoiceIdForClawback || undefined,
+                    otoOffer: otoOfferMeta,
+                    refundRatio,
+                  }
                 );
+              } catch (refundErr) {
+                if (!isDispute) {
+                  const rollbackTrackerLua = [
+                    'local raw = redis.call("GET", KEYS[1])',
+                    "local cur = raw and math.floor((tonumber(raw) or 0) + 0.5) or 0",
+                    "local expected = math.floor((tonumber(ARGV[1]) or 0) + 0.5)",
+                    "local prev = math.floor((tonumber(ARGV[2]) or 0) + 0.5)",
+                    "if cur == expected then",
+                    "  if prev <= 0 then",
+                    '    redis.call("DEL", KEYS[1])',
+                    "  else",
+                    '    redis.call("SET", KEYS[1], string.format("%d", prev), "EX", tonumber(ARGV[3]))',
+                    "  end",
+                    "  return 1",
+                    "end",
+                    "return 0",
+                  ].join("\n");
+                  await kvEvalLua<number>(
+                    rollbackTrackerLua,
+                    [chargeRefundTrackerKey],
+                    [incomingRefundedCents, prevRefundedCents, trackerTtlSec],
+                    async () => {
+                      const cur = Math.round(
+                        (await kvGet<number>(chargeRefundTrackerKey)) ?? 0
+                      );
+                      if (cur === incomingRefundedCents) {
+                        if (prevRefundedCents <= 0) {
+                          await kvDel(chargeRefundTrackerKey);
+                        } else {
+                          await kvSet(
+                            chargeRefundTrackerKey,
+                            prevRefundedCents,
+                            trackerTtlSec
+                          );
+                        }
+                        return 1;
+                      }
+                      return 0;
+                    }
+                  ).catch(() => {});
+                }
+                throw refundErr;
               }
             }
           }

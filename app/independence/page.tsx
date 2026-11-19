@@ -12,6 +12,22 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "https://www.heybroc.com/independence",
   },
+  openGraph: {
+    type: "website",
+    url: "https://www.heybroc.com/independence",
+    siteName: "HeyBroc",
+    title: "100% Family Owned & Unbiased Grocery Scoring",
+    description:
+      "HeyBroc is 100% family-owned and fiercely independent. Zero Big Food ties, zero in-app ads, strict family data privacy, and transparent shopper-aligned funding.",
+    images: ["/og-banner.png"],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "100% Family Owned & Unbiased Grocery Scoring",
+    description:
+      "HeyBroc is 100% family-owned and fiercely independent. Zero Big Food ties, zero in-app ads, strict family data privacy, and transparent shopper-aligned funding.",
+    images: ["/og-banner.png"],
+  },
 };
 
 const INDEPENDENCE_FAQS = [

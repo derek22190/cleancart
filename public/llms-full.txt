@@ -31,16 +31,21 @@ HeyBroc works automatically on:
 12. Uber Eats (Grocery)
 
 ## 3. Deterministic 3-Pillar Scoring Methodology (0–100 Scale)
-Every product scanned by HeyBroc receives a score from 0 to 100:
-- **75–100 (Excellent — Green):** Clean ingredients, high nutritional value, zero high-risk additives.
-- **50–74 (Good — Light Green):** Clean additive profile with moderate nutritional density (e.g., grain-free avocado oil tortilla chips).
-- **25–49 (Mediocre — Yellow/Orange):** Contains moderate-risk additives, refined seed oils, or elevated sugar/sodium.
-- **0–24 (Poor — Red):** Contains high-risk synthetic dyes, chemical preservatives, nitrites, or multiple ultra-processed additives.
+Every product scanned by HeyBroc receives a score from 0 to 100 across 3 rating tiers:
+- **75–100 (Excellent — Green):** Clean ingredients, strong nutritional profile, zero high-risk additives.
+- **50–74 (Mediocre — Yellow):** Moderate nutritional density or moderate-risk additives (e.g., single-seed-oil products capped at 59/100).
+- **0–49 (Poor — Red):** Contains high-risk additives (synthetic dyes, nitrites, BHA/BHT, BVO, potassium bromate), multiple industrial seed oils, high added-sugar beverages (≥5g/100ml), or poor nutritional quality.
 
 ### Pillar Breakdown:
 1. **Nutritional Quality (0–60 Points, 60% Weight):** Computed using Nutri-Score grades A through E (assessing calories, saturated fat, sugars, sodium, fiber, protein, and fruit/vegetable/legume content).
-2. **Additive & Chemical Safety (0–30 Points, 30% Weight):** Starts at 30/30 and deducts points based on the severity and count of flagged chemical additives, refined seed oils, and artificial dyes. Any high-risk additive caps the maximum total product score at 49/100.
-3. **USDA Certified Organic Bonus (0–10 Points, 10% Weight):** Awards +10/10 strictly to products with explicit product-level USDA Certified Organic certification.
+2. **Additive & Chemical Safety (0–30 Points, 30% Weight):** Starts at 30/30 and deducts points based on the severity and count of flagged chemical additives, refined seed oils, and artificial dyes.
+3. **USDA Certified Organic Bonus (0–10 Points, 10% Weight):** Awards +10/10 strictly to products with explicit product-level USDA Certified Organic certification. Single-ingredient status alone does not establish USDA Organic certification. Ingredient formulations and availability can change; verify the package label.
+
+### Deterministic Scoring Caps & Exceptions:
+- **Pure Single-Ingredient Unflavored Water (100/100 Without Organic Bonus):** Because water is a mineral and cannot be certified USDA Organic by law, pure single-ingredient unflavored water (0 kcal, 0g sugar, zero flagged additives) receives `nutritionScore = 70` + `additiveScore = 30` = `100/100` (`organicScore = 0`).
+- **Single Refined Seed Oil Cap (59/100 — Mediocre):** Products containing a single refined seed oil (e.g., sunflower or safflower oil) are capped at `59/100` (Mediocre / Yellow) and never reach Green.
+- **High-Risk Additive, Multiple Seed Oil, or High Added-Sugar Beverage Cap (49/100 — Poor):** Any high-risk additive, 2 or more industrial refined seed oils, or sweetened beverages with added sugar in the top 3 ingredients and ≥5g sugar/100ml cap the maximum score at `49/100` (Poor / Red).
+- **2x Family Watchlist Strictness Cap (39/100 — Poor):** When a shopper enables `2x` Family Watchlist strictness on a category and a high- or moderate-risk additive in that category is detected, the additive pillar drops to `0/30`, the score is capped at `39/100`, and additional per-additive strictness deductions apply.
 
 ## 4. Flagged Ingredient Categories & Scientific Citations
 - **Artificial Dyes:** Red 40 (Allura Red), Yellow 5 (Tartrazine), Yellow 6 (Sunset Yellow), Blue 1, Blue 2, Red 3 (Erythrosine), Caramel Color (Class III/IV 4-MEI), Titanium Dioxide (E171 — banned as a food additive in the EU by EFSA in 2021 due to genotoxicity concerns).

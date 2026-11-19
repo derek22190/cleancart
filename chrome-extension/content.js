@@ -1431,14 +1431,282 @@
     return "";
   }
 
+  const CART_DRAWER_META_RE =
+    /\b(cart[-_ ]?(?:drawer|modal|panel|flyout|sidebar)|shopping[-_ ]?cart|mini[-_ ]?cart|bag[-_ ]?drawer)\b/i;
+
+  function isCartDrawerNode(node) {
+    if (!node || node.nodeType !== 1) return false;
+    const meta = `${node.id || ""} ${node.getAttribute?.("data-testid") || ""} ${node.getAttribute?.("aria-label") || ""} ${typeof node.className === "string" ? node.className : ""}`;
+    if (CART_DRAWER_META_RE.test(meta)) return true;
+    const role = String(node.getAttribute?.("role") || "").toLowerCase();
+    const isContainer =
+      role === "dialog" ||
+      String(node.getAttribute?.("aria-modal") || "").toLowerCase() === "true" ||
+      /^(ASIDE|SECTION)$/i.test(node.tagName || "");
+    return isContainer ? isCartDrawerElement(node) : false;
+  }
+
+  function isInactiveTabPanel(node) {
+    if (!node || node.nodeType !== 1) return false;
+    if (String(node.getAttribute?.("role") || "").toLowerCase() !== "tabpanel") return false;
+    if (
+      node.hidden === true ||
+      node.hasAttribute?.("hidden") ||
+      node.hasAttribute?.("inert") ||
+      String(node.getAttribute?.("aria-hidden") || "").toLowerCase() === "true"
+    ) {
+      return true;
+    }
+    const dataState = String(node.getAttribute?.("data-state") || "").toLowerCase();
+    if (dataState === "inactive" || dataState === "closed") return true;
+    if (String(node.getAttribute?.("aria-selected") || "").toLowerCase() === "false") return true;
+    if (String(node.getAttribute?.("aria-expanded") || "").toLowerCase() === "false") return true;
+    const id = String(node.id || "").trim();
+    if (id && /^[A-Za-z0-9_:-]+$/.test(id)) {
+      const tab = document.querySelector(`[role="tab"][aria-controls="${id}"]`);
+      if (tab && String(tab.getAttribute?.("aria-selected") || "").toLowerCase() === "false") return true;
+    }
+    const labelledBy = String(node.getAttribute?.("aria-labelledby") || "").trim();
+    if (labelledBy) {
+      for (const lblId of labelledBy.split(/\s+/)) {
+        const lblEl = document.getElementById(lblId);
+        if (
+          lblEl &&
+          String(lblEl.getAttribute?.("role") || "").toLowerCase() === "tab" &&
+          String(lblEl.getAttribute?.("aria-selected") || "").toLowerCase() === "false"
+        ) {
+          return true;
+        }
+      }
+    }
+    return !isElementVisible(node);
+  }
+
+  function isInsideHiddenOrCartContainer(el, scopeRoot) {
+    if (!el || el.nodeType !== 1) return true;
+    const isModalScope = Boolean(scopeRoot && scopeRoot !== document.body && scopeRoot !== document.documentElement);
+    let cur = el;
+    while (cur && cur.nodeType === 1 && cur !== document.body && cur !== document.documentElement) {
+      if (cur.hidden === true || cur.hasAttribute?.("hidden") || cur.hasAttribute?.("inert")) {
+        return true;
+      }
+      if (String(cur.getAttribute?.("aria-hidden") || "").toLowerCase() === "true") {
+        return true;
+      }
+      const st = window.getComputedStyle ? window.getComputedStyle(cur) : null;
+      if (st) {
+        if (st.display === "none" || st.visibility === "hidden") return true;
+        if (st.opacity === "0" || (st.opacity !== "" && parseFloat(st.opacity) === 0)) return true;
+      }
+      if (isInactiveTabPanel(cur)) return true;
+      const role = String(cur.getAttribute?.("role") || "").toLowerCase();
+      const isDialog =
+        role === "dialog" || String(cur.getAttribute?.("aria-modal") || "").toLowerCase() === "true";
+      if (!isModalScope) {
+        if (isCartDrawerNode(cur)) return true;
+        if (isDialog && !isElementVisible(cur)) return true;
+      } else if (cur !== scopeRoot) {
+        if (isCartDrawerNode(cur)) return true;
+        if (isDialog && !isElementVisible(cur)) return true;
+      }
+      if (isModalScope && cur === scopeRoot) break;
+      cur = cur.parentElement;
+    }
+    return false;
+  }
+
+  function isInsideHiddenDialogTabpanelOrCart(el, scopeRoot) {
+    if (!el || el.nodeType !== 1) return true;
+    const isModalScope = Boolean(scopeRoot && scopeRoot !== document.body && scopeRoot !== document.documentElement);
+    let cur = el;
+    while (cur && cur.nodeType === 1 && cur !== document.body && cur !== document.documentElement) {
+      if (isCartDrawerNode(cur)) return true;
+      if (isInactiveTabPanel(cur)) return true;
+      const role = String(cur.getAttribute?.("role") || "").toLowerCase();
+      const isDialog =
+        role === "dialog" || String(cur.getAttribute?.("aria-modal") || "").toLowerCase() === "true";
+      if (isDialog && (!isModalScope || cur !== scopeRoot) && !isElementVisible(cur)) {
+        return true;
+      }
+      if (cur !== el) {
+        if (cur.hidden === true || cur.hasAttribute?.("hidden") || cur.hasAttribute?.("inert")) {
+          return true;
+        }
+        if (String(cur.getAttribute?.("aria-hidden") || "").toLowerCase() === "true") {
+          return true;
+        }
+        const st = window.getComputedStyle ? window.getComputedStyle(cur) : null;
+        if (st) {
+          if (st.display === "none" || st.visibility === "hidden") return true;
+          if (st.opacity === "0" || (st.opacity !== "" && parseFloat(st.opacity) === 0)) return true;
+        }
+      }
+      if (isModalScope && cur === scopeRoot) break;
+      cur = cur.parentElement;
+    }
+    return false;
+  }
+
+  function isDisclosureControl(el) {
+    if (!el || el.nodeType !== 1) return false;
+    const tag = String(el.tagName || "").toUpperCase();
+    if (tag === "BUTTON" || tag === "SUMMARY") return true;
+    if (String(el.getAttribute?.("role") || "").toLowerCase() === "button") return true;
+    if (el.hasAttribute?.("aria-expanded") || el.hasAttribute?.("aria-controls")) return true;
+    return false;
+  }
+
+  function isControlledDisclosurePanel(controlEl, panelEl) {
+    if (!controlEl || !panelEl || !isDisclosureControl(controlEl)) return false;
+    const controls = String(controlEl.getAttribute?.("aria-controls") || "").trim();
+    const panelId = String(panelEl.id || "").trim();
+    if (controls && panelId && controls.split(/\s+/).includes(panelId)) return true;
+    if (typeof controlEl.closest === "function" && typeof panelEl.closest === "function") {
+      const details = controlEl.closest("details");
+      if (details && details === panelEl.closest("details")) return true;
+    }
+    return false;
+  }
+
+  function isAllowedAmazonInfoNode(amzInfo) {
+    if (!amzInfo || amzInfo.isConnected === false) return false;
+    if (document.body && !document.body.contains(amzInfo)) return false;
+    if (isInsideExcludedSection(amzInfo, document.body)) return false;
+    if (amzInfo.hasAttribute?.("inert")) return false;
+    const parent = amzInfo.parentElement;
+    if (
+      parent &&
+      parent !== document.body &&
+      parent !== document.documentElement &&
+      isInsideHiddenOrCartContainer(parent, null)
+    ) {
+      return false;
+    }
+    if (isElementVisible(amzInfo) && !isInsideHiddenOrCartContainer(amzInfo, null)) {
+      return true;
+    }
+    if (isInsideHiddenDialogTabpanelOrCart(amzInfo, null)) return false;
+    const expContainer = amzInfo.closest?.(
+      '.a-expander-container, [data-a-expander-name], [class*="expander" i], [id*="expander" i], details'
+    );
+    if (
+      expContainer &&
+      expContainer !== amzInfo &&
+      isElementVisible(expContainer) &&
+      !isInsideHiddenOrCartContainer(expContainer, null)
+    ) {
+      return true;
+    }
+    const id = String(amzInfo.id || "").trim();
+    if (id && /^[A-Za-z0-9_:-]+$/.test(id)) {
+      const ctrl = document.querySelector(`[aria-controls="${id}"]`);
+      if (ctrl && isElementVisible(ctrl) && !isInsideHiddenOrCartContainer(ctrl, null)) {
+        return true;
+      }
+    }
+    if (
+      parent &&
+      parent !== document.body &&
+      parent !== document.documentElement &&
+      !/^MAIN$/i.test(parent.tagName || "") &&
+      isElementVisible(parent) &&
+      !isInsideHiddenOrCartContainer(parent, null)
+    ) {
+      if (id === "nic-po-expander-content") return true;
+      const toggle = parent.querySelector?.(
+        '.a-expander-header, button[aria-expanded], [role="button"][aria-expanded], summary'
+      );
+      if (toggle && isElementVisible(toggle) && !isInsideHiddenOrCartContainer(toggle, null)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  const VISIBLE_TEXT_BLOCK_TAGS = new Set([
+    "P",
+    "DIV",
+    "LI",
+    "DT",
+    "DD",
+    "H1",
+    "H2",
+    "H3",
+    "H4",
+    "H5",
+    "H6",
+    "SECTION",
+    "ARTICLE",
+    "TR",
+    "BR",
+  ]);
+  const VISIBLE_TEXT_SKIP_TAGS = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "SVG"]);
+
+  function extractVisibleText(container, scopeRoot) {
+    if (!container || container.nodeType !== 1) return "";
+    const stopBoundary = scopeRoot || document.body;
+    const isModalScope = Boolean(scopeRoot && scopeRoot !== document.body && scopeRoot !== document.documentElement);
+    const parts = [];
+    let visits = 0;
+    let charCount = 0;
+
+    function walk(node, isRootNode) {
+      if (!node || visits > 1500 || charCount > 8000) return;
+      if (node.nodeType === 3) {
+        const val = String(node.nodeValue || "");
+        if (val) {
+          parts.push(val);
+          charCount += val.length;
+        }
+        return;
+      }
+      if (node.nodeType !== 1) return;
+      visits++;
+      const tag = String(node.tagName || "").toUpperCase();
+      if (VISIBLE_TEXT_SKIP_TAGS.has(tag)) return;
+      if (!isRootNode) {
+        if (node.hidden === true || node.hasAttribute?.("hidden") || node.hasAttribute?.("inert")) return;
+        if (String(node.getAttribute?.("aria-hidden") || "").toLowerCase() === "true") return;
+        if (isInactiveTabPanel(node) || isCartDrawerNode(node)) return;
+        if (isInsideExcludedSection(node, stopBoundary)) return;
+        const st = window.getComputedStyle ? window.getComputedStyle(node) : null;
+        if (st) {
+          if (st.display === "none" || st.visibility === "hidden") return;
+          if (st.opacity === "0" || (st.opacity !== "" && parseFloat(st.opacity) === 0)) return;
+        }
+        const role = String(node.getAttribute?.("role") || "").toLowerCase();
+        const isDialog =
+          role === "dialog" || String(node.getAttribute?.("aria-modal") || "").toLowerCase() === "true";
+        if (isDialog && (!isModalScope || node !== scopeRoot) && !isElementVisible(node)) return;
+        if (st && st.display !== "contents" && st.display !== "inline" && typeof node.getBoundingClientRect === "function") {
+          const r = node.getBoundingClientRect();
+          if (r.width === 0 && r.height === 0) return;
+        }
+      }
+      const isBlock = !isRootNode && VISIBLE_TEXT_BLOCK_TAGS.has(tag);
+      if (isBlock) parts.push("\n");
+      if (tag === "BR") return;
+      for (let child = node.firstChild; child; child = child.nextSibling) {
+        walk(child, false);
+        if (visits > 1500 || charCount > 8000) break;
+      }
+      if (isBlock) parts.push("\n");
+    }
+
+    walk(container, true);
+    return parts.join("");
+  }
+
   function readIngredients(explicitScope) {
     const modalScope = explicitScope !== undefined ? explicitScope : activeDialogScope();
     const searchRoot = modalScope || document.querySelector("main") || document;
+    const stopBoundary = modalScope || document.body;
 
-    // Amazon mobile / desktop collapsed Important Information accordion (textContent works even when collapsed)
+    // Amazon mobile / desktop collapsed Important Information accordion (only when connected & visible or inside a visible expander)
     if (!modalScope && BASE_STORE === "amazon") {
-      const amzInfo = document.querySelector("#importantInformation_feature_div, #nic-po-expander-content");
-      if (amzInfo) {
+      const amzNodes = document.querySelectorAll("#importantInformation_feature_div, #nic-po-expander-content");
+      for (const amzInfo of amzNodes) {
+        if (!isAllowedAmazonInfoNode(amzInfo)) continue;
         const amzTxt = (amzInfo.textContent || "").replace(/\s+/g, " ");
         const amzMatch = amzTxt.match(/\bIngredients\s*:?\s*([\s\S]{12,1800})/i);
         if (amzMatch?.[1]) {
@@ -1450,27 +1718,67 @@
       }
     }
 
-    const candidates = searchRoot.querySelectorAll("h2, h3, h4, dt, strong, b, span, div, p, button");
+    const candidates = searchRoot.querySelectorAll("h2, h3, h4, dt, strong, b, span, div, p, button, summary");
     for (const el of candidates) {
-      if (isInsideExcludedSection(el, modalScope || document.body)) continue;
+      if (!isElementVisible(el)) continue;
+      if (isInsideExcludedSection(el, stopBoundary)) continue;
+      if (isInsideHiddenOrCartContainer(el, modalScope)) continue;
       const own = (el.children.length <= 2 ? el.textContent : "").trim();
       if (!/^ingredients\s*:?$/i.test(own)) continue;
+
+      if (isDisclosureControl(el)) {
+        const controls = String(el.getAttribute?.("aria-controls") || "").trim();
+        if (controls) {
+          for (const ctrlId of controls.split(/\s+/)) {
+            const panel = document.getElementById(ctrlId);
+            if (!panel) continue;
+            if (searchRoot !== document && !searchRoot.contains(panel)) continue;
+            if (isInsideExcludedSection(panel, stopBoundary)) continue;
+            if (isInsideHiddenDialogTabpanelOrCart(panel, modalScope)) continue;
+            const rawPanel =
+              isElementVisible(panel) && !isInsideHiddenOrCartContainer(panel, modalScope)
+                ? extractVisibleText(panel, modalScope)
+                : panel.textContent || "";
+            const firstBlock = rawPanel.replace(/\s+/g, " ").trim().split(/\bingredients\s*:/i)[0].trim();
+            if (isValidIngredientText(firstBlock)) return firstBlock;
+          }
+        }
+      }
+
       let sib = el.nextElementSibling;
       for (let i = 0; i < 3 && sib; i++, sib = sib.nextElementSibling) {
-        if (isInsideExcludedSection(sib, modalScope || document.body)) continue;
-        const t = sib.textContent.replace(/\s+/g, " ").trim();
+        if (isInsideExcludedSection(sib, stopBoundary)) continue;
+        const sibVisible = isElementVisible(sib) && !isInsideHiddenOrCartContainer(sib, modalScope);
+        const sibControlled =
+          !sibVisible &&
+          isControlledDisclosurePanel(el, sib) &&
+          !isInsideHiddenDialogTabpanelOrCart(sib, modalScope);
+        if (!sibVisible && !sibControlled) continue;
+        const rawSib = sibVisible ? extractVisibleText(sib, modalScope) : sib.textContent || "";
+        const t = rawSib.replace(/\s+/g, " ").trim();
         // If multiple Ingredients blocks exist, stop before any second Ingredients label
         const firstBlock = t.split(/\bingredients\s*:/i)[0].trim();
         if (isValidIngredientText(firstBlock)) return firstBlock;
       }
-      const parentText = el.parentElement?.textContent.replace(/\s+/g, " ").trim() || "";
-      const stripped = parentText.replace(/^ingredients\s*:?\s*/i, "").split(/\bingredients\s*:/i)[0].trim();
-      if (isValidIngredientText(stripped)) return stripped;
+
+      const parentEl = el.parentElement;
+      if (
+        parentEl &&
+        isElementVisible(parentEl) &&
+        !isInsideExcludedSection(parentEl, stopBoundary) &&
+        !isInsideHiddenOrCartContainer(parentEl, modalScope)
+      ) {
+        const parentText = extractVisibleText(parentEl, modalScope).replace(/\s+/g, " ").trim();
+        const stripped = parentText.replace(/^ingredients\s*:?\s*/i, "").split(/\bingredients\s*:/i)[0].trim();
+        if (isValidIngredientText(stripped)) return stripped;
+      }
     }
-    const inline = [...searchRoot.querySelectorAll("p, div, span")].find(
+    const inline = [...searchRoot.querySelectorAll("p, div, span, li, dd")].find(
       (n) =>
         n.children.length === 0 &&
-        !isInsideExcludedSection(n, modalScope || document.body) &&
+        isElementVisible(n) &&
+        !isInsideExcludedSection(n, stopBoundary) &&
+        !isInsideHiddenOrCartContainer(n, modalScope) &&
         /^ingredients\s*:/i.test((n.textContent || "").trim())
     );
     const inlineText = inline

@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
 const ALLOWED_PATHS = ["/", "/llms.txt", "/llms-full.txt", "/api/product-image"];
-const DISALLOWED_PATHS = ["/api/", "/admin", "/login", "/r/"];
+const DISALLOWED_PATHS = ["/api/", "/admin", "/login", "/r/", "/auth/"];
 
 const AI_BOTS = [
   "OAI-SearchBot",

@@ -16,10 +16,12 @@ import java.util.concurrent.Executors
 import kotlin.math.abs
 
 /**
- * Reads ONLY the product title (and visible ingredient text, if on screen) from the 12
- * supported grocery apps, debounced by 180ms, then posts to /api/scan and hands the result
- * to [OverlayWindowService]. Automatically detects when the user navigates back to a
- * search / aisle scroll view and switches the corner bubble to Mode B (`🛒 Cart Avg`).
+ * Reads ONLY visible, non-editable product titles, visible ingredient lists, visible barcode text
+ * (when displayed on screen), and up to 20 visible cart item titles from the 12 supported grocery
+ * retailers (15 Android package IDs in [STORE_PACKAGES]), debounced by 180ms, then posts to
+ * /api/scan and hands the result to [OverlayWindowService]. Invisible/off-screen, password,
+ * payment, and editable input nodes are never collected. Also performs user-triggered Clean Swap
+ * searches only when [AccessibilityConsent.granted] is true.
  */
 class GroceryScreenReaderService : AccessibilityService() {
 
@@ -613,7 +615,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                                     addCandidateStrings(candidateClickStrings, pch.contentDescription)
                                     for (j in 0 until minOf(pch.childCount, 8)) {
                                         val gch = runCatching { pch.getChild(j) }.getOrNull() ?: continue
-                                        if (!gch.isPassword && !gch.isEditable && gch.isVisibleToUser) {
+                                        if (!isProtectedNode(gch) && !gch.isPassword && !gch.isEditable && gch.isVisibleToUser) {
                                             addCandidateStrings(candidateClickStrings, gch.text)
                                             addCandidateStrings(candidateClickStrings, gch.contentDescription)
                                         }
@@ -962,13 +964,9 @@ class GroceryScreenReaderService : AccessibilityService() {
             }
 
             val rawNodes = collectTextNodes(root)
-            val allNodes = stripSponsoredAdNodes(rawNodes)
-            val visibleOnly = allNodes.filter { it.isVisible }
-            val nodes = if (visibleOnly.size >= 3) {
-                visibleOnly.mapIndexed { idx, n -> n.copy(index = idx) }
-            } else {
-                allNodes
-            }
+            val nodes = stripSponsoredAdNodes(rawNodes)
+                .filter { it.isVisible }
+                .mapIndexed { idx, n -> n.copy(index = idx) }
             updateStoreBucketFromNodes(pkg, nodes)
             val bucketSig = currentStoreBucket.ifEmpty { defaultBucketForPackage(pkg) }
             val topScreenNodes = nodes.take(40)
@@ -997,10 +995,8 @@ class GroceryScreenReaderService : AccessibilityService() {
             // extracting ingredients so a collapsed "Ingredients v" pill never reads carousel cards below!
             val carouselIdx = nodes.indexOfFirst { CAROUSEL_BOUNDARY.containsMatchIn(it.text.trim()) }
             val primaryNodes = if (carouselIdx >= 0) nodes.subList(0, carouselIdx) else nodes
-            val allCarouselIdx = allNodes.indexOfFirst { CAROUSEL_BOUNDARY.containsMatchIn(it.text.trim()) }
-            val primaryAllNodes = if (allCarouselIdx >= 0) allNodes.subList(0, allCarouselIdx) else allNodes
 
-            val ingredients = findIngredients(primaryNodes) ?: findIngredients(primaryAllNodes)
+            val ingredients = findIngredients(primaryNodes)
 
             val tileAddCount = primaryNodes.count { ADD_TILE_BUTTON.matches(it.text.trim()) }
             val totalTileAddCount = nodes.count { ADD_TILE_BUTTON.matches(it.text.trim()) }
@@ -1008,20 +1004,15 @@ class GroceryScreenReaderService : AccessibilityService() {
 
             val hasHomeOrAisleBanners = primaryNodes.take(35).any { HOME_OR_AISLE_BANNERS.containsMatchIn(it.text.trim()) }
             val hasSinglePdpCta = primaryNodes.any { SINGLE_PDP_CTA.containsMatchIn(it.text) } ||
-                nodes.any { SINGLE_PDP_CTA.containsMatchIn(it.text) } ||
-                allNodes.any { SINGLE_PDP_CTA.containsMatchIn(it.text) }
+                nodes.any { SINGLE_PDP_CTA.containsMatchIn(it.text) }
             val hasSinglePdpDetails = ingredients != null ||
-                nodes.any { SINGLE_PDP_DETAILS.containsMatchIn(it.text.trim()) } ||
-                allNodes.any { SINGLE_PDP_DETAILS.containsMatchIn(it.text.trim()) }
-            val hasExplicitPdpViewId = nodes.any { n -> TITLE_ID_HINTS.any { n.viewId.contains(it) } } ||
-                allNodes.any { n -> TITLE_ID_HINTS.any { n.viewId.contains(it) } }
+                nodes.any { SINGLE_PDP_DETAILS.containsMatchIn(it.text.trim()) }
+            val hasExplicitPdpViewId = nodes.any { n -> TITLE_ID_HINTS.any { n.viewId.contains(it) } }
             val hasClubItemNumber = nodes.any { CLUB_ITEM_NUMBER.matches(it.text.trim()) }
 
             val isMultiCartSwitcher = nodes.any { it.text.trim().equals("Your carts", ignoreCase = true) }
             val cartBoundaryIdx = findSafeCartBoundaryIndex(nodes)
             val activeCartSectionNodes = if (cartBoundaryIdx >= 0) nodes.subList(0, cartBoundaryIdx) else nodes
-            val allCartBoundaryIdx = findSafeCartBoundaryIndex(allNodes)
-            val activeCartSectionAllNodes = if (allCartBoundaryIdx >= 0) allNodes.subList(0, allCartBoundaryIdx) else allNodes
             val hasEmptyCartScreenSignal = !isMultiCartSwitcher && (
                 activeCartSectionNodes.any { EMPTY_CART_SIGNALS.containsMatchIn(it.text.trim()) } ||
                     nodes.any { EMPTY_CART_SIGNALS.containsMatchIn(it.text.trim()) }
@@ -1071,13 +1062,13 @@ class GroceryScreenReaderService : AccessibilityService() {
             })))
 
             val hasBuyNowCta = !hasDefinitiveCartScreenSignal && !hasHomeOrAisleBanners &&
-                allNodes.any { it.text.trim().equals("Buy now", ignoreCase = true) }
+                nodes.any { it.text.trim().equals("Buy now", ignoreCase = true) }
             val isPdpMediaGallery = !hasDefinitiveCartScreenSignal && !hasHomeOrAisleBanners &&
                 (hasSinglePdpCta || hasBuyNowCta) &&
-                allNodes.any { PDP_MEDIA_GALLERY_TAB.matches(it.text.trim()) } && (
-                    allNodes.any { Regex("""(?i)^(?:images?|photos?|customer\s+images?)\s*\(\s*\d+\s*\)$""").matches(it.text.trim()) } ||
-                        (allNodes.any { Regex("""(?i)^(?:images?|photos?)$""").matches(it.text.trim()) } &&
-                            allNodes.any { Regex("""(?i)^videos?(?:\s*\(\s*\d+\s*\))?$""").matches(it.text.trim()) })
+                nodes.any { PDP_MEDIA_GALLERY_TAB.matches(it.text.trim()) } && (
+                    nodes.any { Regex("""(?i)^(?:images?|photos?|customer\s+images?)\s*\(\s*\d+\s*\)$""").matches(it.text.trim()) } ||
+                        (nodes.any { Regex("""(?i)^(?:images?|photos?)$""").matches(it.text.trim()) } &&
+                            nodes.any { Regex("""(?i)^videos?(?:\s*\(\s*\d+\s*\))?$""").matches(it.text.trim()) })
                     )
 
             val rawConfirmedSinglePdp =
@@ -1102,7 +1093,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                         PRICE_PATTERN.containsMatchIn(t)
                 }
             val visiblePrimaryCandidates = if (carouselIdx >= 0) {
-                findCandidateTitles(primaryNodes, emptyList(), isConfirmedSinglePdp = false, pkg = pkg)
+                findCandidateTitles(primaryNodes, isConfirmedSinglePdp = false, pkg = pkg)
             } else {
                 emptyList()
             }
@@ -1156,19 +1147,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                     lastCartAuthoritativeCount
                 }
                 val explicitRemovedTitles = extractRemovedCartTitles(activeCartSectionNodes)
-                val visibleCartTitles = extractCartScreenTitles(activeCartSectionNodes, explicitRemovedTitles, recordNodes = true)
-                val allCartTitles = extractCartScreenTitles(activeCartSectionAllNodes, explicitRemovedTitles, recordNodes = false)
-                val cartTitles = ArrayList<String>(visibleCartTitles)
-                for (cand in allCartTitles) {
-                    val existingIdx = cartTitles.indexOfFirst { isSameCartRowTitle(it, cand) }
-                    if (existingIdx >= 0) {
-                        if (cand.length > cartTitles[existingIdx].length) {
-                            cartTitles[existingIdx] = cand
-                        }
-                    } else if (cartTitles.size < 35) {
-                        cartTitles.add(cand)
-                    }
-                }
+                val cartTitles = extractCartScreenTitles(activeCartSectionNodes, explicitRemovedTitles, recordNodes = true).take(20)
                 val topHeaderVisible = activeCartSectionNodes.take(12).any {
                     val t = it.text.trim()
                     t.startsWith("cart", ignoreCase = true) ||
@@ -1340,13 +1319,13 @@ class GroceryScreenReaderService : AccessibilityService() {
 
             val candidates = if (isViewingFullScreenCarousel && carouselIdx + 1 < nodes.size) {
                 val carouselSlice = nodes.subList(carouselIdx + 1, nodes.size)
-                findCandidateTitles(carouselSlice, carouselSlice, isConfirmedSinglePdp = false, pkg = pkg)
+                findCandidateTitles(carouselSlice, isConfirmedSinglePdp = false, pkg = pkg)
             } else if (isProductView) {
-                val primary = findCandidateTitles(primaryNodes, primaryAllNodes, isConfirmedSinglePdp, pkg)
+                val primary = findCandidateTitles(primaryNodes, isConfirmedSinglePdp, pkg)
                 if (primary.isNotEmpty()) {
                     primary
-                } else if (!isConfirmedSinglePdp && (primaryNodes.size < nodes.size || primaryAllNodes.size < allNodes.size)) {
-                    findCandidateTitles(nodes, allNodes, isConfirmedSinglePdp, pkg)
+                } else if (!isConfirmedSinglePdp && primaryNodes.size < nodes.size) {
+                    findCandidateTitles(nodes, isConfirmedSinglePdp, pkg)
                 } else {
                     emptyList()
                 }
@@ -1359,7 +1338,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                     lastConfirmedPdpPkg == pkg && (
                         nowPdpMs - lastConfirmedPdpAtMs <= 15_000L ||
                             prevTitle.split(' ').filter { it.length >= 4 }.let { prevTokens ->
-                                prevTokens.isNotEmpty() && allNodes.any { n ->
+                                prevTokens.isNotEmpty() && nodes.any { n ->
                                     prevTokens.count { tok -> n.text.contains(tok, ignoreCase = true) } >= minOf(2, prevTokens.size)
                                 }
                             }
@@ -1403,7 +1382,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                 // Keep the HeyBroc floating pill visible across all store onboarding/welcome funnel slides
                 // and pre-shopping Login / Sign up / Continue as guest screens (e.g. Shipt, Kroger, DoorDash)
                 // so the pill never disappears mid-funnel on pages 2–4, while suppressing automatic product popup grading.
-                if (shouldSuppressAutomaticPopup(allNodes, totalTileAddCount, hasCarouselPricesOrStock)) {
+                if (shouldSuppressAutomaticPopup(nodes, totalTileAddCount, hasCarouselPricesOrStock)) {
                     val gateKey = "$pkg|$bucketSig|ONBOARDING_AUTH_GATE"
                     if (lastKey != gateKey || !overlayVisible) {
                         bumpScanGeneration()
@@ -1434,7 +1413,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                         .containsMatchIn(it.text)
                 }
 
-            val pageBarcode = if (isConfirmedSinglePdp) (findBarcode(primaryNodes) ?: findBarcode(primaryAllNodes)) else null
+            val pageBarcode = if (isConfirmedSinglePdp) findBarcode(primaryNodes) else null
             val wlSig = ScanApi.currentWatchlistSignature(this)
             val key = "$pkg|$bucketSig|$title|${pageBarcode.orEmpty()}|${ingredients?.hashCode() ?: 0}|$inCartOnPdp|$isOutOfStockOnPdp|$wlSig"
             if (key == lastKey) return
@@ -1675,17 +1654,15 @@ class GroceryScreenReaderService : AccessibilityService() {
             val node = stack.pollFirst() ?: break
             seen++
             try {
-                if (isProtectedNode(node)) continue
+                if (isProtectedNode(node) || !node.isVisibleToUser) continue
                 val viewId = node.viewIdResourceName?.lowercase().orEmpty()
                 val heading = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && node.isHeading
-                val visible = node.isVisibleToUser
+                val visible = true
                 node.getBoundsInScreen(rect)
                 val nodeW = rect.width()
                 val isEdgeClipped =
-                    visible && (
-                        (nodeW in 1 until minCardTextWidthPx) ||
-                            ((rect.left < tightEdgePx || rect.right > screenW - tightEdgePx) && nodeW < fullRowMinWidthPx)
-                        )
+                    (nodeW in 1 until minCardTextWidthPx) ||
+                        ((rect.left < tightEdgePx || rect.right > screenW - tightEdgePx) && nodeW < fullRowMinWidthPx)
                 val emittedForNode = HashSet<String>(6)
                 emitSplitAndCombinedNodes(out, node.text, viewId, heading, visible, emittedForNode, rect.left, rect.top, rect.right, rect.bottom, isEdgeClipped)
                 emitSplitAndCombinedNodes(out, node.contentDescription, viewId, heading, visible, emittedForNode, rect.left, rect.top, rect.right, rect.bottom, isEdgeClipped)
@@ -1987,12 +1964,12 @@ class GroceryScreenReaderService : AccessibilityService() {
     }
 
     private fun shouldSuppressAutomaticPopup(
-        allNodes: List<TextNode>,
+        visibleNodes: List<TextNode>,
         totalTileAddCount: Int,
         hasCarouselPricesOrStock: Boolean,
     ): Boolean {
-        val hasOnboardingGateSignal = allNodes.any { STORE_ONBOARDING_OR_AUTH_GATE.containsMatchIn(it.text) } ||
-            allNodes.count { AUTH_BUTTON_SIGNAL.matches(it.text.trim()) } >= 2
+        val hasOnboardingGateSignal = visibleNodes.any { STORE_ONBOARDING_OR_AUTH_GATE.containsMatchIn(it.text) } ||
+            visibleNodes.count { AUTH_BUTTON_SIGNAL.matches(it.text.trim()) } >= 2
         return hasOnboardingGateSignal && totalTileAddCount == 0 && !hasCarouselPricesOrStock
     }
 
@@ -2015,7 +1992,6 @@ class GroceryScreenReaderService : AccessibilityService() {
 
     private fun findCandidateTitles(
         nodes: List<TextNode>,
-        allNodes: List<TextNode> = nodes,
         isConfirmedSinglePdp: Boolean = false,
         pkg: String = "",
     ): List<String> {
@@ -2032,8 +2008,6 @@ class GroceryScreenReaderService : AccessibilityService() {
         // so scrolling down a PDP never mistakes marketing bullets or customer reviews for the product title!
         val bodyBoundaryIdx = nodes.indexOfFirst { PDP_BODY_BOUNDARY.matches(it.text.trim()) }
         val preBodyNodes = if (bodyBoundaryIdx >= 0) nodes.subList(0, bodyBoundaryIdx) else nodes
-        val allBodyBoundaryIdx = allNodes.indexOfFirst { PDP_BODY_BOUNDARY.matches(it.text.trim()) }
-        val rawPreBodyAllNodes = if (allBodyBoundaryIdx >= 0) allNodes.subList(0, allBodyBoundaryIdx) else allNodes
 
         // On Amazon single PDPs, a top banner ad (e.g. "Wicked Cutz ... EXCELLENT SOURCE OF Protein") and a
         // "Purchased 5 times / Last purchased..." reorder box often sit above the brand header ("INGLEHOFFER / Visit the Store").
@@ -2043,14 +2017,6 @@ class GroceryScreenReaderService : AccessibilityService() {
         val visitStoreIdx = if (isConfirmedSinglePdp) {
             preBodyNodes.take(30).indexOfFirst { visitStoreRe.matches(it.text.trim()) }
         } else -1
-        val allVisitStoreIdx = if (isConfirmedSinglePdp) {
-            rawPreBodyAllNodes.take(35).indexOfFirst { visitStoreRe.matches(it.text.trim()) }
-        } else -1
-        val preBodyAllNodes = if (allVisitStoreIdx >= 0 && allVisitStoreIdx + 1 < rawPreBodyAllNodes.size) {
-            rawPreBodyAllNodes.subList(allVisitStoreIdx + 1, rawPreBodyAllNodes.size)
-        } else {
-            rawPreBodyAllNodes
-        }
 
         // If a previous product card on a search/aisle feed is 90% scrolled off the top of the screen, its trailing
         // "Options" or "Add to cart" button appears in the first few nodes with no product title above it. Skip past
@@ -2271,37 +2237,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             }
         }
 
-        // 5. Below-the-fold PDP nodes (`preBodyAllNodes` includes below-the-fold `isVisible == false` nodes inside the PDP ScrollView
-        // that were pushed just below the sticky "$2.78 Add to cart" bar by a tall 1:1 product photo and "Bought 5+ times" banner!).
-        // ONLY run when `isConfirmedSinglePdp && out.isEmpty()` so hidden nodes never compete with a visible product title!
-        if (isConfirmedSinglePdp && out.isEmpty() && preBodyAllNodes.isNotEmpty()) {
-            for (n in preBodyAllNodes) {
-                val c = cleanTitleCandidate(n.text)
-                if (isCandidateProductTitle(c) && !NON_FOOD_PRODUCT.containsMatchIn(c) && TITLE_ID_HINTS.any { n.viewId.contains(it) }) {
-                    addCandidate(c)
-                }
-            }
-            for (n in preBodyAllNodes) {
-                val c = cleanTitleCandidate(n.text)
-                if (n.isHeading && isCandidateProductTitle(c) && looksLikeFoodTitle(c)) {
-                    addCandidate(c)
-                }
-            }
-            for (n in preBodyAllNodes) {
-                val c = cleanTitleCandidate(n.text)
-                if (isCandidateProductTitle(c) && c.split(' ').size >= 2 && looksLikeFoodTitle(c)) {
-                    addCandidate(c)
-                }
-            }
-            for (n in preBodyAllNodes) {
-                val c = cleanTitleCandidate(n.text)
-                if (isCandidateProductTitle(c) && SINGLE_WORD_PRODUCE.matches(c.trim())) {
-                    addCandidate(c)
-                }
-            }
-        }
-
-        // 6. Accessibility heading on a confirmed single-product page
+        // 5. Accessibility heading on a confirmed single-product page (visible nodes only)
         if (isConfirmedSinglePdp && out.isEmpty()) {
             for (n in searchNodes) {
                 val c = cleanTitleCandidate(n.text)
@@ -2309,14 +2245,8 @@ class GroceryScreenReaderService : AccessibilityService() {
                     addCandidate(c)
                 }
             }
-            for (n in preBodyAllNodes) {
-                val c = cleanTitleCandidate(n.text)
-                if (n.isHeading && isCandidateProductTitle(c) && c.split(' ').size >= 2) {
-                    addCandidate(c)
-                }
-            }
 
-            // 7. Fallback to the confirmed PDP title captured before scrolling into Description/Reviews, or the product card tapped to open this PDP
+            // 6. Fallback to the confirmed PDP title captured before scrolling into Description/Reviews, or the product card tapped to open this PDP
             val now = System.currentTimeMillis()
             if (lastConfirmedPdpTitle != null && lastConfirmedPdpPkg == pkg && now - lastConfirmedPdpAtMs <= 120_000L) {
                 addCandidate(lastConfirmedPdpTitle)
@@ -2457,7 +2387,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                 }
                 nodePairs?.add(n to c)
             }
-            if (seen.size >= 35) break
+            if (seen.size >= 20) break
         }
         if (recordNodes && nodePairs != null) {
             lastCartTitleNodes = nodePairs
@@ -2837,6 +2767,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         query: String,
         onFallbackNeeded: (() -> Unit)? = null
     ): Boolean {
+        if (!AccessibilityConsent.granted(this)) return false
         val cleanQuery = sanitizeInAppSearchQuery(query)
         if (cleanQuery.isEmpty()) return false
 
@@ -2897,6 +2828,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         launchedFallback: Boolean,
         onFallbackNeeded: (() -> Unit)? = null
     ) {
+        if (!AccessibilityConsent.granted(this)) return
         if (attempt > 14) {
             if (submittedCount == 0 && !launchedFallback) {
                 onFallbackNeeded?.invoke()

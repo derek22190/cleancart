@@ -1,7 +1,6 @@
 package com.cleancart.overlay
 
 import android.content.Context
-import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -268,15 +267,6 @@ object ScanApi {
         }.start()
     }
 
-    fun upgradeUrl(ctx: Context): String {
-        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val id = Uri.encode(deviceId(ctx))
-        val ref = referredByCode(ctx)?.takeIf { it.isNotBlank() }?.let { "&code=${Uri.encode(it)}" }.orEmpty()
-        val email = prefs.getString("auth_email", null)?.trim()?.takeIf { it.isNotBlank() }
-            ?.let { "&email=${Uri.encode(it)}" }.orEmpty()
-        return "https://heybroc.com/?upgrade=1&deviceId=$id$ref$email"
-    }
-
     /** Returns the server-issued BROC-XXXXXXXX invite code if available. */
     fun myReferralCode(ctx: Context): String {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -375,47 +365,6 @@ object ScanApi {
     ) {
         val icon: String get() = label.substringBefore(" ")
         val matchedDetail: String get() = reason
-    }
-
-    private val BILLING_PORTAL_ENDPOINTS = listOfNotNull(
-        customBase.takeIf { it.isNotBlank() }?.let { "$it/api/billing/portal" },
-        "https://www.heybroc.com/api/billing/portal",
-        "https://heybroc.com/api/billing/portal",
-        "https://cleancart-teal.vercel.app/api/billing/portal",
-    ).distinct()
-
-    /** Blocking call — fetches a Stripe Billing Portal session URL for one-tap subscription cancellation/management. */
-    fun billingPortalUrl(ctx: Context): String? {
-        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val email = prefs.getString("auth_email", null)?.trim()
-        val authToken = prefs.getString("auth_token", null)?.trim()
-        val body = JSONObject().apply {
-            put("deviceId", deviceId(ctx))
-            put("deviceSecret", deviceSecret(ctx))
-            if (!email.isNullOrBlank()) put("email", email)
-        }.toString()
-        val headers = mutableMapOf("X-Device-Secret" to deviceSecret(ctx))
-        if (!authToken.isNullOrBlank()) {
-            headers["Authorization"] = "Bearer $authToken"
-        }
-        for (endpoint in BILLING_PORTAL_ENDPOINTS) {
-            try {
-                val res = postFollowingRedirects(
-                    endpoint,
-                    body,
-                    maxRedirects = 4,
-                    extraHeaders = headers
-                )
-                if (res.startsWith("{")) {
-                    val json = JSONObject(res)
-                    val url = json.optString("url").trim()
-                    if (url.startsWith("https://")) return url
-                }
-            } catch (_: Exception) {
-                // try next endpoint
-            }
-        }
-        return null
     }
 
     private val GOOGLE_VERIFY_ENDPOINTS = listOfNotNull(
@@ -1732,7 +1681,7 @@ object ScanApi {
     }
 
     /**
-     * Blocking call — scores up to 8 visible store cards in a single HTTP round-trip via POST /api/scan
+     * Blocking call — scores up to 12 visible store cards in a single HTTP round-trip via POST /api/scan
      * (`runBatchScan`, which sets `skipAnalytics: true` so passive scrolling never burns swap quota or rate limits)
      * and hydrates `responseCache` so tapping any scored item opens instantaneously.
      */
@@ -1995,7 +1944,7 @@ object ScanApi {
         val retryAfterSec: Int? = null
     )
 
-    private fun postFollowingRedirects(
+    internal fun postFollowingRedirects(
         urlStr: String,
         jsonBody: String,
         maxRedirects: Int,

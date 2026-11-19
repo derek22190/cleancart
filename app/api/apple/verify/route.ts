@@ -296,6 +296,11 @@ export async function POST(request: Request) {
         undefined,
         buyerEmail,
         {
+          additionalIdempotencyKeys: [
+            `ios_trial:${origTxId}`,
+            `apple_trial:${origTxId}`,
+            `rc_trial:${origTxId}`,
+          ],
           buyerUserId: authedUser?.userId,
           buyerDeviceId: cleanDeviceId,
           checkoutIp: verifyIp,
@@ -305,6 +310,7 @@ export async function POST(request: Request) {
       const grossUsd = resolveAppleGrossUsd(claims, plan, false);
       if (grossUsd > 0) {
         const alreadyCreditedAcrossPipelines =
+          (await hasSubscriptionFirstPaidCredit(`ios_orig:${origTxId}`)) ||
           (await hasSubscriptionFirstPaidCredit(`apple_orig:${origTxId}`)) ||
           (await hasSubscriptionFirstPaidCredit(`rc_orig:${origTxId}`));
         if (!alreadyCreditedAcrossPipelines) {
@@ -316,7 +322,11 @@ export async function POST(request: Request) {
             buyerEmail,
             {
               creditedTransactionId: txId,
-              subscriptionKey: `apple_orig:${origTxId}`,
+              subscriptionKey: `ios_orig:${origTxId}`,
+              additionalSubscriptionKeys: [
+                `apple_orig:${origTxId}`,
+                `rc_orig:${origTxId}`,
+              ],
               buyerUserId: authedUser?.userId,
               buyerDeviceId: cleanDeviceId,
               checkoutIp: verifyIp,

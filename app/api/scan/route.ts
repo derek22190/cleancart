@@ -28,7 +28,6 @@ export function OPTIONS() {
 }
 
 const MAX_SCAN_BODY_BYTES = 24_000;
-const BATCH_AUTH_TIMEOUT_MS = 900;
 
 function extractClientIp(request: Request): string {
   const realIp = request.headers.get("x-real-ip")?.trim();
@@ -184,6 +183,16 @@ export async function POST(request: Request) {
   }
 
   const isBatchRequest = Array.isArray(body.items);
+  if (isBatchRequest && body.items!.length > MAX_BATCH_SCAN_ITEMS) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `Batch scan supports at most ${MAX_BATCH_SCAN_ITEMS} items per request.`,
+        maxItems: MAX_BATCH_SCAN_ITEMS,
+      },
+      { status: 400, headers: CORS },
+    );
+  }
   const batchItemCount = isBatchRequest ? Math.min(MAX_BATCH_SCAN_ITEMS, Math.max(1, body.items!.length)) : 0;
   const rateCost = batchItemCount > 0 ? batchItemCount : 1;
   const rl = await checkRateLimitDetailedAsync(`scan:${ip}`, 120, 60_000, rateCost);
@@ -201,32 +210,20 @@ export async function POST(request: Request) {
   const bearerToken =
     request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() ||
     (typeof body.authToken === "string" ? body.authToken.trim() : "");
-  if (bearerToken) {
-    const resolveBearerPro = async (): Promise<boolean> => {
-      try {
-        const authedUser = await getAuthenticatedUser(bearerToken);
-        if (!authedUser) return false;
-        const profile = await toPublicProfile(authedUser);
-        return Boolean(profile.isProActive);
-      } catch {
-        return false;
+  const resolveBearerPro = bearerToken
+    ? async (): Promise<boolean> => {
+        try {
+          const authedUser = await getAuthenticatedUser(bearerToken);
+          if (!authedUser) return false;
+          const profile = await toPublicProfile(authedUser);
+          return Boolean(profile.isProActive);
+        } catch {
+          return false;
+        }
       }
-    };
-    if (isBatchRequest) {
-      let authTimer: ReturnType<typeof setTimeout> | undefined;
-      try {
-        body.verifiedAccountPro = await Promise.race([
-          resolveBearerPro(),
-          new Promise<boolean>((resolve) => {
-            authTimer = setTimeout(() => resolve(false), BATCH_AUTH_TIMEOUT_MS);
-          }),
-        ]);
-      } finally {
-        if (authTimer !== undefined) clearTimeout(authTimer);
-      }
-    } else {
-      body.verifiedAccountPro = await resolveBearerPro();
-    }
+    : undefined;
+  if (resolveBearerPro && !isBatchRequest) {
+    body.verifiedAccountPro = await resolveBearerPro();
   }
   const clientPlatform = inferClientPlatform({
     clientPlatform:
@@ -246,7 +243,9 @@ export async function POST(request: Request) {
   }
 
   if (Array.isArray(body.items)) {
-    const batchRes = await runBatchScan(body, body.items);
+    const batchRes = await runBatchScan(body, body.items, {
+      resolveVerifiedAccountPro: resolveBearerPro,
+    });
     return NextResponse.json(batchRes, { headers: CORS });
   }
 
