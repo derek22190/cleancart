@@ -131,7 +131,7 @@ const TITLE_TO_STUDIO_ART: ReadonlyArray<readonly [RegExp, string]> = [
   [/\b(?:mac(?:aroni)?\s*(?:&|and)\s*cheese|shells?\s*(?:&|and)\s*(?:white\s+)?cheddar|velveeta\s+shells|easy\s+mac)\b/i, "/swaps/mac.png"],
   [/\b(?:pizza|flatbread\s+pizza|pizza\s+rolls?|digiorno|red\s+baron|totino'?s)\b/i, "/swaps/pizza.png"],
   [/\b(?:frozen\s+(?:meal|dinner|entree|bowl|stuffed\s+sandwich)|stuffed\s+sandwich.*entree|\bentrees?\b|burrito\s+bowl|power\s+bowl|lean\s+cuisine|healthy\s+choice|stouffer'?s|marie\s+callender'?s|banquet|hungry[- ]?man|lasagna|pot\s+pie|taquitos?|chimichangas?|hot\s+pockets?)\b/i, "/swaps/frozen-meal.png"],
-  [/\b(?:chicken\s+nuggets?|chicken\s+tenders?|chicken\s+strips?|chicken\s+bites?|chicken\s+patties|popcorn\s+chicken|dino\s+buddies)\b/i, "/swaps/nuggets.png"],
+  [/\b(?:chicken\s+nuggets?|chicken\s+tenders?|chicken\s+strips?|chicken\s+bites?|chicken\s+patties|chicken\s+wings?|wing\s+sections?|drumettes?|popcorn\s+chicken|dino\s+buddies)\b/i, "/swaps/nuggets.png"],
   [/\b(?:hot\s*dogs?|franks?|frankfurters?|wieners?)\b/i, "/swaps/hotdog.png"],
   [/\b(?:bacon|turkey\s+bacon)\b/i, "/swaps/bacon.png"],
   [/\b(?:sausages?|bratwurst|kielbasa|chorizo|breakfast\s+links?)\b/i, "/swaps/sausage.png"],

@@ -1016,63 +1016,21 @@ object ScanApi {
         }
 
         if ("pesticide_risk" in selected) {
-            // Never infer whole-product USDA Organic from an individual ingredient (e.g. "organic cane sugar"
-            // in conventional oatmeal) or from negated "Non-Organic" titles.
-            val sanitizedTitleForOrganic = title
-                .replace(Regex("\\bnon[\\s-]*organic\\b", RegexOption.IGNORE_CASE), " ")
-                .replace(Regex("\\b(?:made\\s+)?with\\s+organic\\s+[a-z]+(?:\\s+[a-z]+){0,2}\\b", RegexOption.IGNORE_CASE), " ")
-            val isCertifiedProductOrganic = (nutrition?.optBoolean("isOrganic", false) == true) ||
-                (productJson?.optBoolean("isOrganic", false) == true) ||
-                Regex(
-                    "\\b(usda\\s+organic|certified\\s+organic|biodynamic|glyphosate[\\s-]*residue[\\s-]*free|pesticide[\\s-]*free|herbicide[\\s-]*free)\\b",
-                    RegexOption.IGNORE_CASE
-                ).containsMatchIn(sanitizedTitleForOrganic) ||
-                (!hasIngredients && Regex("\\b(organic|organics)\\b", RegexOption.IGNORE_CASE).containsMatchIn(sanitizedTitleForOrganic))
-            val isBeverageOrCandy = Regex(
-                "\\b(sparkling\\s+water|seltzer|club\\s+soda|energy\\s+drink|diet\\s+soda|cola|sprite|fanta|gatorade|powerade|chewing\\s+gum|gummy|gummies|skittles|starburst|sunscreen|lotion|shampoo|soap|detergent|toothpaste)\\b",
-                RegexOption.IGNORE_CASE
-            ).containsMatchIn(title) && !Regex("\\b(oats?|oatmeal|wheat|flour)\\b", RegexOption.IGNORE_CASE).containsMatchIn(ing)
-
-            if (!isCertifiedProductOrganic && !isBeverageOrCandy) {
-                val riskSource = if (hasIngredients) ing else cleanTitleForAlerts
-                val cleaned = riskSource
-                    .replace(Regex("\\bnon[\\s-]*organic\\b", RegexOption.IGNORE_CASE), "conventional")
-                    .replace(
-                        Regex("\\borganic\\s+(?:whole\\s+grain\\s+|rolled\\s+|steel[\\s-]*cut\\s+|sprouted\\s+|gluten[\\s-]*free\\s+|unbleached\\s+|enriched\\s+|durum\\s+|baby\\s+|fresh\\s+|frozen\\s+)?[a-z]+(?:\\s+(?:oats?|wheat|flour|strawberr\\w*|blueberr\\w*|spinach|kale|apples?|grapes?|peaches?|pears?|peppers?|cherries|beans?|potatoes?|celery|tomatoes?|chickpeas?|lentils?|semolina))?", RegexOption.IGNORE_CASE),
-                        " "
-                    )
-                    .replace(
-                        Regex("\\b(?:natural|artificial)\\s+[a-z\\s]{0,20}flavors?\\b|\\b(?:apple\\s+cider\\s+vinegar|apple\\s+pectin|fruit\\s+pectin|citrus\\s+pectin)\\b", RegexOption.IGNORE_CASE),
-                        " "
-                    )
-                val produceMatch = Regex(
-                    "\\b(strawberries|strawberry|baby\\s+spinach|spinach|kale|collard\\s+greens?|mustard\\s+greens?|seedless\\s+grapes?|grapes?|raisins?|peaches|peach|pears|pear|nectarines?|applesauce|apples?|bell\\s+peppers?|sweet\\s+peppers?|hot\\s+peppers?|cherries|blueberries|blueberry|green\\s+beans?|string\\s+beans?|potatoes|celery|tomatoes)\\b",
-                    RegexOption.IGNORE_CASE
-                ).find(cleaned)
-                val grainMatch = if (produceMatch == null) Regex(
-                    "\\b(rolled\\s+oats?|steel[\\s-]*cut\\s+oats?|whole\\s+grain\\s+oats?|instant\\s+oats?|oatmeal|oat\\s+flour|oat\\s+bran|oat\\s*milk|granola|oats|whole\\s+wheat(?:\\s+flour)?|enriched\\s+(?:wheat\\s+)?flour|bleached\\s+(?:wheat\\s+)?flour|unbleached\\s+(?:wheat\\s+)?flour|graham\\s+flour|durum\\s+wheat|semolina|wheat\\s+flour|chickpeas?|garbanzo\\s+beans?|hummus|lentils?|pinto\\s+beans?|black\\s+beans?|navy\\s+beans?|kidney\\s+beans?)\\b",
-                    RegexOption.IGNORE_CASE
-                ).find(cleaned) else null
-
-                if (produceMatch != null) {
-                    alerts.add(
-                        DietaryAlert(
-                            id = "pesticide_risk",
-                            label = "🌱 Herbicides & Pesticides (Glyphosate) Watch",
-                            shortBadge = "PESTICIDE",
-                            reason = "Conventional ${produceMatch.value.lowercase()} — high-residue produce category in USDA Pesticide Data Program (Dirty Dozen); choose USDA Organic (7 CFR § 205.105)"
-                        )
-                    )
-                } else if (grainMatch != null) {
-                    alerts.add(
-                        DietaryAlert(
-                            id = "pesticide_risk",
-                            label = "🌱 Herbicides & Pesticides (Glyphosate) Watch",
-                            shortBadge = "PESTICIDE",
-                            reason = "Conventional ${grainMatch.value.lowercase()} — non-organic crop permits synthetic herbicides & desiccants (such as glyphosate); choose USDA Organic (7 CFR § 205.105)"
-                        )
-                    )
+            val pestMatch = detectPesticideRisk(title, ing, nutrition, productJson)
+            if (pestMatch != null) {
+                val reasonText = if (pestMatch.kind == "high_residue_produce") {
+                    "Conventional ${pestMatch.matchedCrop} (-${pestMatch.points} pts) — high-residue produce category in USDA Pesticide Data Program (Dirty Dozen); choose USDA Organic (7 CFR § 205.105)"
+                } else {
+                    "Conventional ${pestMatch.matchedCrop} (-${pestMatch.points} pts) — non-organic crop permits synthetic herbicides & desiccants (such as glyphosate); choose USDA Organic (7 CFR § 205.105)"
                 }
+                alerts.add(
+                    DietaryAlert(
+                        id = "pesticide_risk",
+                        label = "🌱 Herbicides & Pesticides (Glyphosate) Watch",
+                        shortBadge = "PESTICIDE",
+                        reason = reasonText
+                    )
+                )
             }
         }
 
@@ -1084,6 +1042,86 @@ object ScanApi {
             }
         }
         return alerts
+    }
+
+    private const val PESTICIDE_PRODUCE_DEDUCTION = 25
+    private const val PESTICIDE_PRODUCE_SCORE_CAP = 65
+    private const val PESTICIDE_GRAIN_DEDUCTION = 20
+    private const val PESTICIDE_GRAIN_SCORE_CAP = 69
+
+    private data class PesticidePenaltyMatch(
+        val kind: String,
+        val matchedCrop: String,
+        val points: Int,
+        val maxScoreCap: Int
+    )
+
+    private fun detectPesticideRisk(
+        title: String,
+        ing: String,
+        nutrition: JSONObject?,
+        productJson: JSONObject?
+    ): PesticidePenaltyMatch? {
+        val hasIngredients = ing.length >= 3
+        val cleanTitleForAlerts = title
+            .replace(Regex("\\bsponsored(?:\\s+ad)?\\b", RegexOption.IGNORE_CASE), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        // Never infer whole-product USDA Organic from an individual ingredient (e.g. "organic cane sugar"
+        // in conventional oatmeal) or from negated "Non-Organic" titles.
+        val sanitizedTitleForOrganic = title
+            .replace(Regex("\\bnon[\\s-]*organic\\b", RegexOption.IGNORE_CASE), " ")
+            .replace(Regex("\\b(?:made\\s+)?with\\s+organic\\s+[a-z]+(?:\\s+[a-z]+){0,2}\\b", RegexOption.IGNORE_CASE), " ")
+        val isCertifiedProductOrganic = (nutrition?.optBoolean("isOrganic", false) == true) ||
+            (productJson?.optBoolean("isOrganic", false) == true) ||
+            Regex(
+                "\\b(usda\\s+organic|certified\\s+organic|biodynamic|glyphosate[\\s-]*residue[\\s-]*free|pesticide[\\s-]*free|herbicide[\\s-]*free)\\b",
+                RegexOption.IGNORE_CASE
+            ).containsMatchIn(sanitizedTitleForOrganic) ||
+            (!hasIngredients && Regex("\\b(organic|organics)\\b", RegexOption.IGNORE_CASE).containsMatchIn(sanitizedTitleForOrganic))
+        val isBeverageOrCandy = Regex(
+            "\\b(sparkling\\s+water|seltzer|club\\s+soda|energy\\s+drink|diet\\s+soda|cola|sprite|fanta|gatorade|powerade|chewing\\s+gum|gummy|gummies|skittles|starburst|sunscreen|lotion|shampoo|soap|detergent|toothpaste)\\b",
+            RegexOption.IGNORE_CASE
+        ).containsMatchIn(title) && !Regex("\\b(oats?|oatmeal|wheat|flour)\\b", RegexOption.IGNORE_CASE).containsMatchIn(ing)
+
+        if (isCertifiedProductOrganic || isBeverageOrCandy) return null
+
+        val riskSource = if (hasIngredients) ing else cleanTitleForAlerts
+        val cleaned = riskSource
+            .replace(Regex("\\bnon[\\s-]*organic\\b", RegexOption.IGNORE_CASE), "conventional")
+            .replace(
+                Regex("\\borganic\\s+(?:whole\\s+grain\\s+|rolled\\s+|steel[\\s-]*cut\\s+|sprouted\\s+|gluten[\\s-]*free\\s+|unbleached\\s+|enriched\\s+|durum\\s+|baby\\s+|fresh\\s+|frozen\\s+)?[a-z]+(?:\\s+(?:oats?|wheat|flour|strawberr\\w*|blueberr\\w*|spinach|kale|apples?|grapes?|peaches?|pears?|peppers?|cherries|beans?|potatoes?|celery|tomatoes?|chickpeas?|lentils?|semolina))?", RegexOption.IGNORE_CASE),
+                " "
+            )
+            .replace(
+                Regex("\\b(?:natural|artificial)\\s+[a-z\\s]{0,20}flavors?\\b|\\b(?:apple\\s+cider\\s+vinegar|apple\\s+pectin|fruit\\s+pectin|citrus\\s+pectin)\\b", RegexOption.IGNORE_CASE),
+                " "
+            )
+        val produceMatch = Regex(
+            "\\b(strawberries|strawberry|baby\\s+spinach|spinach|kale|collard\\s+greens?|mustard\\s+greens?|seedless\\s+grapes?|grapes?|raisins?|peaches|peach|pears|pear|nectarines?|applesauce|apples?|bell\\s+peppers?|sweet\\s+peppers?|hot\\s+peppers?|cherries|blueberries|blueberry|green\\s+beans?|string\\s+beans?|potatoes|celery|tomatoes)\\b",
+            RegexOption.IGNORE_CASE
+        ).find(cleaned)
+        if (produceMatch != null) {
+            return PesticidePenaltyMatch(
+                kind = "high_residue_produce",
+                matchedCrop = produceMatch.value.lowercase(),
+                points = PESTICIDE_PRODUCE_DEDUCTION,
+                maxScoreCap = PESTICIDE_PRODUCE_SCORE_CAP
+            )
+        }
+        val grainMatch = Regex(
+            "\\b(rolled\\s+oats?|steel[\\s-]*cut\\s+oats?|whole\\s+grain\\s+oats?|instant\\s+oats?|oatmeal|oat\\s+flour|oat\\s+bran|oat\\s*milk|granola|oats|whole\\s+wheat(?:\\s+flour)?|enriched\\s+(?:wheat\\s+)?flour|bleached\\s+(?:wheat\\s+)?flour|unbleached\\s+(?:wheat\\s+)?flour|graham\\s+flour|durum\\s+wheat|semolina|wheat\\s+flour|chickpeas?|garbanzo\\s+beans?|hummus|lentils?|pinto\\s+beans?|black\\s+beans?|navy\\s+beans?|kidney\\s+beans?)\\b",
+            RegexOption.IGNORE_CASE
+        ).find(cleaned)
+        if (grainMatch != null) {
+            return PesticidePenaltyMatch(
+                kind = "conventional_grain_legume",
+                matchedCrop = grainMatch.value.lowercase(),
+                points = PESTICIDE_GRAIN_DEDUCTION,
+                maxScoreCap = PESTICIDE_GRAIN_SCORE_CAP
+            )
+        }
+        return null
     }
 
     private const val KEY_SEED_OILS_ENABLED = "seed_oils_enabled_v1"
@@ -1203,12 +1241,14 @@ object ScanApi {
             result.optJSONObject("yukaBreakdown")?.let { yuka ->
                 result.put("_serverAdditiveScore", yuka.optInt("additiveScore", 30))
                 result.put("_serverHighRiskCapped", yuka.optBoolean("highRiskCapped", false))
+                result.put("_serverPesticideDeduction", yuka.optInt("pesticideDeduction", 0))
             }
         }
     }
 
     /**
-     * Re-evaluates a scan JSONObject in-place against the user's current Seed Oil toggle and familyWatchlist (2x strictness).
+     * Re-evaluates a scan JSONObject in-place against the user's current Seed Oil toggle, familyWatchlist (2x strictness),
+     * and Pesticide Watch (`pesticide_risk`) toggle.
      * When the local watchlist signature matches `_serverWatchlistSig`, restores the canonical server score untouched.
      */
     fun applyLocalWatchlistScoring(ctx: Context, data: JSONObject?) {
@@ -1222,7 +1262,8 @@ object ScanApi {
             .map { if (it == "nitrites") "nitrates" else it }
             .filter { seedOilsOn || it != "seedOils" }
             .toSet()
-        val activeWatchlistSig = "$seedOilsOn|${familySet.sorted().joinToString(",")}"
+        val pesticideWatchOn = "pesticide_risk" in prefs.getStringSet("dietaryWatchlist", emptySet()).orEmpty()
+        val activeWatchlistSig = "$seedOilsOn|${familySet.sorted().joinToString(",")}|pest=${if (pesticideWatchOn) "1" else "0"}"
 
         if (!result.has("_serverWatchlistSig")) {
             result.put("_serverWatchlistSig", activeWatchlistSig)
@@ -1234,6 +1275,7 @@ object ScanApi {
             if (yuka != null) {
                 result.put("_serverAdditiveScore", yuka.optInt("additiveScore", 30))
                 result.put("_serverHighRiskCapped", yuka.optBoolean("highRiskCapped", false))
+                result.put("_serverPesticideDeduction", yuka.optInt("pesticideDeduction", 0))
             }
         }
 
@@ -1249,6 +1291,8 @@ object ScanApi {
             if (yuka != null && result.has("_serverAdditiveScore")) {
                 yuka.put("additiveScore", result.optInt("_serverAdditiveScore", yuka.optInt("additiveScore", 30)))
                 yuka.put("highRiskCapped", result.optBoolean("_serverHighRiskCapped", yuka.optBoolean("highRiskCapped", false)))
+                val srvPestDed = result.optInt("_serverPesticideDeduction", 0)
+                if (srvPestDed > 0) yuka.put("pesticideDeduction", srvPestDed) else yuka.remove("pesticideDeduction")
             }
             return
         }
@@ -1257,6 +1301,7 @@ object ScanApi {
         val origFlagged = runCatching { JSONArray(origFlaggedStr) }.getOrDefault(currentFlagged)
         val serverFamilySet = serverWatchlistSig
             .substringAfter('|', "")
+            .substringBefore('|')
             .split(',')
             .map { it.trim() }
             .filter { it.isNotEmpty() }
@@ -1343,6 +1388,26 @@ object ScanApi {
                 }
                 nextScore = (nextScore - strictnessDeduction).coerceIn(0, 100)
             }
+        }
+
+        if (pesticideWatchOn) {
+            val prod = data.optJSONObject("product")
+            val titleForPest = prod?.optString("title").orEmpty()
+            val ingForPest = prod?.optString("ingredients").orEmpty()
+            val nutriForPest = prod?.optJSONObject("nutrition") ?: data.optJSONObject("nutrition")
+            val pestPenalty = detectPesticideRisk(titleForPest, ingForPest, nutriForPest, prod)
+            if (pestPenalty != null) {
+                val adjusted = (nextScore - pestPenalty.points).coerceAtMost(pestPenalty.maxScoreCap).coerceIn(0, 100)
+                val applied = (nextScore - adjusted).coerceAtLeast(0)
+                nextScore = adjusted
+                if (yuka != null) {
+                    if (applied > 0) yuka.put("pesticideDeduction", applied) else yuka.remove("pesticideDeduction")
+                }
+            } else {
+                yuka?.remove("pesticideDeduction")
+            }
+        } else {
+            yuka?.remove("pesticideDeduction")
         }
 
         val nextRating = when {
@@ -1544,7 +1609,8 @@ object ScanApi {
             bodyJson.put("skipAnalytics", true)
         }
         val body = bodyJson.toString()
-        val reqWatchlistSig = "$seedOilsOn|${familyWatchlist.toList().sorted().joinToString(",")}"
+        val pesticideWatchOn = "pesticide_risk" in dietaryWatchlist
+        val reqWatchlistSig = "$seedOilsOn|${familyWatchlist.toList().sorted().joinToString(",")}|pest=${if (pesticideWatchOn) "1" else "0"}"
         val reqDietarySig = dietaryWatchlist.toList().sorted().joinToString(",")
 
         var lastErr = """{"ok":false,"error":"Unable to reach HeyBroc server"}"""
@@ -1747,7 +1813,8 @@ object ScanApi {
             .filter { seedOilsOn || it != "seedOils" }
             .toSet()
         val dietaryWatchlist = prefs.getStringSet("dietaryWatchlist", emptySet()).orEmpty().toSet()
-        val reqWatchlistSig = "$seedOilsOn|${familyWatchlist.toList().sorted().joinToString(",")}"
+        val pesticideWatchOn = "pesticide_risk" in dietaryWatchlist
+        val reqWatchlistSig = "$seedOilsOn|${familyWatchlist.toList().sorted().joinToString(",")}|pest=${if (pesticideWatchOn) "1" else "0"}"
         val reqDietarySig = dietaryWatchlist.toList().sorted().joinToString(",")
         val refCode = referredByCode(ctx)
         val normStore = store.trim().lowercase()

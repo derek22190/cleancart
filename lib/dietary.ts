@@ -53,6 +53,17 @@ export interface PesticideRiskMatch {
   reason: string;
 }
 
+export const PESTICIDE_PRODUCE_DEDUCTION = 25;
+export const PESTICIDE_PRODUCE_SCORE_CAP = 65;
+export const PESTICIDE_GRAIN_DEDUCTION = 20;
+export const PESTICIDE_GRAIN_SCORE_CAP = 69;
+
+export interface PesticidePenalty {
+  points: number;
+  maxScoreCap: number;
+  match: PesticideRiskMatch;
+}
+
 /**
  * Deterministic USDA Pesticide Data Program (PDP) & conventional herbicide/desiccant crop detector.
  * Never accuses a specific brand or lot of illegal contamination; strictly identifies non-organic
@@ -107,7 +118,7 @@ export function detectPesticideRisk(
     return {
       crop,
       category: "high_residue_produce",
-      reason: `Conventional ${crop} — high-residue produce category in USDA Pesticide Data Program & EWG Dirty Dozen monitoring; USDA Organic (7 CFR § 205.105) prohibits synthetic pesticides & herbicides (including glyphosate)`,
+      reason: `Conventional ${crop} (-${PESTICIDE_PRODUCE_DEDUCTION} pts) — high-residue produce category in USDA Pesticide Data Program & EWG Dirty Dozen monitoring; USDA Organic (7 CFR § 205.105) prohibits synthetic pesticides & herbicides (including glyphosate)`,
     };
   }
 
@@ -120,11 +131,27 @@ export function detectPesticideRisk(
     return {
       crop,
       category: "conventional_grain_legume",
-      reason: `Conventional ${crop} — non-organic grain/legume category tracked in USDA Pesticide Data Program & EWG Dirty Dozen / herbicide monitoring where pre-harvest desiccants (such as glyphosate) are permitted; USDA Organic (7 CFR § 205.105) prohibits glyphosate & synthetic herbicides`,
+      reason: `Conventional ${crop} (-${PESTICIDE_GRAIN_DEDUCTION} pts) — non-organic grain/legume category tracked in USDA Pesticide Data Program & EWG Dirty Dozen / herbicide monitoring where pre-harvest desiccants (such as glyphosate) are permitted; USDA Organic (7 CFR § 205.105) prohibits glyphosate & synthetic herbicides`,
     };
   }
 
   return null;
+}
+
+export function computePesticidePenalty(
+  dietaryWatchlist: string[] | undefined,
+  productTitle: string,
+  ingredients: string,
+  nutrition?: NutritionInput,
+): PesticidePenalty | null {
+  if (!Array.isArray(dietaryWatchlist) || dietaryWatchlist.length === 0) return null;
+  const active = dietaryWatchlist.some((s) => String(s).trim().toLowerCase() === "pesticide_risk");
+  if (!active) return null;
+  const match = detectPesticideRisk(productTitle, ingredients, nutrition);
+  if (!match) return null;
+  return match.category === "high_residue_produce"
+    ? { points: PESTICIDE_PRODUCE_DEDUCTION, maxScoreCap: PESTICIDE_PRODUCE_SCORE_CAP, match }
+    : { points: PESTICIDE_GRAIN_DEDUCTION, maxScoreCap: PESTICIDE_GRAIN_SCORE_CAP, match };
 }
 
 export function evaluateDietaryAlerts(

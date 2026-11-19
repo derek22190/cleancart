@@ -66,6 +66,8 @@ export interface YukaBreakdown {
   highRiskCapped: boolean;
   /** True when added-sugar beverage ceiling (isBeverage && hasTop3AddedSugar && sugars >= 5) capped score at <= 49/100. */
   beverageCapApplied?: boolean;
+  /** Points deducted when opt-in Herbicides & Pesticides (Glyphosate) Watch flags a conventional high-residue crop. */
+  pesticideDeduction?: number;
   /** Sugar & refined-carb impact tier. */
   glucoseImpact?:
     | "Low Sugar / Carb"
@@ -1188,6 +1190,13 @@ export function estimateNutritionFromProduct(productTitle = "", rawIngredients =
     }
     return { caloriesKcal100g: 265, sugarsG100g: 2.5, saturatedFatG100g: 4.8, sodiumMg100g: 620, fiberG100g: 1.5, proteinG100g: 13.0, fruitsVegNutsPct: 0 };
   }
+  // 8b. Chicken Wings (skin-on high-fat cut — 0g dietary fiber, never inherit plant-staple 3g fiber)
+  if (
+    /\b(chicken\s+wings?|wing\s+sections?|drumettes?)\b/.test(combined) &&
+    !/\b(soup|chowder|bisque|stew|chili|salad|pasta|noodle|rice)\b/.test(combined)
+  ) {
+    return { caloriesKcal100g: 240, sugarsG100g: 0, saturatedFatG100g: 4.8, sodiumMg100g: 240, fiberG100g: 0, proteinG100g: 17.5, fruitsVegNutsPct: 0 };
+  }
   // 9. Gravy, Condensed Soup, Bouillon vs. Fresh Soups / Clam Chowder / Stews
   if (/\b(gravy|bouillon|condensed soup|cream of mushroom|cream of chicken)\b/.test(combined)) {
     return { caloriesKcal100g: 65, sugarsG100g: 1.5, saturatedFatG100g: 1.8, sodiumMg100g: 560, fiberG100g: 0, proteinG100g: 2.0, fruitsVegNutsPct: 0 };
@@ -1450,11 +1459,19 @@ export function scoreProductYuka(
   const isSaltedMultiIngredientMeat =
     clauses.length >= 2 &&
     /\b(turkey|chicken|ham|beef|pork)\b/i.test(productTitleText) &&
-    /\b(salt|potato\s+starch|carrageenan|phosphate|dextrose|sugar)\b/i.test(rawIngredients);
+    /\b(salt|broth|stock|potato\s+starch|carrageenan|phosphate|dextrose|sugar|natural\s+flavou?rs?)\b/i.test(rawIngredients);
+
+  const isMeasuredHighFatChickenWings =
+    hasMeasuredCalories &&
+    hasMeasuredSatFat &&
+    nutrition.caloriesKcal100g! >= 200 &&
+    nutrition.saturatedFatG100g! >= 3.8 &&
+    /\b(?:chicken\s+wings?|wing\s+sections?|drumettes?)\b/i.test(titleAndIng);
 
   const isWholeFood =
     nutrition.isWholeFood !== false &&
     !isSaltedMultiIngredientMeat &&
+    !isMeasuredHighFatChickenWings &&
     (isWholeProduceIngredient || isPureCleanCulinaryOil || isSingleIngredientBeefPatty || !NON_WHOLE_FOOD.test(titleAndIng)) &&
     !isBeverage &&
     !hasTop3AddedSugar &&
@@ -1943,6 +1960,34 @@ export function scoreProductYuka(
       glucoseNote,
       calorieNote,
     },
+  };
+}
+
+/**
+ * Applies the opt-in Herbicides & Pesticides (Glyphosate) Watch score deduction
+ * (-25 pts / cap 65 for conventional Dirty-Dozen produce; -20 pts / cap 69 for conventional
+ * desiccant-risk grains & legumes). Never alters non-food/supplement or certified USDA Organic items.
+ */
+export function applyPesticideScoreAdjustment(
+  result: ScoreResult,
+  penalty: { points: number; maxScoreCap: number } | null | undefined,
+): ScoreResult {
+  if (!penalty || penalty.points <= 0) return result;
+  if (result.yukaBreakdown?.nutriScoreGrade === "N/A") return result;
+  const adjustedScore = Math.max(0, Math.min(penalty.maxScoreCap, result.score - penalty.points));
+  const actualDeduction = Math.max(0, result.score - adjustedScore);
+  return {
+    ...result,
+    score: adjustedScore,
+    ...ratingFor(adjustedScore),
+    ...(result.yukaBreakdown
+      ? {
+          yukaBreakdown: {
+            ...result.yukaBreakdown,
+            pesticideDeduction: actualDeduction,
+          },
+        }
+      : {}),
   };
 }
 

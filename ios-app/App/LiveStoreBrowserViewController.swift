@@ -487,24 +487,15 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         topRow.alignment = .center
         topRow.spacing = 6
 
-        let closeBtn = HeyBrocPaddedButton(frame: .zero)
-        closeBtn.setTitle("✕ Scanner", for: .normal)
-        closeBtn.titleLabel?.font = UIFont.systemFont(ofSize: 12.5, weight: .heavy)
-        closeBtn.setTitleColor(UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0), for: .normal)
-        closeBtn.backgroundColor = UIColor(red: 0.945, green: 0.961, blue: 0.976, alpha: 1.0)
-        closeBtn.layer.cornerRadius = 10
-        closeBtn.textPadding = UIEdgeInsets(top: 7, left: 9, bottom: 7, right: 9)
-        closeBtn.setContentCompressionResistancePriority(.required, for: .horizontal)
-        closeBtn.addTarget(self, action: #selector(tapClose), for: .touchUpInside)
-
         let backBtn = UIButton(type: .system)
         backBtn.setTitle("‹", for: .normal)
         backBtn.titleLabel?.font = UIFont.systemFont(ofSize: 20, weight: .bold)
         backBtn.setTitleColor(UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0), for: .normal)
         backBtn.backgroundColor = UIColor(red: 0.945, green: 0.961, blue: 0.976, alpha: 1.0)
         backBtn.layer.cornerRadius = 10
-        backBtn.widthAnchor.constraint(equalToConstant: 32).isActive = true
-        backBtn.heightAnchor.constraint(equalToConstant: 32).isActive = true
+        backBtn.accessibilityLabel = "Back"
+        backBtn.widthAnchor.constraint(equalToConstant: 34).isActive = true
+        backBtn.heightAnchor.constraint(equalToConstant: 34).isActive = true
         backBtn.addTarget(self, action: #selector(tapNavBack), for: .touchUpInside)
 
         let titleLbl = UILabel()
@@ -529,15 +520,27 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         reloadBtn.setTitleColor(UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0), for: .normal)
         reloadBtn.backgroundColor = UIColor(red: 0.945, green: 0.961, blue: 0.976, alpha: 1.0)
         reloadBtn.layer.cornerRadius = 10
+        reloadBtn.accessibilityLabel = "Reload page"
         reloadBtn.widthAnchor.constraint(equalToConstant: 32).isActive = true
         reloadBtn.heightAnchor.constraint(equalToConstant: 32).isActive = true
         reloadBtn.addTarget(self, action: #selector(tapReload), for: .touchUpInside)
 
-        topRow.addArrangedSubview(closeBtn)
+        let closeBtn = UIButton(type: .system)
+        closeBtn.setTitle("✕", for: .normal)
+        closeBtn.titleLabel?.font = UIFont.systemFont(ofSize: 14.5, weight: .bold)
+        closeBtn.setTitleColor(UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0), for: .normal)
+        closeBtn.backgroundColor = UIColor(red: 0.945, green: 0.961, blue: 0.976, alpha: 1.0)
+        closeBtn.layer.cornerRadius = 10
+        closeBtn.accessibilityLabel = "Close Live Shop"
+        closeBtn.widthAnchor.constraint(equalToConstant: 32).isActive = true
+        closeBtn.heightAnchor.constraint(equalToConstant: 32).isActive = true
+        closeBtn.addTarget(self, action: #selector(tapClose), for: .touchUpInside)
+
         topRow.addArrangedSubview(backBtn)
         topRow.addArrangedSubview(titleLbl)
         topRow.addArrangedSubview(pestBtn)
         topRow.addArrangedSubview(reloadBtn)
+        topRow.addArrangedSubview(closeBtn)
         container.addSubview(topRow)
 
         let chipScroll = UIScrollView()
@@ -680,13 +683,26 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           function ensureAppBannerSuppressorStyles() {
             var meta = document.querySelector('meta[name="apple-itunes-app"]');
             if (meta && meta.parentNode) meta.parentNode.removeChild(meta);
-            if (document.getElementById('hb-app-banner-suppressor')) return;
             var head = document.head || document.documentElement;
             if (!head) return;
-            var st = document.createElement('style');
-            st.id = 'hb-app-banner-suppressor';
-            st.textContent = '#branch-banner-iframe, .branch-journeys-top, [id^="branch-banner"], [class*="branch-animation"], smart-banner, [data-testid="smart-banner"], [data-testid="app-banner"], [data-testid="download-app-banner"], [data-automation-id="app-banner"], [data-automation-id="smart-banner"], [data-test="smartBanner"], [data-test="appBanner"], [data-hb-app-banner-hidden="1"] { display: none !important; visibility: hidden !important; height: 0 !important; min-height: 0 !important; pointer-events: none !important; overflow: hidden !important; }';
-            head.appendChild(st);
+            if (!document.getElementById('hb-app-banner-suppressor')) {
+              var st = document.createElement('style');
+              st.id = 'hb-app-banner-suppressor';
+              st.textContent = '#branch-banner-iframe, .branch-journeys-top, [id^="branch-banner"], [class*="branch-animation"], smart-banner, [data-testid="smart-banner"], [data-testid="app-banner"], [data-testid="download-app-banner"], [data-automation-id="app-banner"], [data-automation-id="smart-banner"], [data-test="smartBanner"], [data-test="appBanner"], [data-hb-app-banner-hidden="1"] { display: none !important; visibility: hidden !important; height: 0 !important; min-height: 0 !important; pointer-events: none !important; overflow: hidden !important; }';
+              head.appendChild(st);
+            }
+            if (/(?:^|\\.)samsclub\\.com$/i.test(location.hostname || '') && !document.getElementById('hb-sams-search-fix')) {
+              var sf = document.createElement('style');
+              sf.id = 'hb-sams-search-fix';
+              sf.textContent =
+                'header form[data-testid="search-form"], header form[role="search"] { flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; max-width: 100% !important; }' +
+                'header form[data-testid="search-form"] > div, header form[role="search"] > div { flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; position: relative !important; }' +
+                'input[data-automation-id="header-input-search"], input.search-bar-redesigned-v2, header form[data-testid="search-form"] input[type="search"], header form[role="search"] input[type="search"] { width: 100% !important; min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important; background-color: #ffffff !important; color: #0f172a !important; -webkit-text-fill-color: #0f172a !important; caret-color: #0f172a !important; opacity: 1 !important; font-size: 16px !important; line-height: 1.35 !important; padding-left: 14px !important; padding-right: 76px !important; border-radius: 9999px !important; text-indent: 0 !important; }' +
+                'input[data-automation-id="header-input-search"]::placeholder, input.search-bar-redesigned-v2::placeholder, header form[data-testid="search-form"] input[type="search"]::placeholder { color: #64748b !important; -webkit-text-fill-color: #64748b !important; opacity: 1 !important; }' +
+                'header form[data-testid="search-form"] button[aria-label*="Clear" i], header form[role="search"] button[aria-label*="Clear" i] { right: 40px !important; left: auto !important; }' +
+                'header form[data-testid="search-form"] button.search-icon-redesigned-v2, header form[role="search"] button.search-icon-redesigned-v2 { right: 6px !important; left: auto !important; }';
+              head.appendChild(sf);
+            }
           }
 
           function dismissRetailerAppBanners() {
@@ -1316,6 +1332,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               }
             }
             var vh = Math.max(320, window.innerHeight || 680);
+            var vw = Math.max(280, window.innerWidth || 390);
             var targetY = (typeof window.__heybrocBubbleCenterY === 'number' && window.__heybrocBubbleCenterY > 40)
               ? window.__heybrocBubbleCenterY
               : (vh * 0.38);
@@ -1333,6 +1350,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               var cr = card.getBoundingClientRect();
               if (cr.height < 64 || cr.height > vh * 0.94 || cr.width < 100) continue;
               if (cr.bottom < 105 || cr.top > vh - 55) continue;
+              if (cr.right < 24 || cr.left > vw - 24) continue;
 
               var visTitle = extractBestCardTitle(card, CARD_TITLE_SELS);
               var rec = recoverFromCardLinks(card, visTitle);
@@ -1347,6 +1365,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               } else {
                 dist = Math.abs(((cr.top + cr.bottom) * 0.5) - targetY) * 0.25;
               }
+              dist += Math.abs(((cr.left + cr.right) * 0.5) - (vw * 0.5)) * 0.18;
               if (cr.top < 72) dist += 180;
               if (dist < bestDist) {
                 bestDist = dist;
@@ -2840,6 +2859,39 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               attributeFilter: ['src', 'srcset', 'data-src', 'href']
             });
           }
+          var hbInputBlurTimer = null;
+          function isEditableTarget(el) {
+            if (!el) return false;
+            var tag = (el.tagName || '').toUpperCase();
+            if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
+            if (tag === 'INPUT') {
+              var t = String(el.type || 'text').toLowerCase();
+              return t !== 'hidden' && t !== 'checkbox' && t !== 'radio' && t !== 'button' && t !== 'submit' && t !== 'reset';
+            }
+            return Boolean(el.isContentEditable);
+          }
+          function postInputFocus(focused) {
+            try {
+              if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.heybrocStoreBridge) {
+                window.webkit.messageHandlers.heybrocStoreBridge.postMessage({ kind: 'inputFocus', focused: Boolean(focused) });
+              }
+            } catch (e) {}
+          }
+          document.addEventListener('focusin', function(e) {
+            if (!isEditableTarget(e && e.target)) return;
+            if (hbInputBlurTimer) { clearTimeout(hbInputBlurTimer); hbInputBlurTimer = null; }
+            postInputFocus(true);
+          }, true);
+          document.addEventListener('focusout', function(e) {
+            if (!isEditableTarget(e && e.target)) return;
+            if (hbInputBlurTimer) clearTimeout(hbInputBlurTimer);
+            hbInputBlurTimer = setTimeout(function() {
+              hbInputBlurTimer = null;
+              if (!isEditableTarget(document.activeElement)) {
+                postInputFocus(false);
+              }
+            }, 140);
+          }, true);
           dismissRetailerAppBanners();
           scheduleCheck(true);
         })();
@@ -2848,11 +2900,19 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         let earlyBannerCSSJS = """
         (function() {
           var head = document.head || document.documentElement;
-          if (!head || document.getElementById('hb-app-banner-suppressor')) return;
-          var st = document.createElement('style');
-          st.id = 'hb-app-banner-suppressor';
-          st.textContent = '#branch-banner-iframe, .branch-journeys-top, [id^="branch-banner"], [class*="branch-animation"], smart-banner, [data-testid="smart-banner"], [data-testid="app-banner"], [data-testid="download-app-banner"], [data-automation-id="app-banner"], [data-automation-id="smart-banner"], [data-test="smartBanner"], [data-test="appBanner"], [data-hb-app-banner-hidden="1"] { display: none !important; visibility: hidden !important; height: 0 !important; min-height: 0 !important; pointer-events: none !important; overflow: hidden !important; }';
-          head.appendChild(st);
+          if (!head) return;
+          if (!document.getElementById('hb-app-banner-suppressor')) {
+            var st = document.createElement('style');
+            st.id = 'hb-app-banner-suppressor';
+            st.textContent = '#branch-banner-iframe, .branch-journeys-top, [id^="branch-banner"], [class*="branch-animation"], smart-banner, [data-testid="smart-banner"], [data-testid="app-banner"], [data-testid="download-app-banner"], [data-automation-id="app-banner"], [data-automation-id="smart-banner"], [data-test="smartBanner"], [data-test="appBanner"], [data-hb-app-banner-hidden="1"] { display: none !important; visibility: hidden !important; height: 0 !important; min-height: 0 !important; pointer-events: none !important; overflow: hidden !important; }';
+            head.appendChild(st);
+          }
+          if (/(?:^|\\.)samsclub\\.com$/i.test(location.hostname || '') && !document.getElementById('hb-sams-search-fix')) {
+            var sf = document.createElement('style');
+            sf.id = 'hb-sams-search-fix';
+            sf.textContent = 'header form[data-testid="search-form"], header form[role="search"] { flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; max-width: 100% !important; } header form[data-testid="search-form"] > div, header form[role="search"] > div { flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; position: relative !important; } input[data-automation-id="header-input-search"], input.search-bar-redesigned-v2, header form[data-testid="search-form"] input[type="search"], header form[role="search"] input[type="search"] { width: 100% !important; min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important; background-color: #ffffff !important; color: #0f172a !important; -webkit-text-fill-color: #0f172a !important; caret-color: #0f172a !important; opacity: 1 !important; font-size: 16px !important; line-height: 1.35 !important; padding-left: 14px !important; padding-right: 76px !important; border-radius: 9999px !important; text-indent: 0 !important; } input[data-automation-id="header-input-search"]::placeholder, input.search-bar-redesigned-v2::placeholder, header form[data-testid="search-form"] input[type="search"]::placeholder { color: #64748b !important; -webkit-text-fill-color: #64748b !important; opacity: 1 !important; } header form[data-testid="search-form"] button[aria-label*="Clear" i], header form[role="search"] button[aria-label*="Clear" i] { right: 40px !important; left: auto !important; } header form[data-testid="search-form"] button.search-icon-redesigned-v2, header form[role="search"] button.search-icon-redesigned-v2 { right: 6px !important; left: auto !important; }';
+            head.appendChild(sf);
+          }
         })();
         """
         config.userContentController.addUserScript(WKUserScript(source: earlyBannerCSSJS, injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -2936,7 +2996,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         floatingBubble.addSubview(hStack)
         view.addSubview(floatingBubble)
 
-        let topC = floatingBubble.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 190)
+        let topC = floatingBubble.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 236)
         let trailingC = floatingBubble.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12)
         let leadingC = floatingBubble.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12)
         leadingC.isActive = false
@@ -3048,6 +3108,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     @objc private func tapNavBack() {
         if storeWebView?.canGoBack == true {
             storeWebView?.goBack()
+        } else {
+            tapClose()
         }
     }
 
@@ -3069,6 +3131,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         badgeBatchGeneration += 1
         cardSummariesById.removeAll()
         cardStoreImageById.removeAll()
+        floatingBubble.isHidden = false
         setBubbleIdleState()
         dismissAuthPopup()
         if wasAlreadyActive {
@@ -3341,9 +3404,14 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         let batchPending = (body["batchPending"] as? Bool) ?? false
         let pageToken = (body["pageToken"] as? String) ?? ""
         let rawBatchItems = (body["items"] as? [[String: Any]]) ?? []
+        let inputFocused = (body["focused"] as? Bool) ?? false
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self, !self.isCleaningUp else { return }
+            if kind == "inputFocus" {
+                self.floatingBubble.isHidden = inputFocused
+                return
+            }
             if !instacartSlug.isEmpty || self.activeStore.apiStoreKey != "instacart" {
                 self.lastDetectedInstacartSlug = instacartSlug
             }
@@ -3660,6 +3728,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         cardSummariesById.removeAll()
         cardStoreImageById.removeAll()
         isScanning = false
+        floatingBubble.isHidden = false
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

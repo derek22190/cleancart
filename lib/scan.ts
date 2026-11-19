@@ -12,7 +12,15 @@ import {
   serializeEntitlementWithPaidLookup,
   type EntitlementSummary,
 } from "./referrals";
-import { ALL_CATEGORIES, scoreProductYuka, type Category, type NutritionInput, type ScoreResult, type Watchlist } from "./rubric";
+import {
+  ALL_CATEGORIES,
+  applyPesticideScoreAdjustment,
+  scoreProductYuka,
+  type Category,
+  type NutritionInput,
+  type ScoreResult,
+  type Watchlist,
+} from "./rubric";
 import {
   isAffiliateAllowedOnClient,
   resolveSwap,
@@ -27,6 +35,7 @@ import {
 
 import {
   classifyDietaryAlertSeverity,
+  computePesticidePenalty,
   evaluateDietaryAlerts,
   type DietaryAlert,
   type DietaryAlertSeverity,
@@ -840,7 +849,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
       error: `No ingredient list found for "${productTitle || barcode}" on Open Food Facts or USDA. Try adding the brand name.`,
     };
   }
-  const genericBrand = /^(conventional grocery|clean grocery verified|usda verified|fresh whole food|fresh produce|fresh meat & eggs|whole nuts, seeds & legumes|.*category estimate.*)$/i;
+  const genericBrand = /^(conventional grocery|clean grocery verified|usda verified|usda fooddata central|fresh whole food|fresh produce|fresh meat & eggs|whole nuts, seeds & legumes|.*category estimate.*)$/i;
   const callerWords = productTitle.split(/\s+/).filter(Boolean);
   // Preserve caller's raw store title only when scoring direct screen-captured ingredients;
   // for validated OFF, USDA, DSLD, and catalog matches, always surface the canonical product title.
@@ -871,10 +880,17 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
       : baseTitle;
   const scoringTitle =
     found.source === "screen" ? `${productTitle} ${title}`.trim() : title;
-  const result = scoreProductYuka(found.ingredients, watchlist, familyWatchlist, {
+  const baseResult = scoreProductYuka(found.ingredients, watchlist, familyWatchlist, {
     ...found.nutrition,
     productTitle: scoringTitle,
   });
+  const pesticidePenalty = computePesticidePenalty(
+    req.dietaryWatchlist,
+    scoringTitle,
+    found.ingredients,
+    found.nutrition,
+  );
+  const result = applyPesticideScoreAdjustment(baseResult, pesticidePenalty);
   const dietaryAlerts = evaluateDietaryAlerts(
     req.dietaryWatchlist,
     scoringTitle,

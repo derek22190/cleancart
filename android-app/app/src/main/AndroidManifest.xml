@@ -64,6 +64,7 @@
         <activity
             android:name=".LiveStoreBrowserActivity"
             android:configChanges="orientation|screenSize|keyboardHidden"
+            android:windowSoftInputMode="adjustResize"
             android:launchMode="singleTop"
             android:exported="false" />
     </application>

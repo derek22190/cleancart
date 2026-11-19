@@ -3914,7 +3914,7 @@ export function resolveSwap(params: {
       : !isAffiliateAllowedOnClient("web", params.clientPlatform)
         ? "extension"
         : "web";
-  const requireOrganicUpgrade = params.score >= 75 && hasPesticideRisk;
+  const requireOrganicUpgrade = hasPesticideRisk && params.score >= 60;
   const title = (params.productTitle || "").trim();
   const detectedCat = params.category ?? detectCategory(title, params.ingredients);
   const allowCatDefault = isCategoryDefaultAllowed(title, detectedCat);
@@ -4038,7 +4038,7 @@ export function resolveSwapCandidates(params: {
         ? "extension"
         : "web";
   const maxItems = Math.max(1, Math.min(10, params.limit ?? 4));
-  const requireOrganicUpgrade = params.score >= 75 && hasPesticideRisk;
+  const requireOrganicUpgrade = hasPesticideRisk && params.score >= 60;
 
   const detectedCat = params.category ?? detectCategory(title, params.ingredients);
   const allowCatDefault = isCategoryDefaultAllowed(title, detectedCat);

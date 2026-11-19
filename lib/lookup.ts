@@ -2133,12 +2133,15 @@ const STORE_HOUSE_WHOLE_FOOD_BRAND_RE =
 export function genericWholeFoodQuery(query: string): string | null {
   if (classifyWholeFood(query).isWholeFood !== true) return null;
   const text = query.toLowerCase();
+  if (/\bfrozen\b/.test(text) && /\bwings?\b/.test(text) && /\bchicken\b/.test(text)) return null;
   const food = text.match(/\b(apples?|almonds?|walnuts?|cashews?|chia\s+seeds?|flax\s*seeds?|pumpkin\s+seeds?|salmon|trout|cod|tuna|chicken|turkey|beef|pork|eggs?|oats?|oatmeal|quinoa|broccoli|spinach|carrots?|sweet\s+potato(?:es)?|potato(?:es)?|yams?|tomato(?:es)?|avocados?|bananas?|lentils?|chickpeas?|olive\s+oil|greek\s+yogurt)\b/)?.[0];
   if (!food) return null;
-  const beefCut = food === "beef" ? text.match(/\b(round|chuck|brisket|ribeye|sirloin|tenderloin)\b/)?.[0] : undefined;
+  const meatCut = /^(?:beef|pork|chicken|turkey)$/.test(food)
+    ? text.match(/\b(wings?|breasts?|thighs?|drumsticks?|ground|ribs?|brisket|sirloin|ribeye|tenderloins?|round|chuck|belly|chops?|loins?)\b/)?.[0]
+    : undefined;
   const species = text.match(/\b(atlantic|pacific|sockeye|pink|chinook)\b/)?.[0];
   const preparation = /\b(greek\s+yogurt)\b/.test(food) ? "plain" : /olive\s+oil|oats?|oatmeal|quinoa/.test(food) ? "" : /\b(cooked|roasted|boiled|baked)\b/.exec(text)?.[0] || "raw";
-  return [food === "oatmeal" ? "oats" : food, beefCut, species, preparation].filter(Boolean).join(" ");
+  return [food === "oatmeal" ? "oats" : food, meatCut, species, preparation].filter(Boolean).join(" ");
 }
 
 export function matchesGenericWholeFood(query: string, candidate: string): boolean {
@@ -2146,6 +2149,27 @@ export function matchesGenericWholeFood(query: string, candidate: string): boole
   if (!canonical || classifyWholeFood(candidate).isWholeFood !== true) return false;
   if (/\broasts?\b/i.test(query) && /\bsteaks?\b/i.test(candidate) && !/\broasts?\b/i.test(candidate)) return false;
   if (/\bsteaks?\b/i.test(query) && /\broasts?\b/i.test(candidate) && !/\bsteaks?\b/i.test(candidate)) return false;
+  const MEAT_CUT_FAMILIES: RegExp[] = [
+    /\bwings?\b/i,
+    /\bbreasts?\b/i,
+    /\bthighs?\b/i,
+    /\bdrumsticks?\b/i,
+    /\bground\b/i,
+    /\bribs?\b/i,
+    /\bbrisket\b/i,
+    /\bsirloin\b/i,
+    /\bribeye\b/i,
+    /\btenderloins?\b/i,
+    /\bbelly\b/i,
+    /\bchops?\b/i,
+    /\bloins?\b/i,
+  ];
+  for (const cutRe of MEAT_CUT_FAMILIES) {
+    const qHas = cutRe.test(query);
+    const cHas = cutRe.test(candidate);
+    if (qHas && !cHas) return false;
+    if (cHas && !qHas && cutRe.source === "\\bground\\b") return false;
+  }
   const stem = (w: string) => w.length > 3 ? w.replace(/s$/, "") : w;
   const candidateWords = new Set(candidate.toLowerCase().split(/[^a-z]+/).filter(Boolean).map(stem));
   const identity = canonical.replace(/\b(raw|cooked|roasted|boiled|baked|plain)\b/g, "").trim().split(/\s+/);
@@ -2198,8 +2222,13 @@ function buildUsdaLuceneQuery(query: string): string {
     .split(/\s+/)
     .filter((w) => w.length >= 2 && !USDA_LUCENE_SKIP_WORDS.has(w.toLowerCase()) && !/^\d+$/.test(w));
   const compactWords =
-    allWords.length > 5
-      ? allWords.filter((w) => !/^(?:original|classic|traditional|homestyle|breakfast|lunch|delicious|toasted|frozen|refrigerated)$/i.test(w))
+    allWords.length > 4
+      ? allWords.filter(
+          (w) =>
+            !/^(?:original|classic|traditional|homestyle|breakfast|lunch|delicious|toasted|frozen|refrigerated|bone|boneless|skinless|skin|wild|caught|farm|raised|handmade|hand|made|individually|quick|uncooked|raw|portions|portion|fillets|fillet)$/i.test(
+              w,
+            ),
+        )
       : allWords;
   const effectiveWords = compactWords.length >= 2 ? compactWords : allWords;
   const words =
@@ -2727,6 +2756,36 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     nutrition: { caloriesKcal100g: 226, sugarsG100g: 1.2, saturatedFatG100g: 1.8, sodiumMg100g: 571, fiberG100g: 0, proteinG100g: 20.2, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isOrganic: false, isWholeFood: false },
     sourceUrl: "https://www.samsclub.com/ip/members-mark-lightly-breaded-chicken-breast-bites-frozen-3-lbs/13626401534",
     verifiedAt: "2026-11-15",
+  },
+  {
+    match: /^(?!.*\b(?:organic|buffalo|barbecue|bbq|teriyaki|memphis|rotisserie|oven[- ]?roasted|breaded|crispy|lemon\s+pepper|garlic\s+parmesan|priced\s+per\s+pound)\b).*\bmember'?s\s+mark\b(?=.*\b(?:frozen|10\s*lbs?|bone[- ]?in)\b).*\bchicken\s+wings?\b/i,
+    brand: "Member's Mark",
+    title: "Member's Mark Bone-In Chicken Wings, Frozen",
+    keywords: ["members mark", "bone-in", "chicken wings", "frozen", "drumettes", "flats"],
+    ingredients: "Chicken Wings Drumettes and Flats, Contains Up to 10% of Chicken Broth, Salt, Natural Flavors.",
+    nutrition: { caloriesKcal100g: 161, sugarsG100g: 0, saturatedFatG100g: 3.57, sodiumMg100g: 152, fiberG100g: 0, proteinG100g: 14.3, fruitsVegNutsPct: 0, isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.samsclub.com/ip/members-mark-bone-in-chicken-wings-frozen-10-lbs/13581923232",
+    verifiedAt: "2026-11-19",
+  },
+  {
+    match: /^(?!.*\b(?:lightly\s+breaded|honey|bbq|barbecue|buffalo|southern|spicy|grilled|rotisserie)\b).*\bmember'?s\s+mark\b.*\bhomestyle\s+chicken\s+bites?\b/i,
+    brand: "Member's Mark",
+    title: "Member's Mark Breaded and Boneless Homestyle Chicken Bites",
+    keywords: ["members mark", "breaded", "boneless", "homestyle", "chicken bites", "frozen"],
+    ingredients: "Chicken Breast Meat with Rib Meat, Water, Modified Corn Starch, Salt, Sodium Phosphate, Garlic Powder, Onion Powder. Breaded with: Bleached Wheat Flour, Wheat Flour, Modified Food Starch, Spices, Dextrose, Leavening (Sodium Acid Pyrophosphate, Sodium Bicarbonate), Garlic Powder, Onion Powder, Yeast, Extractives of Paprika. Battered with: Water, Bleached Wheat Flour, Dextrose, Yellow Corn Flour, Wheat Flour, Salt, Spices, Leavening (Sodium Acid Pyrophosphate, Sodium Bicarbonate), Extractives of Paprika. Predusted with: Wheat Flour, Salt, Bleached Wheat Flour. Breading Is Set in Soybean Oil.",
+    nutrition: { caloriesKcal100g: 190, sugarsG100g: 1.19, saturatedFatG100g: 0.6, sodiumMg100g: 488, fiberG100g: 1.2, proteinG100g: 15.5, fruitsVegNutsPct: 0, isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.samsclub.com/ip/members-mark-homestyle-boneless-chicken-bites/13581823960",
+    verifiedAt: "2026-11-19",
+  },
+  {
+    match: /^(?!.*\b(?:breaded|homestyle|honey|bbq|barbecue|buffalo|lemon|herb|kinder|rotisserie|spicy|teriyaki)\b).*\bmember'?s\s+mark\b.*\bgrilled\s+chicken\s+(?:breast\s+)?bites?\b/i,
+    brand: "Member's Mark",
+    title: "Member's Mark Grilled Chicken Bites",
+    keywords: ["members mark", "grilled", "chicken bites", "frozen", "boneless"],
+    ingredients: "Chicken Breast Meat with Rib Meat, Water, Seasoning (Flavor [Salt, Autolyzed Yeast, Yeast, Chicken Fat, Chicken Broth, Natural Flavor], Brown Sugar, Flavoring, Spices, Smoked Paprika, Citric Acid, Mushroom Powder, Dried Lemon Peel Powder, Dehydrated Red Bell Pepper, Natural Flavor), Contains 2% or Less of Modified Food Starch, Sodium Bicarbonate and/or Potassium Bicarbonate, Natural Flavor, Sodium Phosphates, Soybean Oil.",
+    nutrition: { sugarsG100g: 1.2, fiberG100g: 0, proteinG100g: 18.8, sodiumMg100g: 741, fruitsVegNutsPct: 0, isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.samsclub.com/ip/members-mark-grilled-chicken-bites-frozen-3-lbs/13885002883",
+    verifiedAt: "2026-11-19",
   },
   {
     match: /^(?!.*\b(?:turkey|canadian|uncured|bits|crumbled|wrapped|dip|macaroni|thick)\b).*\bmember'?s\s+mark\b.*\bhickory\s+smoked\b.*\bbacon\b/i,
@@ -5483,7 +5542,9 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
   // 2. Plain Fresh / Frozen Meat, Poultry (Whole Turkey, Chicken Breast Fillets, Beef Bottom Round Roast, etc.), Seafood & Shell Eggs (unbreaded, uncured)
   const MEAT_NOUN_RE =
     /\b(chicken\s+(breasts?|fillets?|cutlets?|thighs?|drumsticks?|wings?|tenderloins?|quarters?|legs?)|whole\s+chicken|young\s+chicken|(?:whole|frozen|young|fresh|antibiotic[- ]?free|organic|pasture[- ]?raised|grade\s+a)\s+turkey|turkey\s+(breasts?|thighs?|drumsticks?|wings?|tenderloins?)|whole\s+turkey|\bturkey\b|ground\s+(beef|chuck|turkey|chicken|pork|bison|lamb)|(?:bottom\s+round|top\s+round|eye\s+of\s+round|rump|chuck|sirloin\s+tip|rib)\s+roast|beef\s+(stew\s+meat|chuck|roast|brisket|sirloin|ribeye|tenderloin|short\s+ribs?|flank|skirt)|stew\s+beef|ribeye|sirloin|filet|new\s+york\s+strip|t-bone|porterhouse|pork\s+(chops?|loin|tenderloin|roast|shoulder|ribs?|belly)|lamb\s+(chops?|leg|shank|rack)|salmon|cod|tilapia|haddock|halibut|trout|mahi|swordfish|catfish|snapper|sea\s+bass|tuna\s+steak|shrimp|scallops?|crab\s+legs?|lobster\s+tails?|large\s+eggs?|white\s+eggs?|brown\s+eggs?|cage[- ]?free\s+eggs?|pasture[- ]?raised\s+eggs?|grade\s+aa?\s+(?:large\s+|extra\s+large\s+|jumbo\s+|medium\s+)?(?:white\s+|brown\s+)?eggs?|\beggs\b)\b/;
-  if (MEAT_NOUN_RE.test(s) && hasWholeFoodHeadNoun(query, MEAT_NOUN_RE, { checkBefore: true, allowMeatCuts: true, mode: "meat" })) {
+  const isFrozenChickenWingsFallback = /\bfrozen\b/i.test(s) && /\bwings?\b/i.test(s) && /\bchicken\b/i.test(s);
+  if (!isFrozenChickenWingsFallback && MEAT_NOUN_RE.test(s) && hasWholeFoodHeadNoun(query, MEAT_NOUN_RE, { checkBefore: true, allowMeatCuts: true, mode: "meat" })) {
+    const isSkinOnChickenWings = /\bchicken\s+wings?\b/i.test(s) && !/\bskinless\b/i.test(s);
     const wholeMeatIng = /\b(beef|angus|wagyu|ribeye|sirloin|tenderloin|brisket|chuck|round\s+roast|rump\s+roast|new\s+york\s+strip|t-bone|porterhouse)\b/i.test(s)
       ? "100% Beef (Single-Ingredient Unprocessed Whole Food)."
       : /\bchicken\b/i.test(s)
@@ -5499,14 +5560,18 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
                 : "100% Whole Food Protein (Single-Ingredient Unprocessed Meat, Poultry, or Seafood).";
     const meatCurated = lookupCuratedPhoto({ brand: storeHouseBrandLabel || "Fresh Meat & Eggs", title: cleanTitle });
     return {
-      sourceUrl: "https://fdc.nal.usda.gov/food-details/171477/nutrients",
+      sourceUrl: isSkinOnChickenWings
+        ? "https://fdc.nal.usda.gov/food-details/172390/nutrients"
+        : "https://fdc.nal.usda.gov/food-details/171477/nutrients",
       productTitle: cleanTitle,
       brand: storeHouseBrandLabel || "Fresh Meat & Eggs",
       ingredients: wholeMeatIng,
       imageUrl: meatCurated?.imageUrl?.startsWith("https://") ? meatCurated.imageUrl : undefined,
-      nutrition: { fruitsVegNutsPct: 0, isWholeFood: true, isOrganic: false },
+      nutrition: isSkinOnChickenWings
+        ? { caloriesKcal100g: 222, sugarsG100g: 0, saturatedFatG100g: 4.45, sodiumMg100g: 73, fiberG100g: 0, proteinG100g: 18.3, fruitsVegNutsPct: 0, isWholeFood: false, isOrganic: false }
+        : { fruitsVegNutsPct: 0, isWholeFood: true, isOrganic: false },
       source: "catalog",
-      sourceUpdatedAt: "2026-11-08",
+      sourceUpdatedAt: isSkinOnChickenWings ? "2026-11-19" : "2026-11-08",
     };
   }
 
@@ -5673,7 +5738,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   if (!key) return null;
 
   const DIRECT_CATALOG_PRIORITY =
-    /\b(pop[- ]?tarts?|simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread|water|potato\s+chips)|clancy'?s.*potato\s+chips|kirkland(?:\s+signature)?.*(?:rotisserie\s+chicken|lightly\s+breaded\s+chicken|purified.*water)|berkley\s+jensen.*water|kroger.*purified.*water|member'?s\s+mark.*(?:rotisserie\s+chicken|breaded\s+chicken\s+breast\s+bites|hickory\s+smoked\s+bacon)|cinnamon\s+toast\s+crunch|cinnamon\s+chex|lucky\s+charms|froot\s+loops|cheerios|quaker\b.*\b(?:oats?|oatmeal)|bob'?s\s+red\s+mill\b.*\b(?:oats?|oatmeal)|doritos|cheetos|cheez[- ]?its?|oreo|triscuit|lay'?s|pringles|barilla|nutella|hidden\s+valley|campbell'?s|kraft\b.*\b(?:mac|macaroni)|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|butterball|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|freshness\s+guaranteed|smithfield|my\s+cookie\s+dealer|protein\s+toaster\s+pastr(?:y|ies)|ground\s+(?:beef|chuck|turkey|chicken|pork|bison|lamb)|\d{2}%\s*lean|marketside\s+butcher|marketside\b.*\bblueberry\b.*\bmuffins?|folgers|bar[- ]?s\b|ball\s+park|jimmy\s+dean|chobani|tropicana|little\s+debbie|jackson'?s|drizzilicious|stonyfield|organic\s+valley|applegate|lotus\s+foods|rao'?s|french'?s|mccormick|idahoan|carvel|panera|blount|fresh\s+banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz|hellmann'?s|best\s+foods|kraft\s+mayo|primal\s+kitchen|chosen\s+foods|boulder\s+canyon|mission\b.*\btortillas?|tortillas?\b.*\bmission|eggo|goldfish|\bjif\b|philadelphia\b.*\bcream\s+cheese|coca[- ]?cola|\bcoke\b|gatorade)\b/i;
+    /\b(pop[- ]?tarts?|simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread|water|potato\s+chips)|clancy'?s.*potato\s+chips|kirkland(?:\s+signature)?.*(?:rotisserie\s+chicken|lightly\s+breaded\s+chicken|purified.*water)|berkley\s+jensen.*water|kroger.*purified.*water|member'?s\s+mark.*(?:rotisserie\s+chicken|breaded\s+chicken\s+breast\s+bites|homestyle\s+chicken\s+bites?|grilled\s+chicken\s+(?:breast\s+)?bites?|(?:bone[- ]?in|frozen).*chicken\s+wings?|chicken\s+wings?.*frozen|hickory\s+smoked\s+bacon)|cinnamon\s+toast\s+crunch|cinnamon\s+chex|lucky\s+charms|froot\s+loops|cheerios|quaker\b.*\b(?:oats?|oatmeal)|bob'?s\s+red\s+mill\b.*\b(?:oats?|oatmeal)|doritos|cheetos|cheez[- ]?its?|oreo|triscuit|lay'?s|pringles|barilla|nutella|hidden\s+valley|campbell'?s|kraft\b.*\b(?:mac|macaroni)|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|butterball|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|freshness\s+guaranteed|smithfield|my\s+cookie\s+dealer|protein\s+toaster\s+pastr(?:y|ies)|ground\s+(?:beef|chuck|turkey|chicken|pork|bison|lamb)|\d{2}%\s*lean|marketside\s+butcher|marketside\b.*\bblueberry\b.*\bmuffins?|folgers|bar[- ]?s\b|ball\s+park|jimmy\s+dean|chobani|tropicana|little\s+debbie|jackson'?s|drizzilicious|stonyfield|organic\s+valley|applegate|lotus\s+foods|rao'?s|french'?s|mccormick|idahoan|carvel|panera|blount|fresh\s+banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz|hellmann'?s|best\s+foods|kraft\s+mayo|primal\s+kitchen|chosen\s+foods|boulder\s+canyon|mission\b.*\btortillas?|tortillas?\b.*\bmission|eggo|goldfish|\bjif\b|philadelphia\b.*\bcream\s+cheese|coca[- ]?cola|\bcoke\b|gatorade)\b/i;
 
   const isPlainProduceDirectPriority =
     !PROCESSED_FOOD_GUARD.test(title) &&

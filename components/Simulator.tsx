@@ -5,6 +5,7 @@ import {
   ALL_CATEGORIES,
   CATEGORY_LABELS,
   DEFAULT_WATCHLIST,
+  applyPesticideScoreAdjustment,
   ratingFor,
   scoreProductYuka,
   type Category,
@@ -12,15 +13,6 @@ import {
   type NutritionInput,
   type ScoreResult,
 } from "@/lib/rubric";
-
-const gradeProduct = (
-  title: string,
-  ingredients: string,
-  watchlist: Record<Category, boolean>,
-  nutrition?: NutritionInput,
-  familyWatchlist: Category[] = [],
-): ScoreResult =>
-  scoreProductYuka(ingredients, watchlist, familyWatchlist, { ...nutrition, productTitle: title });
 import { PRESETS } from "@/lib/presets";
 import {
   STORE_META,
@@ -36,7 +28,21 @@ import {
 import type { PlanId } from "@/lib/pricing";
 import { brandLetterTileSpec, resolveCategoryStudioArt, type ImageKind } from "@/lib/category-art";
 import { resolveProductMediaFields } from "@/lib/curated-product-photos";
-import { evaluateDietaryAlerts } from "@/lib/dietary";
+import { computePesticidePenalty, evaluateDietaryAlerts } from "@/lib/dietary";
+
+const gradeProduct = (
+  title: string,
+  ingredients: string,
+  watchlist: Record<Category, boolean>,
+  nutrition?: NutritionInput,
+  familyWatchlist: Category[] = [],
+  dietaryWatchlist: string[] = [],
+): ScoreResult => {
+  const effectiveNutrition = { ...nutrition, productTitle: title };
+  const base = scoreProductYuka(ingredients, watchlist, familyWatchlist, effectiveNutrition);
+  const pesticidePenalty = computePesticidePenalty(dietaryWatchlist, title, ingredients, effectiveNutrition);
+  return applyPesticideScoreAdjustment(base, pesticidePenalty);
+};
 import { GROWTH_ANGLES, resolveGrowthAngle, type GrowthAngleSpec } from "@/lib/growth-angles";
 import AuthModal, { type AuthenticatedUser } from "./AuthModal";
 import CancelRetentionModal from "./CancelRetentionModal";
@@ -1921,8 +1927,8 @@ export default function Simulator({
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const score = useMemo(
-    () => gradeProduct(`${active.brand} ${active.title}`, active.ingredients, watch, active.nutrition, familyWatchlist),
-    [active, watch, familyWatchlist],
+    () => gradeProduct(`${active.brand} ${active.title}`, active.ingredients, watch, active.nutrition, familyWatchlist, dietaryWatchlist),
+    [active, watch, familyWatchlist, dietaryWatchlist],
   );
   const activeDietaryAlerts = useMemo(
     () =>
@@ -1981,7 +1987,7 @@ export default function Simulator({
   const cartScored = useMemo(
     () =>
       cart.map((item) => {
-        const s = gradeProduct(`${item.brand} ${item.title}`, item.ingredients, watch, item.nutrition, familyWatchlist);
+        const s = gradeProduct(`${item.brand} ${item.title}`, item.ingredients, watch, item.nutrition, familyWatchlist, dietaryWatchlist);
         const sw = resolveSwap({
           score: s.score,
           productTitle: `${item.brand} ${item.title}`,
@@ -2026,16 +2032,16 @@ export default function Simulator({
     () =>
       Array.from(
         new Set(
-          PRESETS.flatMap((p) => gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch, undefined, familyWatchlist).flagged.map((f) => f.name)),
+          PRESETS.flatMap((p) => gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch, undefined, familyWatchlist, dietaryWatchlist).flagged.map((f) => f.name)),
         ),
       ),
-    [watch, familyWatchlist],
+    [watch, familyWatchlist, dietaryWatchlist],
   );
 
   const fallbackSwaps = useMemo<SwapRecord[]>(
     () =>
       PRESETS.map((p): SwapRecord | null => {
-        const s = gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch, undefined, familyWatchlist);
+        const s = gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch, undefined, familyWatchlist, dietaryWatchlist);
         const sw = resolveSwap({
           score: s.score,
           productTitle: `${p.brand} ${p.title}`,
@@ -2216,6 +2222,7 @@ export default function Simulator({
         watch,
         normalizedItem.nutrition,
         familyWatchlist,
+        dietaryWatchlist,
       );
       const replacedDirty =
         normalizedItem.origin === "swap"
@@ -2232,6 +2239,7 @@ export default function Simulator({
           watch,
           replacedDirty.nutrition,
           familyWatchlist,
+          dietaryWatchlist,
         );
         setCart((c) => {
           if (c.some((i) => i.key === normalizedItem.key)) return c;
@@ -2265,7 +2273,7 @@ export default function Simulator({
         body: `${normalizedItem.brand} ${normalizedItem.title} (${cleanScore.score}/100)`,
       });
     },
-    [watch, familyWatchlist, previousDirtyItem, store, triggerClimbFlash, setCart],
+    [watch, familyWatchlist, dietaryWatchlist, previousDirtyItem, store, triggerClimbFlash, setCart],
   );
 
   const removeCartItem = useCallback(
@@ -2318,6 +2326,7 @@ export default function Simulator({
         watch,
         targetItem.nutrition,
         familyWatchlist,
+        dietaryWatchlist,
       );
       const targetSwap =
         explicitSwap ??
@@ -2962,7 +2971,7 @@ export default function Simulator({
             foodNext.reduce(
               (sum, item) =>
                 sum +
-                (gradeProduct(`${item.brand} ${item.title}`, item.ingredients, watch, item.nutrition, familyWatchlist).score ?? 0) *
+                (gradeProduct(`${item.brand} ${item.title}`, item.ingredients, watch, item.nutrition, familyWatchlist, dietaryWatchlist).score ?? 0) *
                   clampQty(item.quantity),
               0,
             ) / foodNextUnits,
@@ -2975,7 +2984,7 @@ export default function Simulator({
       title: `✓ Swapped ${n} item${n === 1 ? "" : "s"} → Cart Avg ${nextAvg}/100!`,
       body: `Upgraded ${n} item${n === 1 ? "" : "s"} to clean alternatives at ${STORE_META[store].label}.`,
     });
-  }, [dirty, cart, setCart, watch, familyWatchlist, active.key, store, triggerClimbFlash, isPro, swapsUsedThisWeek, weeklySwapLimit, requestProUpgrade]);
+  }, [dirty, cart, setCart, watch, familyWatchlist, dietaryWatchlist, active.key, store, triggerClimbFlash, isPro, swapsUsedThisWeek, weeklySwapLimit, requestProUpgrade]);
 
   const resetCartPresets = useCallback(() => {
     cancelPendingLiveLookup();
@@ -4221,9 +4230,11 @@ export default function Simulator({
                             ? "#ea580c"
                             : "#10b981",
                           sublabel:
-                            score.yukaBreakdown.organicScore > 0
-                              ? `+${score.yukaBreakdown.organicScore} Organic`
-                              : "Seed oil / dye",
+                            score.yukaBreakdown.pesticideDeduction && score.yukaBreakdown.pesticideDeduction > 0
+                              ? `-${score.yukaBreakdown.pesticideDeduction} Pesticide Watch`
+                              : score.yukaBreakdown.organicScore > 0
+                                ? `+${score.yukaBreakdown.organicScore} Organic`
+                                : "Seed oil / dye",
                         },
                       ]}
                       footerNote={
@@ -4651,6 +4662,7 @@ export default function Simulator({
                       watch,
                       hp.nutrition,
                       familyWatchlist,
+                      dietaryWatchlist,
                     );
                     return (
                       <button
@@ -4999,7 +5011,8 @@ export default function Simulator({
                       p.ingredients,
                       watch,
                       undefined,
-                      familyWatchlist
+                      familyWatchlist,
+                      dietaryWatchlist,
                     );
                     const isSelected = freeTestCompleted && active.key === p.id;
                     return (
@@ -5997,9 +6010,11 @@ export default function Simulator({
                                     ? "#ea580c"
                                     : "#10b981",
                                   sublabel:
-                                    score.yukaBreakdown.organicScore > 0
-                                      ? `+${score.yukaBreakdown.organicScore} Organic`
-                                      : "Seed oil / dye",
+                                    score.yukaBreakdown.pesticideDeduction && score.yukaBreakdown.pesticideDeduction > 0
+                                      ? `-${score.yukaBreakdown.pesticideDeduction} Pesticide Watch`
+                                      : score.yukaBreakdown.organicScore > 0
+                                        ? `+${score.yukaBreakdown.organicScore} Organic`
+                                        : "Seed oil / dye",
                                 },
                               ]}
                               footerNote={
@@ -6243,7 +6258,7 @@ export default function Simulator({
                                 ? scanHistory.filter((h) => favorites.includes(h.product.key))
                                 : scanHistory
                               ).map(({ product: hp, timeLabel }) => {
-                                const hs = gradeProduct(`${hp.brand} ${hp.title}`, hp.ingredients, watch, hp.nutrition, familyWatchlist);
+                                const hs = gradeProduct(`${hp.brand} ${hp.title}`, hp.ingredients, watch, hp.nutrition, familyWatchlist, dietaryWatchlist);
                                 return (
                                   <li key={hp.key}>
                                     <button
@@ -6282,7 +6297,7 @@ export default function Simulator({
                           <div className="yuka-recs-grid">
                             {PRESETS.map((p) => {
                               const dirtyProd = presetToProduct(p);
-                              const dirtyScore = gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch, undefined, familyWatchlist);
+                              const dirtyScore = gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch, undefined, familyWatchlist, dietaryWatchlist);
                               const recSwap = resolveSwap({
                                 score: dirtyScore.score,
                                 productTitle: `${p.brand} ${p.title}`,
@@ -6305,6 +6320,7 @@ export default function Simulator({
                                 watch,
                                 cleanProd.nutrition,
                                 familyWatchlist,
+                                dietaryWatchlist,
                               );
                               return (
                                 <div key={p.id} className="yuka-rec-pair">

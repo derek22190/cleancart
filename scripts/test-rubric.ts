@@ -11687,6 +11687,199 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         asoAbHtmlSrc.includes("Challenger B") &&
         asoAbHtmlSrc.includes("Challenger C"),
     );
+
+    // -------------------------------------------------------------------------
+    // Regression Suite: Pesticide Score Deductions, Chicken Wings & Live Shop UX
+    // -------------------------------------------------------------------------
+    const {
+      applyPesticideScoreAdjustment,
+      scoreProductYuka: scoreYukaReg,
+    } = await import("../lib/rubric");
+    const { computePesticidePenalty } = await import("../lib/dietary");
+    const {
+      genericWholeFoodQuery,
+      matchesGenericWholeFood: matchesWholeFoodReg,
+    } = await import("../lib/lookup");
+    const { passesVariantGuard: passesVariantGuardReg } = await import("../lib/drinks-catalog");
+
+    const pestStrawOff = await runScan({
+      productTitle: "Fresh Strawberries, 1 lb",
+      rawIngredients: "Fresh strawberries.",
+      store: "samsclub",
+      dietaryWatchlist: [],
+    });
+    const pestStrawOn = await runScan({
+      productTitle: "Fresh Strawberries, 1 lb",
+      rawIngredients: "Fresh strawberries.",
+      store: "samsclub",
+      dietaryWatchlist: ["pesticide_risk"],
+    });
+    const pestOatsOff = await runScan({
+      productTitle: "Old Fashioned Rolled Oats, 42 oz",
+      rawIngredients: "100% whole grain rolled oats.",
+      store: "samsclub",
+      dietaryWatchlist: [],
+    });
+    const pestOatsOn = await runScan({
+      productTitle: "Old Fashioned Rolled Oats, 42 oz",
+      rawIngredients: "100% whole grain rolled oats.",
+      store: "samsclub",
+      dietaryWatchlist: ["pesticide_risk"],
+    });
+    const pestOrganicStrawBase = scoreYukaReg(
+      "Organic fresh strawberries.",
+      {},
+      [],
+      { productTitle: "Driscoll's Organic Fresh Strawberries", isOrganic: true, isWholeFood: true },
+    );
+    const pestOrganicStrawAdjusted = applyPesticideScoreAdjustment(
+      pestOrganicStrawBase,
+      computePesticidePenalty(
+        ["pesticide_risk"],
+        "Driscoll's Organic Fresh Strawberries",
+        "Organic fresh strawberries.",
+        { isOrganic: true, isWholeFood: true },
+      ),
+    );
+    const nonFoodPestBase = scoreYukaReg("Water, Sodium Laureth Sulfate", {}, [], {
+      productTitle: "Dove Body Wash",
+      productKind: "non-food",
+    });
+    const nonFoodPestAdjusted = applyPesticideScoreAdjustment(nonFoodPestBase, {
+      points: 25,
+      maxScoreCap: 65,
+    });
+
+    check(
+      "Pesticide Watch deducts actual points from score (conventional strawberries 90->65, oats 90->69, organic stays 100, non-food unaffected, Organic swaps preserved)",
+      Boolean(
+        pestStrawOff.ok &&
+          pestStrawOff.result.score === 90 &&
+          pestStrawOn.ok &&
+          pestStrawOn.result.score === 65 &&
+          pestStrawOn.result.rating === "Mediocre" &&
+          pestStrawOn.result.yukaBreakdown?.pesticideDeduction === 25 &&
+          pestStrawOn.swap?.title.includes("Organic") &&
+          pestOatsOff.ok &&
+          pestOatsOff.result.score === 90 &&
+          pestOatsOn.ok &&
+          pestOatsOn.result.score === 69 &&
+          pestOatsOn.result.rating === "Mediocre" &&
+          pestOatsOn.result.yukaBreakdown?.pesticideDeduction === 21 &&
+          pestOatsOn.swap?.title.includes("Organic") &&
+          pestOrganicStrawAdjusted.score === 100 &&
+          pestOrganicStrawAdjusted.yukaBreakdown?.pesticideDeduction === undefined &&
+          nonFoodPestAdjusted.score === nonFoodPestBase.score,
+      ),
+    );
+
+    const mmWingsScan = await runScan({
+      productTitle: "Member's Mark Bone-In Chicken Wings, Frozen, 10 lbs.",
+      store: "samsclub",
+      dietaryWatchlist: [],
+    });
+    const mmHomestyleOff = await runScan({
+      productTitle: "Member's Mark Breaded and Boneless Homestyle Chicken Bites, Frozen, 4 lbs.",
+      store: "samsclub",
+      dietaryWatchlist: [],
+    });
+    const mmHomestyleOn = await runScan({
+      productTitle: "Member's Mark Breaded and Boneless Homestyle Chicken Bites, Frozen, 4 lbs.",
+      store: "samsclub",
+      dietaryWatchlist: ["pesticide_risk"],
+    });
+    const mmGrilledBites = await runScan({
+      productTitle: "Member's Mark Grilled Chicken Bites, Frozen, 3 lbs.",
+      store: "samsclub",
+      dietaryWatchlist: [],
+    });
+    const perdueWings = await runScan({
+      productTitle: "Perdue Fresh Chicken Wings",
+      rawIngredients: "Chicken wings.",
+      store: "samsclub",
+      dietaryWatchlist: [],
+    });
+
+    check(
+      "Chicken wings & Member's Mark frozen poultry score accurately (no 90/100 Ground Chicken or USDA FoodData Central title leak, breaded/grilled bites Poor, marinated salmon guarded)",
+      Boolean(
+        mmWingsScan.ok &&
+          mmWingsScan.result.score === 70 &&
+          mmWingsScan.result.rating === "Mediocre" &&
+          !/ground|usda\s+fooddata/i.test(mmWingsScan.product?.title || "") &&
+          mmHomestyleOff.ok &&
+          mmHomestyleOff.result.score === 45 &&
+          mmHomestyleOff.result.rating === "Poor" &&
+          mmHomestyleOn.ok &&
+          mmHomestyleOn.result.score === 25 &&
+          mmHomestyleOn.result.yukaBreakdown?.pesticideDeduction === 20 &&
+          mmGrilledBites.ok &&
+          mmGrilledBites.result.score <= 45 &&
+          mmGrilledBites.result.rating === "Poor" &&
+          perdueWings.ok &&
+          perdueWings.result.score <= 74 &&
+          genericWholeFoodQuery("Member's Mark Bone-In Chicken Wings, Frozen, 10 lbs.") === null &&
+          !matchesWholeFoodReg("Fresh Chicken Wings", "Chicken, ground, raw") &&
+          matchesWholeFoodReg("Fresh Chicken Wings", "Chicken, broilers or fryers, wing, meat and skin, raw") &&
+          !passesVariantGuardReg(
+            "Member's Mark Wild Caught Boneless Marinated Alaskan Salmon, Frozen",
+            "Member's Mark Wild Caught Alaskan Sockeye Salmon",
+          ),
+      ),
+    );
+
+    const androidBrowserSrc = fsNode.readFileSync(
+      "android-app/app/src/main/java/com/cleancart/overlay/LiveStoreBrowserActivity.kt",
+      "utf8",
+    );
+    const androidManifestSrc = fsNode.readFileSync(
+      "android-app/app/src/main/AndroidManifest.xml",
+      "utf8",
+    );
+    const androidDetectorSrc = fsNode.readFileSync(
+      "android-app/app/src/main/assets/live_store_detector.js",
+      "utf8",
+    );
+    const androidScanApiSrc = fsNode.readFileSync(
+      "android-app/app/src/main/java/com/cleancart/overlay/ScanApi.kt",
+      "utf8",
+    );
+    const iosBrowserSrc = fsNode.readFileSync(
+      "ios-app/App/LiveStoreBrowserViewController.swift",
+      "utf8",
+    );
+    const simulatorSrc = fsNode.readFileSync("components/Simulator.tsx", "utf8");
+    const scanTsSrc = fsNode.readFileSync("lib/scan.ts", "utf8");
+
+    check(
+      "Live Shop Android & iOS UX parity: single left back button + far-right close button, Sam's Club search bar CSS + WebView dark/viewport/IME fixes, inputFocus bubble auto-hide, carousel horizontal bounds, and local pesticide scoring parity",
+      !androidBrowserSrc.includes('"← HeyBroc"') &&
+        androidBrowserSrc.includes('contentDescription = "Close Live Shop"') &&
+        androidBrowserSrc.includes("settings.useWideViewPort = true") &&
+        androidBrowserSrc.includes("settings.loadWithOverviewMode = true") &&
+        androidBrowserSrc.includes("settings.isAlgorithmicDarkeningAllowed = false") &&
+        androidBrowserSrc.includes("WindowInsets.Type.ime()") &&
+        androidBrowserSrc.includes('"inputFocus"') &&
+        androidBrowserSrc.includes("hb-sams-search-fix") &&
+        androidBrowserSrc.includes("dp(248)") &&
+        androidManifestSrc.includes('android:windowSoftInputMode="adjustResize"') &&
+        androidDetectorSrc.includes("hb-sams-search-fix") &&
+        androidDetectorSrc.includes("kind: 'inputFocus'") &&
+        androidDetectorSrc.includes("cr.right < 24 || cr.left > vw - 24") &&
+        androidScanApiSrc.includes("PESTICIDE_PRODUCE_DEDUCTION = 25") &&
+        androidScanApiSrc.includes("PESTICIDE_GRAIN_DEDUCTION = 20") &&
+        androidScanApiSrc.includes("_serverPesticideDeduction") &&
+        androidScanApiSrc.includes("detectPesticideRisk(") &&
+        !iosBrowserSrc.includes('"✕ Scanner"') &&
+        iosBrowserSrc.includes('closeBtn.accessibilityLabel = "Close Live Shop"') &&
+        iosBrowserSrc.includes("hb-sams-search-fix") &&
+        iosBrowserSrc.includes('kind == "inputFocus"') &&
+        iosBrowserSrc.includes("cr.right < 24 || cr.left > vw - 24") &&
+        iosBrowserSrc.includes("constant: 236") &&
+        simulatorSrc.includes("applyPesticideScoreAdjustment") &&
+        simulatorSrc.includes("computePesticidePenalty") &&
+        scanTsSrc.includes("usda fooddata central"),
+    );
   }
 
   console.log("Checks executed:", checks);

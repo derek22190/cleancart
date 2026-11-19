@@ -358,11 +358,19 @@ class LiveStoreBrowserActivity : Activity() {
               var metaPlay = document.querySelector('meta[name="google-play-app"]');
               if (metaPlay && metaPlay.parentNode) metaPlay.parentNode.removeChild(metaPlay);
               var head = document.head || document.documentElement;
-              if (!head || document.getElementById('hb-app-banner-suppressor')) return;
-              var st = document.createElement('style');
-              st.id = 'hb-app-banner-suppressor';
-              st.textContent = '#branch-banner-iframe, .branch-journeys-top, [id^="branch-banner"], [class*="branch-animation"], .smartbanner, [id*="smartbanner" i], smart-banner, [data-testid="smart-banner"], [data-testid="app-banner"], [data-testid="download-app-banner"], [data-automation-id="app-banner"], [data-automation-id="smart-banner"], [data-test="smartBanner"], [data-test="appBanner"], [data-hb-app-banner-hidden="1"] { display: none !important; visibility: hidden !important; height: 0 !important; min-height: 0 !important; pointer-events: none !important; overflow: hidden !important; }';
-              head.appendChild(st);
+              if (!head) return;
+              if (!document.getElementById('hb-app-banner-suppressor')) {
+                var st = document.createElement('style');
+                st.id = 'hb-app-banner-suppressor';
+                st.textContent = '#branch-banner-iframe, .branch-journeys-top, [id^="branch-banner"], [class*="branch-animation"], .smartbanner, [id*="smartbanner" i], smart-banner, [data-testid="smart-banner"], [data-testid="app-banner"], [data-testid="download-app-banner"], [data-automation-id="app-banner"], [data-automation-id="smart-banner"], [data-test="smartBanner"], [data-test="appBanner"], [data-hb-app-banner-hidden="1"] { display: none !important; visibility: hidden !important; height: 0 !important; min-height: 0 !important; pointer-events: none !important; overflow: hidden !important; }';
+                head.appendChild(st);
+              }
+              if (/(?:^|\.)samsclub\.com$/i.test(location.hostname || '') && !document.getElementById('hb-sams-search-fix')) {
+                var sf = document.createElement('style');
+                sf.id = 'hb-sams-search-fix';
+                sf.textContent = 'header form[data-testid="search-form"], header form[role="search"] { flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; max-width: 100% !important; } header form[data-testid="search-form"] > div, header form[role="search"] > div { flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; position: relative !important; } input[data-automation-id="header-input-search"], input.search-bar-redesigned-v2, header form[data-testid="search-form"] input[type="search"], header form[role="search"] input[type="search"] { width: 100% !important; min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important; background-color: #ffffff !important; color: #0f172a !important; -webkit-text-fill-color: #0f172a !important; caret-color: #0f172a !important; opacity: 1 !important; font-size: 16px !important; line-height: 1.35 !important; padding-left: 14px !important; padding-right: 76px !important; border-radius: 9999px !important; text-indent: 0 !important; } input[data-automation-id="header-input-search"]::placeholder, input.search-bar-redesigned-v2::placeholder, header form[data-testid="search-form"] input[type="search"]::placeholder { color: #64748b !important; -webkit-text-fill-color: #64748b !important; opacity: 1 !important; } header form[data-testid="search-form"] button[aria-label*="Clear" i], header form[role="search"] button[aria-label*="Clear" i] { right: 40px !important; left: auto !important; } header form[data-testid="search-form"] button.search-icon-redesigned-v2, header form[role="search"] button.search-icon-redesigned-v2 { right: 6px !important; left: auto !important; }';
+                head.appendChild(sf);
+              }
             })();
         """
 
@@ -390,6 +398,13 @@ class LiveStoreBrowserActivity : Activity() {
     private var topSystemInsetPx = 0
     private var bottomSystemInsetPx = 0
     private var userDraggedBubble = false
+    private var isImeVisible = false
+    private var isWebInputFocused = false
+
+    private fun updateFloatingBubbleVisibility() {
+        if (!::floatingBubble.isInitialized) return
+        floatingBubble.visibility = if (isImeVisible || isWebInputFocused) View.GONE else View.VISIBLE
+    }
 
     private var currentBridgeSecret: String = ""
     private var lastInjectedProgressUrl = ""
@@ -675,18 +690,21 @@ class LiveStoreBrowserActivity : Activity() {
 
         setupFloatingBubble(root)
 
-        // Respect Android 15/16 edge-to-edge status bar, camera cutout, and bottom navigation bar insets
+        // Respect Android 15/16 edge-to-edge status bar, camera cutout, bottom navigation bar, and IME keyboard insets
         root.setOnApplyWindowInsetsListener { _, insets ->
             val topInset: Int
             val bottomInset: Int
             val leftInset: Int
             val rightInset: Int
+            val imeVisibleNow: Boolean
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 val bars = insets.getInsets(
                     WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()
                 )
+                val ime = insets.getInsets(WindowInsets.Type.ime())
+                imeVisibleNow = insets.isVisible(WindowInsets.Type.ime()) || ime.bottom > dp(80)
                 topInset = bars.top
-                bottomInset = bars.bottom
+                bottomInset = maxOf(bars.bottom, ime.bottom)
                 leftInset = bars.left
                 rightInset = bars.right
             } else {
@@ -698,13 +716,19 @@ class LiveStoreBrowserActivity : Activity() {
                 leftInset = insets.systemWindowInsetLeft
                 @Suppress("DEPRECATION")
                 rightInset = insets.systemWindowInsetRight
+                imeVisibleNow = bottomInset > dp(120)
             }
             topSystemInsetPx = topInset
             bottomSystemInsetPx = bottomInset
             headerBarView.setPadding(leftInset, topInset, rightInset, 0)
             mainColumn.setPadding(0, 0, 0, bottomInset)
+            if (isImeVisible != imeVisibleNow) {
+                isImeVisible = imeVisibleNow
+                updateFloatingBubbleVisibility()
+            }
             if (!userDraggedBubble) {
-                val targetTop = dp(185) + topInset
+                val maxSafeTop = if (root.height > dp(220)) (root.height - dp(120)) else (dp(248) + topInset)
+                val targetTop = (dp(248) + topInset).coerceAtMost(maxSafeTop)
                 bubbleTopPx = targetTop
                 (floatingBubble.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
                     if (lp.topMargin != targetTop) {
@@ -799,21 +823,9 @@ class LiveStoreBrowserActivity : Activity() {
             setPadding(dp(10), dp(8), dp(10), dp(6))
         }
 
-        val closeBtn = label("← HeyBroc", 12.5f, 0xFF0F172A.toInt(), bold = true).apply {
-            setPadding(dp(10), dp(7), dp(10), dp(7))
-            background = GradientDrawable().apply {
-                setColor(0xFFF1F5F9.toInt())
-                cornerRadius = dp(10).toFloat()
-            }
-            setOnClickListener { finish() }
-        }
-        topRow.addView(closeBtn, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { marginEnd = dp(6) })
-
-        val backPageBtn = label("‹", 19f, 0xFF0F172A.toInt(), bold = true).apply {
+        val backPageBtn = label("‹", 20f, 0xFF0F172A.toInt(), bold = true).apply {
             gravity = Gravity.CENTER
+            contentDescription = "Back"
             background = GradientDrawable().apply {
                 setColor(0xFFF1F5F9.toInt())
                 cornerRadius = dp(10).toFloat()
@@ -821,10 +833,12 @@ class LiveStoreBrowserActivity : Activity() {
             setOnClickListener {
                 if (storeWebView?.canGoBack() == true) {
                     storeWebView?.goBack()
+                } else {
+                    finish()
                 }
             }
         }
-        topRow.addView(backPageBtn, LinearLayout.LayoutParams(dp(32), dp(32)).apply { marginEnd = dp(8) })
+        topRow.addView(backPageBtn, LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginEnd = dp(8) })
 
         val titleView = label("🥦 Live Shop", 14.5f, 0xFF0C6540.toInt(), bold = true).apply {
             setSingleLine(true)
@@ -870,13 +884,25 @@ class LiveStoreBrowserActivity : Activity() {
 
         val reloadBtn = label("↻", 16f, 0xFF0F172A.toInt(), bold = true).apply {
             gravity = Gravity.CENTER
+            contentDescription = "Reload page"
             background = GradientDrawable().apply {
                 setColor(0xFFF1F5F9.toInt())
                 cornerRadius = dp(10).toFloat()
             }
             setOnClickListener { storeWebView?.reload() }
         }
-        topRow.addView(reloadBtn, LinearLayout.LayoutParams(dp(32), dp(32)))
+        topRow.addView(reloadBtn, LinearLayout.LayoutParams(dp(32), dp(32)).apply { marginEnd = dp(6) })
+
+        val closeBtn = label("✕", 14.5f, 0xFF0F172A.toInt(), bold = true).apply {
+            gravity = Gravity.CENTER
+            contentDescription = "Close Live Shop"
+            background = GradientDrawable().apply {
+                setColor(0xFFF1F5F9.toInt())
+                cornerRadius = dp(10).toFloat()
+            }
+            setOnClickListener { finish() }
+        }
+        topRow.addView(closeBtn, LinearLayout.LayoutParams(dp(32), dp(32)))
 
         header.addView(topRow)
 
@@ -996,6 +1022,14 @@ class LiveStoreBrowserActivity : Activity() {
             domStorageEnabled = true
             databaseEnabled = true
             loadsImagesAutomatically = true
+            useWideViewPort = true
+            loadWithOverviewMode = true
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                isAlgorithmicDarkeningAllowed = false
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                @Suppress("DEPRECATION")
+                forceDark = WebSettings.FORCE_DARK_OFF
+            }
             allowFileAccess = false
             allowContentAccess = false
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
@@ -1266,6 +1300,14 @@ class LiveStoreBrowserActivity : Activity() {
         settings.domStorageEnabled = true
         settings.databaseEnabled = true
         settings.loadsImagesAutomatically = true
+        settings.useWideViewPort = true
+        settings.loadWithOverviewMode = true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            settings.isAlgorithmicDarkeningAllowed = false
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            @Suppress("DEPRECATION")
+            settings.forceDark = WebSettings.FORCE_DARK_OFF
+        }
         settings.mediaPlaybackRequiresUserGesture = true
         settings.allowFileAccess = false
         settings.allowContentAccess = false
@@ -1328,6 +1370,10 @@ class LiveStoreBrowserActivity : Activity() {
                 lastDetectedStoreImageUrl = ""
                 lastScannedKey = ""
                 latestScanJson = null
+                if (isWebInputFocused) {
+                    isWebInputFocused = false
+                    updateFloatingBubbleVisibility()
+                }
                 setBubbleIdleState()
                 lastInjectedProgressUrl = ""
                 lastVisitedHistoryUrl = url.orEmpty()
@@ -1458,7 +1504,7 @@ class LiveStoreBrowserActivity : Activity() {
 
     @SuppressLint("ClickableViewAccessibility")
     private fun setupFloatingBubble(root: FrameLayout) {
-        bubbleTopPx = dp(185) + topSystemInsetPx
+        bubbleTopPx = dp(248) + topSystemInsetPx
         floatingBubble = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1814,6 +1860,13 @@ class LiveStoreBrowserActivity : Activity() {
                 } == true
 
                 when (kind) {
+                    "inputFocus" -> {
+                        val focused = obj.optBoolean("focused", false)
+                        if (isWebInputFocused != focused) {
+                            isWebInputFocused = focused
+                            updateFloatingBubbleVisibility()
+                        }
+                    }
                     "product", "card" -> {
                         val title = obj.optString("title").trim()
                         if (title.isEmpty()) return@post

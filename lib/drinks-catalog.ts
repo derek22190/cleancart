@@ -5873,6 +5873,19 @@ export function passesVariantGuard(query: string, candidateTitle: string, option
     [/\bcondensed\b/, /\bcondensed\b/],
     [/\bhomestyle\b/, /\bhomestyle\b/],
     [/\bchunky\b(?!\s+monkey\b)/, /\bchunky\b|\bcrunchy\b/],
+    [/\bmarinated\b/, /\bmarinated\b|\bmarinade\b/],
+    [/\bbreaded\b/, /\bbreaded\b|\bpanko\b|\bcrispy\b|\bhomestyle\b|\bnuggets?\b|\btenders?\b|\bfingers?\b|\bpopcorn\s+chicken\b/],
+    [/\bbattered\b/, /\bbattered\b|\btempura\b/],
+    [/\btempura\b/, /\btempura\b/],
+    [/\bseasoned\b/, /\bseasoned\b|\bmarinated\b|\bmesquite\b|\bcajun\b|\bteriyaki\b|\bbuffalo\b|\bbarbecue\b|\bbbq\b|\bsmokehouse\b|\brotisserie\b|\bgarlic\b|\bherb\b/],
+    [/\bglazed\b/, /\bglazed\b/],
+    [/\bstuffed\b/, /\bstuffed\b/],
+    [/\bsmoked\b/, /\bsmoked\b|\bsmokehouse\b/],
+    [/\bbuffalo\b/, /\bbuffalo\b/],
+    [/\bteriyaki\b/, /\bteriyaki\b/],
+    [/\bmesquite\b/, /\bmesquite\b/],
+    [/\bscampi\b/, /\bscampi\b/],
+    [/\bparmesan\b/, /\bparmesan\b/],
   ];
   for (const [qRe, tRe] of variantTokens) {
     if (qRe.test(q) && !tRe.test(t)) return false;

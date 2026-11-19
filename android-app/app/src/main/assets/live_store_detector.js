@@ -48,13 +48,26 @@
     if (metaApple && metaApple.parentNode) metaApple.parentNode.removeChild(metaApple);
     var metaPlay = document.querySelector('meta[name="google-play-app"]');
     if (metaPlay && metaPlay.parentNode) metaPlay.parentNode.removeChild(metaPlay);
-    if (document.getElementById('hb-app-banner-suppressor')) return;
     var head = document.head || document.documentElement;
     if (!head) return;
-    var st = document.createElement('style');
-    st.id = 'hb-app-banner-suppressor';
-    st.textContent = '#branch-banner-iframe, .branch-journeys-top, [id^="branch-banner"], [class*="branch-animation"], .smartbanner, [id*="smartbanner" i], smart-banner, [data-testid="smart-banner"], [data-testid="app-banner"], [data-testid="download-app-banner"], [data-automation-id="app-banner"], [data-automation-id="smart-banner"], [data-test="smartBanner"], [data-test="appBanner"], [data-hb-app-banner-hidden="1"] { display: none !important; visibility: hidden !important; height: 0 !important; min-height: 0 !important; pointer-events: none !important; overflow: hidden !important; }';
-    head.appendChild(st);
+    if (!document.getElementById('hb-app-banner-suppressor')) {
+      var st = document.createElement('style');
+      st.id = 'hb-app-banner-suppressor';
+      st.textContent = '#branch-banner-iframe, .branch-journeys-top, [id^="branch-banner"], [class*="branch-animation"], .smartbanner, [id*="smartbanner" i], smart-banner, [data-testid="smart-banner"], [data-testid="app-banner"], [data-testid="download-app-banner"], [data-automation-id="app-banner"], [data-automation-id="smart-banner"], [data-test="smartBanner"], [data-test="appBanner"], [data-hb-app-banner-hidden="1"] { display: none !important; visibility: hidden !important; height: 0 !important; min-height: 0 !important; pointer-events: none !important; overflow: hidden !important; }';
+      head.appendChild(st);
+    }
+    if (/(?:^|\.)samsclub\.com$/i.test(location.hostname || '') && !document.getElementById('hb-sams-search-fix')) {
+      var sf = document.createElement('style');
+      sf.id = 'hb-sams-search-fix';
+      sf.textContent =
+        'header form[data-testid="search-form"], header form[role="search"] { flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; max-width: 100% !important; }' +
+        'header form[data-testid="search-form"] > div, header form[role="search"] > div { flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; position: relative !important; }' +
+        'input[data-automation-id="header-input-search"], input.search-bar-redesigned-v2, header form[data-testid="search-form"] input[type="search"], header form[role="search"] input[type="search"] { width: 100% !important; min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important; background-color: #ffffff !important; color: #0f172a !important; -webkit-text-fill-color: #0f172a !important; caret-color: #0f172a !important; opacity: 1 !important; font-size: 16px !important; line-height: 1.35 !important; padding-left: 14px !important; padding-right: 76px !important; border-radius: 9999px !important; text-indent: 0 !important; }' +
+        'input[data-automation-id="header-input-search"]::placeholder, input.search-bar-redesigned-v2::placeholder, header form[data-testid="search-form"] input[type="search"]::placeholder { color: #64748b !important; -webkit-text-fill-color: #64748b !important; opacity: 1 !important; }' +
+        'header form[data-testid="search-form"] button[aria-label*="Clear" i], header form[role="search"] button[aria-label*="Clear" i] { right: 40px !important; left: auto !important; }' +
+        'header form[data-testid="search-form"] button.search-icon-redesigned-v2, header form[role="search"] button.search-icon-redesigned-v2 { right: 6px !important; left: auto !important; }';
+      head.appendChild(sf);
+    }
   }
 
   function dismissRetailerAppBanners() {
@@ -858,6 +871,7 @@
       }
     }
     var vh = Math.max(320, window.innerHeight || 680);
+    var vw = Math.max(280, window.innerWidth || 412);
     var targetY = (typeof window.__heybrocBubbleCenterY === 'number' && window.__heybrocBubbleCenterY > 40)
       ? window.__heybrocBubbleCenterY
       : (vh * 0.38);
@@ -875,6 +889,7 @@
       var cr = card.getBoundingClientRect();
       if (cr.height < 64 || cr.height > vh * 0.94 || cr.width < 100) continue;
       if (cr.bottom < 95 || cr.top > vh - 45) continue;
+      if (cr.right < 24 || cr.left > vw - 24) continue;
 
       var visTitle = extractBestCardTitle(card, CARD_TITLE_SELS);
       var rec = recoverFromCardLinks(card, visTitle);
@@ -885,6 +900,7 @@
       if (targetY < cr.top) dist = cr.top - targetY;
       else if (targetY > cr.bottom) dist = targetY - cr.bottom;
       else dist = Math.abs(((cr.top + cr.bottom) * 0.5) - targetY) * 0.25;
+      dist += Math.abs(((cr.left + cr.right) * 0.5) - (vw * 0.5)) * 0.18;
       if (cr.top < 72) dist += 180;
       if (dist < bestDist) {
         bestDist = dist;
@@ -2363,6 +2379,33 @@
       attributeFilter: ['src', 'srcset', 'data-src', 'href']
     });
   }
+
+  var hbInputBlurTimer = null;
+  function isEditableTarget(el) {
+    if (!el) return false;
+    var tag = (el.tagName || '').toUpperCase();
+    if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    if (tag === 'INPUT') {
+      var t = String(el.type || 'text').toLowerCase();
+      return t !== 'hidden' && t !== 'checkbox' && t !== 'radio' && t !== 'button' && t !== 'submit' && t !== 'reset';
+    }
+    return Boolean(el.isContentEditable);
+  }
+  document.addEventListener('focusin', function(e) {
+    if (!isEditableTarget(e && e.target)) return;
+    if (hbInputBlurTimer) { clearTimeout(hbInputBlurTimer); hbInputBlurTimer = null; }
+    postBridge({ kind: 'inputFocus', focused: true });
+  }, true);
+  document.addEventListener('focusout', function(e) {
+    if (!isEditableTarget(e && e.target)) return;
+    if (hbInputBlurTimer) clearTimeout(hbInputBlurTimer);
+    hbInputBlurTimer = setTimeout(function() {
+      hbInputBlurTimer = null;
+      if (!isEditableTarget(document.activeElement)) {
+        postBridge({ kind: 'inputFocus', focused: false });
+      }
+    }, 140);
+  }, true);
 
   // Photo badges are driven by IntersectionObserver, debounced scroll/mutation,
   // image load events, history hooks, and retry timers (no idle 1800ms polling).
