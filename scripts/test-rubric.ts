@@ -10718,6 +10718,26 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const fsNode = await import("node:fs");
+    const chromeManifestRaw = fsNode.readFileSync("chrome-extension/manifest.json", "utf8");
+    const safariManifestRaw = fsNode.readFileSync("ios-app/SafariExtension/Resources/manifest.json", "utf8");
+    const chromeManifest = JSON.parse(chromeManifestRaw) as { host_permissions?: string[] };
+    const safariManifest = JSON.parse(safariManifestRaw) as { host_permissions?: string[] };
+    const allHostPerms = [
+      ...(chromeManifest.host_permissions || []),
+      ...(safariManifest.host_permissions || []),
+    ];
+    check(
+      "P2-13 Chrome and Safari extension manifests contain zero dev/preview hosts (no cleancart-teal.vercel.app or localhost)",
+      !chromeManifestRaw.includes("cleancart-teal.vercel.app") &&
+        !chromeManifestRaw.includes("localhost") &&
+        !safariManifestRaw.includes("cleancart-teal.vercel.app") &&
+        !safariManifestRaw.includes("localhost") &&
+        allHostPerms.includes("https://www.heybroc.com/*"),
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

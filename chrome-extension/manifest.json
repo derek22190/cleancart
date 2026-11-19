@@ -13,9 +13,7 @@
   "host_permissions": [
     "https://heybroc.com/*",
     "https://www.heybroc.com/*",
-    "https://images.openfoodfacts.org/*",
-    "https://cleancart-teal.vercel.app/*",
-    "http://localhost:3000/*"
+    "https://images.openfoodfacts.org/*"
   ],
   "background": { "service_worker": "background.js" },
   "action": { "default_title": "HeyBroc settings", "default_popup": "popup.html", "default_icon": "broc-mascot.png" },
