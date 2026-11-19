@@ -55,6 +55,10 @@ export interface Creator {
   netRevenue: number;
   payoutEmail?: string;
   payoutEmailVerified?: boolean;
+  payoutApproved?: boolean;
+  ownerUserId?: string;
+  ownerDeviceId?: string;
+  registeredIp?: string;
   payoutMethod?: CreatorPayoutMethod;
   payoutHandle?: string;
   stripeConnectAccountId?: string;
@@ -283,6 +287,10 @@ function hashToCreator(
       ? undefined
       : fields.payoutEmailVerified === "1" ||
         fields.payoutEmailVerified === "true";
+  const payoutApproved =
+    fields.payoutApproved === undefined || fields.payoutApproved === ""
+      ? undefined
+      : fields.payoutApproved === "1" || fields.payoutApproved === "true";
 
   return {
     code: fields.code || code,
@@ -304,6 +312,10 @@ function hashToCreator(
     netRevenue: round2(grossRevenue - commissionEarned),
     payoutEmail: fields.payoutEmail || undefined,
     payoutEmailVerified,
+    payoutApproved,
+    ownerUserId: fields.ownerUserId || undefined,
+    ownerDeviceId: fields.ownerDeviceId || undefined,
+    registeredIp: fields.registeredIp || undefined,
     payoutMethod: normalizePayoutMethod(fields.payoutMethod),
     payoutHandle: fields.payoutHandle || undefined,
     stripeConnectAccountId: fields.stripeConnectAccountId || undefined,
@@ -333,6 +345,12 @@ async function saveCreatorHash(c: Creator): Promise<void> {
   if (c.payoutEmailVerified !== undefined) {
     hashFields.payoutEmailVerified = c.payoutEmailVerified ? "1" : "0";
   }
+  if (c.payoutApproved !== undefined) {
+    hashFields.payoutApproved = c.payoutApproved ? "1" : "0";
+  }
+  if (c.ownerUserId !== undefined) hashFields.ownerUserId = c.ownerUserId;
+  if (c.ownerDeviceId !== undefined) hashFields.ownerDeviceId = c.ownerDeviceId;
+  if (c.registeredIp !== undefined) hashFields.registeredIp = c.registeredIp;
   if (c.payoutMethod !== undefined) hashFields.payoutMethod = c.payoutMethod;
   if (c.payoutHandle !== undefined) hashFields.payoutHandle = c.payoutHandle;
   if (c.stripeConnectAccountId !== undefined) {
@@ -409,6 +427,10 @@ export async function createCreator(input: {
   commissionPct?: number;
   payoutEmail?: string;
   payoutEmailVerified?: boolean;
+  payoutApproved?: boolean;
+  ownerUserId?: string;
+  ownerDeviceId?: string;
+  registeredIp?: string;
   payoutMethod?: CreatorPayoutMethod;
   payoutHandle?: string;
   stripeConnectAccountId?: string;
@@ -431,6 +453,10 @@ export async function createCreator(input: {
       name: input.name,
       payoutEmail: input.payoutEmail,
       payoutEmailVerified: input.payoutEmailVerified,
+      payoutApproved: input.payoutApproved,
+      ownerUserId: input.ownerUserId,
+      ownerDeviceId: input.ownerDeviceId,
+      registeredIp: input.registeredIp,
       payoutMethod: input.payoutMethod,
       payoutHandle: input.payoutHandle,
       stripeConnectAccountId: input.stripeConnectAccountId,
@@ -450,6 +476,14 @@ export async function createCreator(input: {
         : cleanEmail
           ? true
           : undefined,
+    payoutApproved:
+      input.payoutApproved !== undefined ? Boolean(input.payoutApproved) : true,
+    ownerUserId: input.ownerUserId?.trim().slice(0, 120) || undefined,
+    ownerDeviceId: input.ownerDeviceId?.trim().slice(0, 120) || undefined,
+    registeredIp:
+      input.registeredIp && input.registeredIp.trim() !== "unknown"
+        ? input.registeredIp.trim().slice(0, 80)
+        : undefined,
     payoutMethod: normalizePayoutMethod(input.payoutMethod),
     payoutHandle: input.payoutHandle?.trim().slice(0, 120) || undefined,
     stripeConnectAccountId: input.stripeConnectAccountId?.trim() || undefined,
@@ -467,6 +501,10 @@ export async function updateCreator(
     active?: boolean;
     payoutEmail?: string;
     payoutEmailVerified?: boolean;
+    payoutApproved?: boolean;
+    ownerUserId?: string;
+    ownerDeviceId?: string;
+    registeredIp?: string;
     payoutMethod?: CreatorPayoutMethod;
     payoutHandle?: string;
     stripeConnectAccountId?: string;
@@ -509,6 +547,29 @@ export async function updateCreator(
     }
     existing.payoutEmailVerified = nextVerified;
     patchFields.payoutEmailVerified = nextVerified ? "1" : "0";
+  }
+  if (patch.payoutApproved !== undefined) {
+    const nextApproved = Boolean(patch.payoutApproved);
+    existing.payoutApproved = nextApproved;
+    patchFields.payoutApproved = nextApproved ? "1" : "0";
+  }
+  if (patch.ownerUserId !== undefined) {
+    const cleanUid = patch.ownerUserId.trim().slice(0, 120);
+    existing.ownerUserId = cleanUid || undefined;
+    patchFields.ownerUserId = cleanUid;
+  }
+  if (patch.ownerDeviceId !== undefined) {
+    const cleanDev = patch.ownerDeviceId.trim().slice(0, 120);
+    existing.ownerDeviceId = cleanDev || undefined;
+    patchFields.ownerDeviceId = cleanDev;
+  }
+  if (patch.registeredIp !== undefined) {
+    const cleanIp =
+      patch.registeredIp.trim() !== "unknown"
+        ? patch.registeredIp.trim().slice(0, 80)
+        : "";
+    existing.registeredIp = cleanIp || undefined;
+    patchFields.registeredIp = cleanIp;
   }
   if (patch.payoutMethod !== undefined) {
     const cleanMethod = normalizePayoutMethod(patch.payoutMethod);
@@ -578,6 +639,9 @@ export interface CreatorConversionOptions {
   creditedEventId?: string;
   /** Subscription-level key (`stripe_sub:sub_...`, `rc_orig:...`, `apple_orig:...`) enforcing first-paid-billing-cycle-only commissions. */
   subscriptionKey?: string;
+  buyerUserId?: string;
+  buyerDeviceId?: string;
+  checkoutIp?: string;
 }
 
 export interface CreatorRefundOptions {
@@ -765,6 +829,11 @@ export async function recordStripeCreatorConversionOnce(
     event === "checkout_annual" ||
     event === "paid_monthly";
 
+  // Require payout approval before accruing paid affiliate commissions on self-registered codes
+  if (isPaidEvent && creator.payoutApproved === false) {
+    return creator;
+  }
+
   // Never credit a paid conversion or consume first-paid-cycle subscription lock when $0 was collected
   if (
     isPaidEvent &&
@@ -775,17 +844,46 @@ export async function recordStripeCreatorConversionOnce(
   }
 
   const cleanBuyerEmail = buyerEmail?.trim().toLowerCase() || undefined;
+  const cleanBuyerUserId = options?.buyerUserId?.trim() || undefined;
+  const cleanBuyerDeviceId = options?.buyerDeviceId?.trim() || undefined;
+  const cleanCheckoutIp =
+    options?.checkoutIp && options.checkoutIp.trim() !== "unknown"
+      ? options.checkoutIp.trim()
+      : undefined;
   const metaKey = `heybroc:creator:conv_meta:${idempotencyKey}`;
   const creditedInvoiceId = options?.creditedInvoiceId?.trim() || undefined;
   const creditedTransactionId =
     options?.creditedTransactionId?.trim() || undefined;
   const creditedEventId = options?.creditedEventId?.trim() || undefined;
 
-  // Anti-self-dealing guard: creators cannot earn affiliate commission on their own personal email purchase
-  if (
+  const isSelfDealByEmail = Boolean(
     cleanBuyerEmail &&
-    creator.payoutEmail &&
-    cleanBuyerEmail === creator.payoutEmail.trim().toLowerCase()
+      creator.payoutEmail &&
+      cleanBuyerEmail === creator.payoutEmail.trim().toLowerCase()
+  );
+  const isSelfDealByUserId = Boolean(
+    cleanBuyerUserId &&
+      creator.ownerUserId &&
+      cleanBuyerUserId === creator.ownerUserId.trim()
+  );
+  const isSelfDealByDeviceId = Boolean(
+    cleanBuyerDeviceId &&
+      creator.ownerDeviceId &&
+      cleanBuyerDeviceId === creator.ownerDeviceId.trim()
+  );
+  const isSelfDealByIp = Boolean(
+    cleanCheckoutIp &&
+      creator.registeredIp &&
+      creator.registeredIp.trim() !== "unknown" &&
+      cleanCheckoutIp === creator.registeredIp.trim()
+  );
+
+  // Anti-self-dealing guard: block affiliate commission when buyer matches creator email, userId, deviceId, or registration IP
+  if (
+    isSelfDealByEmail ||
+    isSelfDealByUserId ||
+    isSelfDealByDeviceId ||
+    isSelfDealByIp
   ) {
     await kvSet<CreatorConversionMeta>(
       metaKey,
@@ -1260,6 +1358,9 @@ export async function executeCreatorPayout(params: {
   const creator = await getCreator(norm);
   if (!creator) {
     throw new Error("Unknown creator code.");
+  }
+  if (creator.payoutApproved === false) {
+    throw new Error("Creator code is pending admin approval before payouts can be issued.");
   }
 
   if (params.amount !== undefined) {

@@ -350,7 +350,11 @@ export async function POST(req: Request) {
             creatorCode,
             "trial",
             undefined,
-            customerEmail
+            customerEmail,
+            {
+              buyerUserId: userId,
+              buyerDeviceId: deviceId,
+            }
           );
         }
       } else {
@@ -370,6 +374,8 @@ export async function POST(req: Request) {
               creditedTransactionId: txId,
               creditedEventId: eventId,
               subscriptionKey: `rc_orig:${origTxId}`,
+              buyerUserId: userId,
+              buyerDeviceId: deviceId,
             }
           );
         }

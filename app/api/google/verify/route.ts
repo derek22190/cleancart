@@ -388,13 +388,19 @@ export async function POST(request: Request) {
       )
     );
     if (!rcAlreadyCredited) {
+      const verifyIp = getClientIp(request);
       if (sub.isTrial) {
         await recordStripeCreatorConversionOnce(
           `google_trial:${stableOrderId}`,
           validCreatorCode,
           "trial",
           undefined,
-          buyerEmail
+          buyerEmail,
+          {
+            buyerUserId: authedUser?.userId,
+            buyerDeviceId: cleanDeviceId,
+            checkoutIp: verifyIp,
+          }
         );
       } else {
         await recordStripeCreatorConversionOnce(
@@ -406,6 +412,9 @@ export async function POST(request: Request) {
           {
             creditedTransactionId: stableOrderId,
             subscriptionKey: `google_order:${stableOrderId}`,
+            buyerUserId: authedUser?.userId,
+            buyerDeviceId: cleanDeviceId,
+            checkoutIp: verifyIp,
           }
         );
       }

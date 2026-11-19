@@ -223,6 +223,8 @@ interface InfluencerPostBody {
   name?: string;
   commissionPct?: number;
   active?: boolean;
+  payoutApproved?: boolean;
+  deviceId?: string;
   event?: CreatorEvent;
   payoutEmail?: string;
   payoutMethod?: CreatorPayoutMethod;
@@ -399,6 +401,12 @@ export async function POST(request: Request) {
             name: body.name?.trim() || undefined,
             payoutEmail: body.payoutEmail,
             payoutEmailVerified: nextVerified,
+            ...(isAdmin && body.payoutApproved !== undefined
+              ? { payoutApproved: body.payoutApproved }
+              : {}),
+            ...(!isAdmin && sessionUser?.userId && !existing.ownerUserId
+              ? { ownerUserId: sessionUser.userId }
+              : {}),
             payoutMethod: body.payoutMethod,
             payoutHandle: body.payoutHandle,
             ...(isExistingSessionOwner && existing.payoutEmailVerified !== true
@@ -443,6 +451,13 @@ export async function POST(request: Request) {
         commissionPct: PRICING.defaultCommissionPct,
         payoutEmail: body.payoutEmail,
         payoutEmailVerified,
+        payoutApproved: isAdmin ? (body.payoutApproved ?? true) : false,
+        ownerUserId: !isAdmin ? sessionUser?.userId : undefined,
+        ownerDeviceId:
+          !isAdmin && body.deviceId?.trim()
+            ? body.deviceId.trim().slice(0, 120)
+            : undefined,
+        registeredIp: !isAdmin && ip !== "unknown" ? ip : undefined,
         payoutMethod: body.payoutMethod,
         payoutHandle: body.payoutHandle,
         tokenNonce: generateCreatorTokenNonce(),
@@ -492,6 +507,9 @@ export async function POST(request: Request) {
         name: body.name,
         payoutEmail: body.payoutEmail,
         payoutEmailVerified: nextPayoutEmailVerified,
+        ...(!isAdmin && sessionUser?.userId && !existingTarget?.ownerUserId
+          ? { ownerUserId: sessionUser.userId }
+          : {}),
         payoutMethod: body.payoutMethod,
         payoutHandle: body.payoutHandle,
         ...(shouldRotateOnClaim ? { rotateTokenNonce: true } : {}),
@@ -499,6 +517,7 @@ export async function POST(request: Request) {
           ? {
               stripeConnectAccountId: body.stripeConnectAccountId,
               active: body.active,
+              payoutApproved: body.payoutApproved,
               commissionPct: body.commissionPct,
             }
           : {}),
@@ -520,6 +539,16 @@ export async function POST(request: Request) {
         return NextResponse.json(
           { ok: false, error: "Too many onboarding attempts. Please wait a minute." },
           { status: 429, headers: CORS }
+        );
+      }
+      if (!isAdmin && targetCreatorForSelfAction?.payoutApproved === false) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Your creator code is pending admin approval before Stripe payout onboarding can be activated.",
+          },
+          { status: 403, headers: CORS }
         );
       }
       if (
@@ -570,6 +599,7 @@ export async function POST(request: Request) {
           name: body.name,
           commissionPct: body.commissionPct,
           payoutEmail: body.payoutEmail,
+          payoutApproved: body.payoutApproved ?? true,
           payoutMethod: body.payoutMethod,
           payoutHandle: body.payoutHandle,
           stripeConnectAccountId: body.stripeConnectAccountId,
@@ -581,6 +611,7 @@ export async function POST(request: Request) {
           commissionPct: body.commissionPct,
           name: body.name,
           active: body.active,
+          payoutApproved: body.payoutApproved,
           payoutEmail: body.payoutEmail,
           payoutMethod: body.payoutMethod,
           payoutHandle: body.payoutHandle,

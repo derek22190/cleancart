@@ -617,7 +617,12 @@ export async function POST(req: Request) {
                 creatorCode,
                 "trial",
                 undefined,
-                resolvedEmail
+                resolvedEmail,
+                {
+                  buyerUserId: userId,
+                  buyerDeviceId: deviceId,
+                  checkoutIp: metadata.checkout_ip,
+                }
               );
             }
           }
@@ -919,6 +924,9 @@ export async function POST(req: Request) {
               {
                 creditedInvoiceId: invoiceId || undefined,
                 subscriptionKey: `stripe_sub:${subscriptionId}`,
+                buyerUserId: userId,
+                buyerDeviceId: invoiceDeviceId,
+                checkoutIp: metadata.checkout_ip,
               }
             );
           }

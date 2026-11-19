@@ -287,13 +287,19 @@ export async function POST(request: Request) {
   });
 
   if (isProductionStoreEnv && validCreatorCode && !validCreatorCode.startsWith("BROC")) {
+    const verifyIp = getClientIp(request);
     if (isFreeTrial) {
       await recordStripeCreatorConversionOnce(
         `apple_trial:${origTxId}`,
         validCreatorCode,
         "trial",
         undefined,
-        buyerEmail
+        buyerEmail,
+        {
+          buyerUserId: authedUser?.userId,
+          buyerDeviceId: cleanDeviceId,
+          checkoutIp: verifyIp,
+        }
       );
     } else {
       const grossUsd = resolveAppleGrossUsd(claims, plan, false);
@@ -311,6 +317,9 @@ export async function POST(request: Request) {
             {
               creditedTransactionId: txId,
               subscriptionKey: `apple_orig:${origTxId}`,
+              buyerUserId: authedUser?.userId,
+              buyerDeviceId: cleanDeviceId,
+              checkoutIp: verifyIp,
             }
           );
         }

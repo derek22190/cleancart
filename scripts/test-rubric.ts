@@ -10395,6 +10395,105 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const infRoute = await import("../app/api/influencers/route");
+    const infLib = await import("../lib/influencers");
+    const p29Code = `P29CREATOR${Date.now().toString(36).slice(-4).toUpperCase()}`;
+    const regIp = "203.0.113.29";
+    const regDev = "dev_creator_p29";
+    const regUid = "usr_creator_p29";
+    try {
+      const regRes = await infRoute.POST(
+        new Request("https://www.heybroc.com/api/influencers", {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-forwarded-for": regIp },
+          body: JSON.stringify({
+            action: "self_register",
+            code: p29Code,
+            name: "P29 Self Reg",
+            payoutEmail: "creator-p29@example.com",
+            deviceId: regDev,
+          }),
+        }),
+      );
+      const regJson = (await regRes.json()) as { ok: boolean; creator?: { payoutApproved?: boolean; registeredIp?: string; ownerDeviceId?: string } };
+      const pendingConv = await infLib.recordStripeCreatorConversionOnce(
+        `p29_pending_${Date.now()}`,
+        p29Code,
+        "paid_annual",
+        49.99,
+        "buyer-unrelated@example.com",
+        { checkoutIp: "198.51.100.88" },
+      );
+      let pendingPayoutRejected = false;
+      try {
+        await infLib.executeCreatorPayout({ code: p29Code, amount: 10, method: "manual" });
+      } catch (e) {
+        pendingPayoutRejected = /pending admin approval/i.test((e as Error).message);
+      }
+
+      // Admin approves creator and binds ownerUserId
+      await infLib.updateCreator(p29Code, { payoutApproved: true, ownerUserId: regUid });
+
+      const keyUid = `p29_uid_${Date.now()}`;
+      await infLib.recordStripeCreatorConversionOnce(keyUid, p29Code, "paid_annual", 49.99, "alt1@example.com", {
+        buyerUserId: regUid,
+        buyerDeviceId: "dev_other_1",
+        checkoutIp: "198.51.100.81",
+      });
+      const metaUid = await infLib.getCreatorConversionMeta(keyUid);
+
+      const keyDev = `p29_dev_${Date.now()}`;
+      await infLib.recordStripeCreatorConversionOnce(keyDev, p29Code, "paid_annual", 49.99, "alt2@example.com", {
+        buyerUserId: "usr_other_2",
+        buyerDeviceId: regDev,
+        checkoutIp: "198.51.100.82",
+      });
+      const metaDev = await infLib.getCreatorConversionMeta(keyDev);
+
+      const keyIp = `p29_ip_${Date.now()}`;
+      await infLib.recordStripeCreatorConversionOnce(keyIp, p29Code, "paid_annual", 49.99, "alt3@example.com", {
+        buyerUserId: "usr_other_3",
+        buyerDeviceId: "dev_other_3",
+        checkoutIp: regIp,
+      });
+      const metaIp = await infLib.getCreatorConversionMeta(keyIp);
+
+      const afterBlocked = await infLib.getCreator(p29Code);
+      const keyLegit = `p29_legit_${Date.now()}`;
+      const afterLegit = await infLib.recordStripeCreatorConversionOnce(
+        keyLegit,
+        p29Code,
+        "paid_annual",
+        49.99,
+        "real-shopper@example.com",
+        {
+          buyerUserId: "usr_real_shopper",
+          buyerDeviceId: "dev_real_shopper",
+          checkoutIp: "198.51.100.90",
+        },
+      );
+
+      check(
+        "P2-9 Self-registered creators require approval before payout eligibility and block self-referrals across userId, deviceId, and checkoutIp",
+        regRes.status === 200 &&
+          regJson.ok === true &&
+          regJson.creator?.payoutApproved === false &&
+          regJson.creator?.registeredIp === regIp &&
+          regJson.creator?.ownerDeviceId === regDev &&
+          pendingConv?.commissionEarned === 0 &&
+          pendingPayoutRejected &&
+          metaUid?.blockedSelfDeal === true &&
+          metaDev?.blockedSelfDeal === true &&
+          metaIp?.blockedSelfDeal === true &&
+          afterBlocked?.commissionEarned === 0 &&
+          Boolean(afterLegit && afterLegit.commissionEarned > 0),
+      );
+    } finally {
+      await infLib.deleteCreator(p29Code).catch(() => {});
+    }
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

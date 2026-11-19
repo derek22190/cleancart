@@ -421,9 +421,19 @@ export async function POST(req: NextRequest) {
             );
           }
         } else if (
-          effectiveEmail &&
-          validCreator.payoutEmail &&
-          effectiveEmail === validCreator.payoutEmail.trim().toLowerCase()
+          (effectiveEmail &&
+            validCreator.payoutEmail &&
+            effectiveEmail === validCreator.payoutEmail.trim().toLowerCase()) ||
+          (authUser?.userId &&
+            validCreator.ownerUserId &&
+            authUser.userId === validCreator.ownerUserId.trim()) ||
+          ((normalizedBodyDeviceId || deviceId) &&
+            validCreator.ownerDeviceId &&
+            (normalizedBodyDeviceId || deviceId) === validCreator.ownerDeviceId.trim()) ||
+          (clientIp &&
+            clientIp !== "unknown" &&
+            validCreator.registeredIp &&
+            clientIp === validCreator.registeredIp.trim())
         ) {
           if (rawCreatorCode) {
             return NextResponse.json(
@@ -542,6 +552,9 @@ export async function POST(req: NextRequest) {
     params.set("metadata[plan]", plan);
     params.set("metadata[terms_version]", termsVersion);
     params.set("metadata[terms_accepted_at]", consentTimestamp);
+    if (clientIp && clientIp !== "unknown") {
+      params.set("metadata[checkout_ip]", clientIp);
+    }
     if (authUser?.userId) {
       params.set("metadata[user_id]", authUser.userId);
     }
@@ -561,6 +574,9 @@ export async function POST(req: NextRequest) {
         "subscription_data[metadata][terms_accepted_at]",
         consentTimestamp
       );
+      if (clientIp && clientIp !== "unknown") {
+        params.set("subscription_data[metadata][checkout_ip]", clientIp);
+      }
       if (authUser?.userId) {
         params.set("subscription_data[metadata][user_id]", authUser.userId);
       }
