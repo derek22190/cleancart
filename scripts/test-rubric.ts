@@ -10638,6 +10638,33 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const fsNode = await import("node:fs");
+    const iosVcP211 = fsNode.readFileSync("ios-app/App/ViewController.swift", "utf8");
+    const iosAppP211 = fsNode.readFileSync("ios-app/App/HeyBrocApp.swift", "utf8");
+    const iosLiveP211 = fsNode.readFileSync("ios-app/App/LiveStoreBrowserViewController.swift", "utf8");
+    const iosInfoPlistP211 = fsNode.readFileSync("ios-app/App/Info.plist", "utf8");
+    const authModalP211 = fsNode.readFileSync("components/AuthModal.tsx", "utf8");
+    const simP211 = fsNode.readFileSync("components/Simulator.tsx", "utf8");
+
+    check(
+      "P2-11 iOS enforces StoreKit revocation/expiration checks, aligns CFBundleVersion to $(CURRENT_PROJECT_VERSION), guards iPad sheets/share popovers, and removes dev/TestFlight copy",
+      iosVcP211.includes("isStoreKitTransactionActive") &&
+        iosVcP211.includes("transaction.revocationDate == nil") &&
+        iosVcP211.includes("transaction.expirationDate! > Date()") &&
+        iosVcP211.includes("tx.revocationDate == nil") &&
+        iosVcP211.includes("HeyBrocSharedPrefs.isPro = false") &&
+        iosVcP211.includes("sheet.popoverPresentationController") &&
+        iosAppP211.includes("vc.popoverPresentationController") &&
+        iosLiveP211.includes("sheet.popoverPresentationController") &&
+        /<key>CFBundleVersion<\/key>\s*<string>\$\(CURRENT_PROJECT_VERSION\)<\/string>/.test(iosInfoPlistP211) &&
+        !authModalP211.includes("APPLE_SERVICE_ID in Vercel Settings") &&
+        !authModalP211.includes("TestFlight") &&
+        !simP211.includes("beta.itunes.apple.com") &&
+        !/TestFlight/.test(simP211),
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

@@ -1419,7 +1419,21 @@ struct ActivityShareSheetRepresentable: UIViewControllerRepresentable {
     let items: [Any]
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
+        let vc = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        if let popover = vc.popoverPresentationController {
+            let windowScene = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .first { $0.activationState == .foregroundActive }
+                ?? UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+            let hostView = windowScene?.windows.first(where: { $0.isKeyWindow })?.rootViewController?.view
+                ?? windowScene?.windows.first?.rootViewController?.view
+            if let hostView = hostView {
+                popover.sourceView = hostView
+                popover.sourceRect = CGRect(x: hostView.bounds.midX, y: hostView.bounds.midY, width: 1, height: 1)
+                popover.permittedArrowDirections = []
+            }
+        }
+        return vc
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}

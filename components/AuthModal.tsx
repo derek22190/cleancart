@@ -287,8 +287,8 @@ export default function AuthModal({
           );
         setError(
           isIosWv
-            ? "Apple ID Face ID sign-in activates automatically once your latest TestFlight update finishes installing (or continue with Google or Email right below)."
-            : "Sign in with Apple on Web requires APPLE_SERVICE_ID in Vercel Settings (Redirect URI: https://www.heybroc.com/api/auth/apple-callback), or continue with Google or Email below."
+            ? "Sign in with Apple is temporarily unavailable. Update HeyBroc from the App Store or continue with Google or Email right below."
+            : "Sign in with Apple on Web is temporarily unavailable right now. Please continue with Google or Email right below."
         );
         return;
       }

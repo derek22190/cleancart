@@ -3120,10 +3120,16 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 }
             }
         )
+        sheet.modalPresentationStyle = .pageSheet
         if #available(iOS 15.0, *), let pres = sheet.sheetPresentationController {
             pres.detents = [.medium(), .large()]
             pres.prefersGrabberVisible = true
             pres.preferredCornerRadius = 24
+        }
+        if let popover = sheet.popoverPresentationController {
+            popover.sourceView = view
+            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
+            popover.permittedArrowDirections = []
         }
         present(sheet, animated: true)
     }

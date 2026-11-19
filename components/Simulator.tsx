@@ -1345,7 +1345,7 @@ export default function Simulator({
       }
       setToast({
         title: "✓ Watchlist & Account Synced",
-        body: "All 0–100 food scores & Clean Swaps are active on your account. Update TestFlight to manage iOS Family Pro with Face ID.",
+        body: "All 0–100 food scores & Clean Swaps are active on your account. Update HeyBroc from the App Store to manage iOS Family Pro with Face ID.",
       });
       return;
     }
@@ -3302,7 +3302,7 @@ export default function Simulator({
             gap: 14,
           }}
         >
-          {/* TestFlight Update Banner — automatically hidden once updated native bridge is present */}
+          {/* Legacy iOS App Update Banner — automatically hidden once updated native bridge is present */}
           {iosPrefsHydrated && !hasNativeLiveShop && (
             <div
               id="ios-testflight-update-banner"
@@ -3317,13 +3317,13 @@ export default function Simulator({
               }}
             >
               <div style={{ fontSize: 12, fontWeight: 800, color: "#92400e", letterSpacing: "0.03em" }}>
-                📲 NEW HEYBROC APP UPDATE READY IN TESTFLIGHT
+                📲 NEW HEYBROC APP UPDATE READY IN THE APP STORE
               </div>
               <p style={{ margin: 0, fontSize: 13, lineHeight: 1.4, color: "#78350f" }}>
-                Install the latest TestFlight update to unlock the built-in Walmart, Instacart, Target &amp; Amazon store browser with our floating 0–100 score bubble.
+                Install the latest App Store update to unlock the built-in Walmart, Instacart, Target &amp; Amazon store browser with our floating 0–100 score bubble.
               </p>
               <a
-                href="https://beta.itunes.apple.com/v1/app/6832296201"
+                href="https://apps.apple.com/search?term=HeyBroc"
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -3337,7 +3337,7 @@ export default function Simulator({
                   textDecoration: "none",
                 }}
               >
-                Open TestFlight &amp; Tap Update →
+                Open App Store &amp; Tap Update →
               </a>
             </div>
           )}
@@ -4660,7 +4660,7 @@ export default function Simulator({
             </div>
           )}
 
-          {/* Fallback Sheet for Older TestFlight Build (105) or Web Preview */}
+          {/* Fallback Sheet for Older iOS Build or Web Preview */}
           {iosFallbackModal && (
             <div
               role="dialog"
@@ -4719,13 +4719,13 @@ export default function Simulator({
                 {iosFallbackModal.kind === "store" ? (
                   <>
                     <h3 style={{ margin: 0, fontSize: 18, lineHeight: 1.25, color: "#0f172a" }}>
-                      Update HeyBroc in TestFlight to Open {STORE_META[iosFallbackModal.storeKey].label} Inside the App
+                      Update HeyBroc in the App Store to Open {STORE_META[iosFallbackModal.storeKey].label} Inside the App
                     </h3>
                     <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.45, color: "#475569" }}>
-                      Your iPhone is running an older TestFlight build before our built-in {STORE_META[iosFallbackModal.storeKey].label} browser was added. Tap below to open TestFlight and tap <b>Update</b> — or score {STORE_META[iosFallbackModal.storeKey].label} groceries right here now:
+                      Your iPhone is running an older version of HeyBroc before our built-in {STORE_META[iosFallbackModal.storeKey].label} browser was added. Tap below to open the App Store and tap <b>Update</b> — or score {STORE_META[iosFallbackModal.storeKey].label} groceries right here now:
                     </p>
                     <a
-                      href="https://beta.itunes.apple.com/v1/app/6832296201"
+                      href="https://apps.apple.com/search?term=HeyBroc"
                       style={{
                         display: "flex",
                         alignItems: "center",
@@ -4739,7 +4739,7 @@ export default function Simulator({
                         textDecoration: "none",
                       }}
                     >
-                      📲 Open TestFlight to Update App →
+                      📲 Open App Store to Update App →
                     </a>
                     <button
                       type="button"
@@ -4804,10 +4804,10 @@ export default function Simulator({
                       <div>3. Tap <b>All Websites</b> (or <b>Other Websites</b> at the bottom) <b>→ Allow</b> <em>(1 switch enables every grocery store at once!)</em></div>
                     </div>
                     <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.45, color: "#475569" }}>
-                      Want to skip Safari setup altogether? Update HeyBroc in TestFlight to shop Walmart, Instacart, Target &amp; Amazon right inside HeyBroc!
+                      Want to skip Safari setup altogether? Update HeyBroc from the App Store to shop Walmart, Instacart, Target &amp; Amazon right inside HeyBroc!
                     </p>
                     <a
-                      href="https://beta.itunes.apple.com/v1/app/6832296201"
+                      href="https://apps.apple.com/search?term=HeyBroc"
                       style={{
                         display: "flex",
                         alignItems: "center",
@@ -4821,7 +4821,7 @@ export default function Simulator({
                         textDecoration: "none",
                       }}
                     >
-                      📲 Open TestFlight to Update App →
+                      📲 Open App Store to Update App →
                     </a>
                   </>
                 )}

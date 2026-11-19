@@ -756,10 +756,10 @@ async function main() {
     );
     await legacyIosPage.eval(`document.getElementById("ios-shop-walmart")?.click()`);
     await legacyIosPage.waitFor(
-      `document.body.innerText.includes("Update HeyBroc in TestFlight to Open Walmart Inside the App")`,
+      `document.body.innerText.includes("Update HeyBroc in the App Store to Open Walmart Inside the App")`,
       "Legacy build fallback store sheet",
     );
-    console.log("   ✓ Legacy TestFlight update banner & fallback store sheet verified");
+    console.log("   ✓ Legacy App Store update banner & fallback store sheet verified");
     legacyIosPage.close();
 
     // =========================================================================

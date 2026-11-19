@@ -671,10 +671,16 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
                 self.loadAppURL(self.appToolsURL)
             }
         )
+        sheet.modalPresentationStyle = .pageSheet
         if #available(iOS 15.0, *), let pres = sheet.sheetPresentationController {
             pres.detents = [.large()]
             pres.prefersGrabberVisible = true
             pres.preferredCornerRadius = 24
+        }
+        if let popover = sheet.popoverPresentationController {
+            popover.sourceView = view
+            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
+            popover.permittedArrowDirections = []
         }
         if let presented = presentedViewController {
             presented.dismiss(animated: false) { [weak self] in
@@ -979,14 +985,21 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         deliverAppleAuthPayload(["error": error.localizedDescription])
     }
 
+    private static func isStoreKitTransactionActive(_ transaction: StoreKit.Transaction) -> Bool {
+        return transaction.revocationDate == nil &&
+            (transaction.expirationDate == nil || transaction.expirationDate! > Date())
+    }
+
     private func startStoreKitUpdatesListener() {
         storeUpdatesTask = Task.detached { [weak self] in
             for await verificationResult in StoreKit.Transaction.updates {
                 if case .verified(let transaction) = verificationResult {
+                    let isActive = Self.isStoreKitTransactionActive(transaction)
                     await self?.syncVerifiedStoreKitTransaction(
                         jwsRepresentation: verificationResult.jwsRepresentation,
                         productId: transaction.productID,
-                        restored: false
+                        restored: false,
+                        isActive: isActive
                     )
                     await transaction.finish()
                 }
@@ -997,7 +1010,8 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     fileprivate func syncVerifiedStoreKitTransaction(
         jwsRepresentation: String,
         productId: String,
-        restored: Bool
+        restored: Bool,
+        isActive: Bool = true
     ) async {
         var deviceId = ""
         var authToken = ""
@@ -1053,7 +1067,9 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
                 creatorCode = normWeb
             }
         }
-        HeyBrocSharedPrefs.isPro = true
+        if isActive {
+            HeyBrocSharedPrefs.isPro = true
+        }
 
         if let verifyURL = URL(string: "https://www.heybroc.com/api/apple/verify") {
             var req = URLRequest(url: verifyURL)
@@ -1074,6 +1090,24 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             }
             req.httpBody = try? JSONSerialization.data(withJSONObject: body, options: [])
             _ = try? await URLSession.shared.data(for: req)
+        }
+
+        if !isActive {
+            var hasOtherActiveAppleEntitlement = false
+            for await ent in StoreKit.Transaction.currentEntitlements {
+                if case .verified(let tx) = ent, Self.isStoreKitTransactionActive(tx) {
+                    hasOtherActiveAppleEntitlement = true
+                    break
+                }
+            }
+            if !hasOtherActiveAppleEntitlement {
+                HeyBrocSharedPrefs.isPro = false
+                await MainActor.run { [weak self] in
+                    let revokeJS = "try { localStorage.removeItem('heybroc_is_pro'); } catch (_) {}"
+                    self?.webView.evaluateJavaScript(revokeJS, completionHandler: nil)
+                }
+            }
+            return
         }
 
         await MainActor.run { [weak self] in
@@ -1109,7 +1143,8 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
                 await self?.syncVerifiedStoreKitTransaction(
                     jwsRepresentation: jws,
                     productId: productId,
-                    restored: restored
+                    restored: restored,
+                    isActive: true
                 )
             },
             onOpenAccountAuth: { [weak self] tab in
@@ -1125,10 +1160,16 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
                 self?.syncCreatorCodeToWebView(updatedCode)
             }
         )
+        sheet.modalPresentationStyle = .pageSheet
         if #available(iOS 15.0, *), let pres = sheet.sheetPresentationController {
             pres.detents = [.large()]
             pres.prefersGrabberVisible = true
             pres.preferredCornerRadius = 24
+        }
+        if let popover = sheet.popoverPresentationController {
+            popover.sourceView = presenter.view
+            popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 1, height: 1)
+            popover.permittedArrowDirections = []
         }
         presenter.present(sheet, animated: true)
         syncCreatorCodeFromWebView { [weak sheet] resolved in
@@ -2234,10 +2275,17 @@ private final class NativeProPaywallSheetViewController: UIViewController, UITex
                 case .success(let verification):
                     switch verification {
                     case .verified(let transaction):
-                        self.statusLabel.text = "🎉 Activating Family Pro…"
-                        await self.onVerifiedPurchase(verification.jwsRepresentation, transaction.productID, false)
-                        await transaction.finish()
-                        self.dismiss(animated: true)
+                        let isActiveTx = transaction.revocationDate == nil &&
+                            (transaction.expirationDate == nil || transaction.expirationDate! > Date())
+                        if isActiveTx {
+                            self.statusLabel.text = "🎉 Activating Family Pro…"
+                            await self.onVerifiedPurchase(verification.jwsRepresentation, transaction.productID, false)
+                            await transaction.finish()
+                            self.dismiss(animated: true)
+                        } else {
+                            await transaction.finish()
+                            self.statusLabel.text = "This subscription is no longer active. Please try again or contact support."
+                        }
                     case .unverified:
                         self.statusLabel.text = "Apple could not verify this transaction. Please try Restore Purchases."
                     }
@@ -2299,7 +2347,9 @@ private final class NativeProPaywallSheetViewController: UIViewController, UITex
                 var restoredAny = false
                 for await verification in StoreKit.Transaction.currentEntitlements {
                     if case .verified(let tx) = verification,
-                       (tx.productID == Self.annualProductID || tx.productID == Self.monthlyProductID) {
+                       (tx.productID == Self.annualProductID || tx.productID == Self.monthlyProductID),
+                       tx.revocationDate == nil,
+                       (tx.expirationDate == nil || tx.expirationDate! > Date()) {
                         await self.onVerifiedPurchase(verification.jwsRepresentation, tx.productID, true)
                         restoredAny = true
                     }
