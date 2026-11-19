@@ -436,7 +436,7 @@ async function main() {
         "--no-default-browser-check",
         "--ignore-certificate-errors",
         ...(envProxy ? [`--proxy-server=${envProxy}`] : []),
-        `--proxy-bypass-list=127.0.0.1,localhost,www.walmart.com${offCdnReachable ? "" : ",images.openfoodfacts.org"}`,
+        `--proxy-bypass-list=127.0.0.1,localhost,www.walmart.com,www.costco.com,i5.walmartimages.com${offCdnReachable ? "" : ",images.openfoodfacts.org"}`,
         `--user-data-dir=${userDataDir}`,
         `--remote-debugging-port=${cdpPort}`,
         "--window-size=393,852",
@@ -1002,6 +1002,8 @@ async function main() {
     await storePage.send("Fetch.enable", {
       patterns: [
         { urlPattern: "https://www.walmart.com/*", requestStage: "Request" },
+        { urlPattern: "https://www.costco.com/*", requestStage: "Request" },
+        { urlPattern: "https://i5.walmartimages.com/*", requestStage: "Request" },
         { urlPattern: "https://www.heybroc.com/*", requestStage: "Request" },
         ...(offCdnReachable
           ? []
@@ -1010,7 +1012,10 @@ async function main() {
     });
     storePage.on("Fetch.requestPaused", (params) => {
       const reqUrl: string = params.request?.url || "";
-      if (!offCdnReachable && reqUrl.startsWith("https://images.openfoodfacts.org/")) {
+      if (
+        reqUrl.startsWith("https://i5.walmartimages.com/") ||
+        (!offCdnReachable && reqUrl.startsWith("https://images.openfoodfacts.org/"))
+      ) {
         void storePage.send("Fetch.fulfillRequest", {
           requestId: params.requestId,
           responseCode: 200,
@@ -1093,7 +1098,9 @@ async function main() {
         });
       } else if (
         reqUrl.startsWith("https://www.walmart.com/ip/") ||
-        reqUrl.startsWith("https://www.walmart.com/search")
+        reqUrl.startsWith("https://www.walmart.com/search") ||
+        reqUrl.startsWith("https://www.walmart.com/cart") ||
+        reqUrl.startsWith("https://www.costco.com/CheckoutCartDisplayView")
       ) {
         const searchFixture = `<!doctype html><html><body><div data-item-id="998877"><h1 data-automation-id="product-title">Primal Kitchen Ranch Dressing &amp; Marinade Made with Avocado Oil, 8 fl oz</h1><button>Add to cart</button></div></body></html>`;
         void storePage.send("Fetch.fulfillRequest", {
@@ -1106,12 +1113,12 @@ async function main() {
           body: Buffer.from(searchFixture, "utf8").toString("base64"),
         });
       } else {
-        // Any stray relative request to www.walmart.com (e.g. if a relative /api/... or /swaps/... leaked!) returns 404 immediately!
+        // Any stray relative request to www.walmart.com / www.costco.com (e.g. if a relative /api/... or /swaps/... leaked!) returns 404 immediately!
         void storePage.send("Fetch.fulfillRequest", {
           requestId: params.requestId,
           responseCode: 404,
           responseHeaders: [{ name: "Content-Type", value: "text/plain" }],
-          body: Buffer.from("Not Found on Walmart", "utf8").toString("base64"),
+          body: Buffer.from("Not Found on Store Fixture", "utf8").toString("base64"),
         });
       }
     });
@@ -1897,7 +1904,7 @@ async function main() {
       window.__p13IosTitles = [];
       window.webkit = {
         messageHandlers: {
-          heybrocStore: {
+          heybrocStoreBridge: {
             postMessage: function(msg) {
               if (msg && msg.kind === "gridBatch" && Array.isArray(msg.items)) {
                 msg.items.forEach((it) => window.__p13IosTitles.push(it.productTitle || ""));
@@ -2049,6 +2056,27 @@ async function main() {
     await new Promise((r) => setTimeout(r, 450));
     const p18AndroidGridCount = await storePage.eval<number>(`window.__p18AndroidCartGrid`);
     assert(p18AndroidGridCount === 0, `P1-8 Android emitted ${p18AndroidGridCount} grid scans on Costco CheckoutCartDisplayView`);
+
+    await storePage.navigate("https://www.costco.com/CheckoutCartDisplayView");
+    await storePage.eval(`
+      document.body.innerHTML = ${JSON.stringify(costcoCartHtml)};
+      window.__p18IosCartGrid = 0;
+      window.webkit = {
+        messageHandlers: {
+          heybrocStoreBridge: {
+            postMessage: function(msg) {
+              if (msg && msg.kind === "gridBatch") {
+                window.__p18IosCartGrid += (msg.items || []).length;
+              }
+            }
+          }
+        }
+      };
+    `);
+    await storePage.eval(detectorJS, false);
+    await new Promise((r) => setTimeout(r, 450));
+    const p18IosGridCount = await storePage.eval<number>(`window.__p18IosCartGrid`);
+    assert(p18IosGridCount === 0, `P1-8 iOS emitted ${p18IosGridCount} grid scans on Costco CheckoutCartDisplayView`);
     console.log(
       `   ✓ P1-8 Costco /CheckoutCartDisplayView cart scraped & persisted (${p18StoredCart.titles.join(" + ")})!`,
     );
@@ -2096,18 +2124,18 @@ async function main() {
       prodImg.src = ${JSON.stringify(placeholderSvgDataUrl)};
       prodImg.dispatchEvent(new Event("load"));
     `);
-    const p21AfterLoadAndroid = await storePage.waitFor<{ badges: number; inLogoWrap: boolean }>(
+    const p21AfterLoadAndroid = await storePage.waitFor<{ badges: number; batches: number; inLogoWrap: boolean }>(
       `(() => {
         const b = document.querySelector(".hb-photo-badge");
-        if (!b) return null;
+        if (!b || window.__p21AndroidBatches < 1) return null;
         const logoWrap = document.getElementById("p21-logo-wrap");
-        return { badges: document.querySelectorAll(".hb-photo-badge").length, inLogoWrap: Boolean(logoWrap && logoWrap.contains(b)) };
+        return { badges: document.querySelectorAll(".hb-photo-badge").length, batches: window.__p21AndroidBatches, inLogoWrap: Boolean(logoWrap && logoWrap.contains(b)) };
       })()`,
       "P2-1 Android badge appears on real product photo once loaded",
       5000,
     );
     assert(
-      p21AfterLoadAndroid.badges === 1 && !p21AfterLoadAndroid.inLogoWrap,
+      p21AfterLoadAndroid.badges === 1 && p21AfterLoadAndroid.batches >= 1 && !p21AfterLoadAndroid.inLogoWrap,
       `P2-1 Android badge anchored incorrectly after real photo loaded: ${JSON.stringify(p21AfterLoadAndroid)}`,
     );
 
@@ -2117,7 +2145,7 @@ async function main() {
       window.__p21IosBatches = 0;
       window.webkit = {
         messageHandlers: {
-          heybrocStore: {
+          heybrocStoreBridge: {
             postMessage: function(msg) {
               if (msg && msg.kind === "gridBatch") {
                 window.__p21IosBatches += (msg.items || []).length;
@@ -2141,18 +2169,18 @@ async function main() {
       prodImg.src = ${JSON.stringify(placeholderSvgDataUrl)};
       prodImg.dispatchEvent(new Event("load"));
     `);
-    const p21AfterLoadIos = await storePage.waitFor<{ badges: number; inLogoWrap: boolean }>(
+    const p21AfterLoadIos = await storePage.waitFor<{ badges: number; batches: number; inLogoWrap: boolean }>(
       `(() => {
         const b = document.querySelector(".hb-photo-badge");
-        if (!b) return null;
+        if (!b || window.__p21IosBatches < 1) return null;
         const logoWrap = document.getElementById("p21-logo-wrap");
-        return { badges: document.querySelectorAll(".hb-photo-badge").length, inLogoWrap: Boolean(logoWrap && logoWrap.contains(b)) };
+        return { badges: document.querySelectorAll(".hb-photo-badge").length, batches: window.__p21IosBatches, inLogoWrap: Boolean(logoWrap && logoWrap.contains(b)) };
       })()`,
       "P2-1 iOS badge appears on real product photo once loaded",
       5000,
     );
     assert(
-      p21AfterLoadIos.badges === 1 && !p21AfterLoadIos.inLogoWrap,
+      p21AfterLoadIos.badges === 1 && p21AfterLoadIos.batches >= 1 && !p21AfterLoadIos.inLogoWrap,
       `P2-1 iOS badge anchored incorrectly after real photo loaded: ${JSON.stringify(p21AfterLoadIos)}`,
     );
     console.log("   ✓ P2-1 brand-logo badge guard & lazy-photo anchoring verified on Android & iOS!");
