@@ -781,7 +781,7 @@ async function main() {
       platform: "Linux armv8l",
     });
 
-    for (const route of ["/", "/test", "/tools", "/swaps/hidden-valley-ranch"]) {
+    for (const route of ["/", "/test", "/tools", "/swaps/hidden-valley-ranch", "/compare", "/compare/heybroc-vs-yuka"]) {
       await androidPage.navigate(`${baseOrigin}${route}`);
       const metrics = await androidPage.eval<{
         scrollWidth: number;
@@ -805,11 +805,11 @@ async function main() {
       }
     }
 
-    // Verify /test interactive Free 3-Second Grocery Score Test on Android
-    await androidPage.navigate(`${baseOrigin}/test`);
+    // Verify /test?angle=red40 interactive Free 3-Second Grocery Score Test on Android
+    await androidPage.navigate(`${baseOrigin}/test?angle=red40`);
     await androidPage.waitFor(
-      `Boolean(document.getElementById("ad-free-test-hero"))`,
-      "Android /test Free Score Test hero",
+      `Boolean(document.getElementById("ad-free-test-hero")) && /Red 40/i.test(document.getElementById("ad-free-test-hero")?.textContent || "")`,
+      "Android /test?angle=red40 persona-tailored Free Score Test hero",
     );
     await androidPage.eval(`(() => {
       const firstPreset = document.querySelector('[id^="ad-test-"]');

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { GROWTH_ANGLES, type GrowthAngleId } from "@/lib/growth-angles";
 import { PRICING, commissionFor, usd } from "@/lib/pricing";
 
 type CreatorPayoutMethod =
@@ -85,6 +86,10 @@ export default function SelfServeCreatorsPage() {
   const [creator, setCreator] = useState<CreatorSummary | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [selectedAngleId, setSelectedAngleId] = useState<GrowthAngleId>("online");
+  const [copiedAngleLink, setCopiedAngleLink] = useState(false);
+  const selectedAngle =
+    GROWTH_ANGLES.find((a) => a.id === selectedAngleId) ?? GROWTH_ANGLES[0];
 
   const annualPayout = commissionFor(
     "annual",
@@ -808,6 +813,49 @@ export default function SelfServeCreatorsPage() {
                   </div>
                 </div>
 
+                {/* Non-Vanity Creator Efficiency Bar */}
+                <div
+                  style={{
+                    background: "#0b2418",
+                    color: "#ffffff",
+                    borderRadius: 14,
+                    padding: "11px 14px",
+                    marginBottom: 16,
+                    display: "flex",
+                    flexWrap: "wrap",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 10,
+                    fontSize: 12.5,
+                  }}
+                >
+                  <span style={{ color: "#6ee7b7", fontWeight: 800 }}>
+                    ⚡ Conversion Efficiency (Views Are Vanity — Revenue Per Click Wins)
+                  </span>
+                  <span style={{ fontWeight: 700 }}>
+                    Trial Rate:{" "}
+                    <strong>
+                      {(creator.clicks ?? 0) > 0
+                        ? `${(((creator.trials ?? 0) / (creator.clicks ?? 1)) * 100).toFixed(1)}%`
+                        : "0.0%"}
+                    </strong>{" "}
+                    · Paid Conv:{" "}
+                    <strong>
+                      {(creator.clicks ?? 0) > 0
+                        ? `${((((creator.paidAnnual ?? 0) + (creator.paidMonthly ?? 0)) / (creator.clicks ?? 1)) * 100).toFixed(1)}%`
+                        : "0.0%"}
+                    </strong>{" "}
+                    · Earnings / Click:{" "}
+                    <strong>
+                      {usd(
+                        (creator.clicks ?? 0) > 0
+                          ? (creator.commissionEarned ?? creator.commissionOwed ?? 0) / (creator.clicks ?? 1)
+                          : 0,
+                      )}
+                    </strong>
+                  </span>
+                </div>
+
                 {/* Payout Method & Stripe Connect Express Section */}
                 <div
                   style={{
@@ -1089,7 +1137,7 @@ export default function SelfServeCreatorsPage() {
           </div>
         )}
 
-        {/* How It Works Across Apple, Google Play & Web */}
+        {/* Audience-Segmented UGC Operator Playbook & Angle Link Generator */}
         <div
           style={{
             background: "#ffffff",
@@ -1099,46 +1147,158 @@ export default function SelfServeCreatorsPage() {
             border: "1px solid rgba(15, 122, 74, 0.12)",
           }}
         >
-          <h2 style={{ fontSize: 19, fontWeight: 900, margin: "0 0 12px" }}>
-            🎬 3 Viral 15-Second Video Hooks That Convert
-          </h2>
-          <ol
+          <span
             style={{
-              margin: 0,
-              paddingLeft: 20,
-              lineHeight: 1.6,
-              fontSize: 14.5,
-              color: "#374151",
+              display: "inline-block",
+              background: "#ecfdf5",
+              color: "#0f7a4a",
+              fontWeight: 800,
+              fontSize: 11,
+              letterSpacing: "0.08em",
+              padding: "4px 10px",
+              borderRadius: 999,
+              marginBottom: 8,
             }}
           >
-            <li style={{ marginBottom: 8 }}>
-              <b>&ldquo;Yuka for Online Grocery&rdquo;</b> — Screen-record your
-              Walmart or Instacart cart while the live HeyBroc bubble flags
-              hidden seed oils / Red 40 and swaps them to a higher-scoring clean
-              brand in 1 tap.
-            </li>
-            <li style={{ marginBottom: 8 }}>
-              <b>&ldquo;Rating My Kid&apos;s Favorite Snacks&rdquo;</b> — Show a
-              Popular vs. Clean Swap side-by-side in HeyBroc (e.g. Hidden Valley
-              Ranch 6/100 → Primal Kitchen Avocado Ranch 80/100).
-            </li>
-            <li>
-              <b>Call to Action:</b>{" "}
-              <i>
-                &ldquo;Use my link in bio or code{" "}
-                <b>{creator?.code || "YOURCODE"}</b> inside HeyBroc to get 7
-                days of Family Pro free!&rdquo;
-              </i>{" "}
-              (Earns {creator?.commissionPct ?? PRICING.defaultCommissionPct}%
-              commission on net pre-tax revenue collected on every approved new
-              paid Pro signup&apos;s first paid billing cycle — up to{" "}
-              {usd(annualPayout)} on annual or {usd(monthlyPayout)} on monthly
-              after applicable store/platform fees, excluding refunds and
-              self-referrals.)
-            </li>
-          </ol>
+            UGC OPERATOR PLAYBOOK · OPTIMIZE FOR CONVERSIONS, NOT VANITY VIEWS
+          </span>
+          <h2 style={{ fontSize: 19, fontWeight: 900, margin: "0 0 6px" }}>
+            🎬 Audience-Specific Script Kits &amp; Deep Links
+          </h2>
+          <p style={{ fontSize: 13.5, color: "#4a5550", margin: "0 0 14px", lineHeight: 1.5 }}>
+            Generic &ldquo;eat clean&rdquo; videos rack up empty views. Show a real side-by-side
+            score jump (e.g. Hidden Valley Ranch 6/100 → Primal Kitchen Avocado Ranch 80/100) and
+            pick the exact buyer motivation your audience cares about to pre-configure their
+            watchlist, shock-score demo item, and paywall headline automatically:
+          </p>
 
-          <div style={{ marginTop: 18, textAlign: "center" }}>
+          {/* Angle Selector Pills */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+            {GROWTH_ANGLES.map((angle) => {
+              const active = angle.id === selectedAngle.id;
+              return (
+                <button
+                  key={angle.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedAngleId(angle.id);
+                    setCopiedAngleLink(false);
+                  }}
+                  style={{
+                    padding: "8px 13px",
+                    borderRadius: 999,
+                    border: active ? "2px solid #0f7a4a" : "1px solid #cbd5e1",
+                    background: active ? "#ecfdf5" : "#f8fafc",
+                    color: active ? "#065f46" : "#334155",
+                    fontSize: 12.5,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  {angle.emoji} {angle.shortLabel}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Active Angle Script Card */}
+          <div
+            style={{
+              background: "#f8faf9",
+              border: "1px solid #d1fae5",
+              borderRadius: 18,
+              padding: "16px 18px",
+              marginBottom: 14,
+            }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#0f7a4a", marginBottom: 6 }}>
+              TARGET AUDIENCE: {selectedAngle.ugcKit.targetAudience.toUpperCase()}
+            </div>
+            <div style={{ display: "grid", gap: 10, fontSize: 13.5, lineHeight: 1.55, color: "#1e293b" }}>
+              <div>
+                <strong>0–3s Hook:</strong> {selectedAngle.ugcKit.hook0to3s}
+              </div>
+              <div>
+                <strong>3–12s Live Demo Beat:</strong> {selectedAngle.ugcKit.demoBeat3to12s}
+              </div>
+              <div>
+                <strong>12–18s Call to Action:</strong>{" "}
+                {selectedAngle.ugcKit.cta12to18s.replace(
+                  "{CODE}",
+                  creator?.code || "YOURCODE",
+                )}
+              </div>
+              <div
+                style={{
+                  background: "#ffffff",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 12,
+                  padding: "10px 12px",
+                  fontSize: 12.5,
+                  color: "#334155",
+                }}
+              >
+                <strong>💡 Operator Coaching Note:</strong> {selectedAngle.ugcKit.whyItConverts}
+              </div>
+            </div>
+
+            {/* Custom Angle Tracking Link */}
+            <div
+              style={{
+                marginTop: 14,
+                paddingTop: 12,
+                borderTop: "1px solid #d1fae5",
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+              }}
+            >
+              <div style={{ fontSize: 12.5, color: "#065f46", fontWeight: 700, wordBreak: "break-all" }}>
+                Tailored Bio Link:{" "}
+                <code>
+                  {`https://www.heybroc.com/r/${creator?.code || "YOURCODE"}?angle=${selectedAngle.id}`}
+                </code>
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  const angleUrl = `https://www.heybroc.com/r/${creator?.code || "YOURCODE"}?angle=${selectedAngle.id}`;
+                  try {
+                    await navigator.clipboard.writeText(angleUrl);
+                  } catch {
+                    /* ignore */
+                  }
+                  setCopiedAngleLink(true);
+                }}
+                style={{
+                  background: copiedAngleLink ? "#16a34a" : "#0f7a4a",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: 999,
+                  padding: "7px 14px",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {copiedAngleLink ? "✓ Copied Angle Link!" : "Copy Tailored Angle Link"}
+              </button>
+            </div>
+          </div>
+
+          <p style={{ fontSize: 12.5, color: "#64748b", margin: "0 0 14px", lineHeight: 1.5 }}>
+            Commission terms: Earn{" "}
+            <strong>{creator?.commissionPct ?? PRICING.defaultCommissionPct}%</strong> on net
+            pre-tax revenue collected on every approved new paid Pro signup&apos;s first paid
+            billing cycle — up to <strong>{usd(annualPayout)}</strong> on annual or{" "}
+            <strong>{usd(monthlyPayout)}</strong> on monthly after applicable store/platform fees,
+            excluding refunds and self-referrals.
+          </p>
+
+          <div style={{ marginTop: 14, textAlign: "center" }}>
             <Link
               href="/"
               style={{

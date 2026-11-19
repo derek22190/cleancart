@@ -11611,6 +11611,82 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         !llmsFullAudit.includes("25–49 (Mediocre") &&
         !simAudit.includes('score.score < 25 ? "Bad"'),
     );
+
+    // 10. Growth Playbook: /compare SEO/AEO Hub, Persona Growth Angles, Superwall Analytics, UGC Script Kits, and ASO A/B Playbook
+    const { COMPETITOR_COMPARISONS, getComparisonBySlug } = await import("../lib/comparisons");
+    const { GROWTH_ANGLES, resolveGrowthAngle } = await import("../lib/growth-angles");
+    const { trackServerEvent: trackGrowthEvent, getAnalyticsSnapshot: getGrowthSnap } = await import(
+      "../lib/analytics"
+    );
+    const compareHubSrc = fsNode.readFileSync("app/compare/page.tsx", "utf8");
+    const compareSlugSrc = fsNode.readFileSync("app/compare/[slug]/page.tsx", "utf8");
+    const sitemapSrc = fsNode.readFileSync("app/sitemap.ts", "utf8");
+    const llmsTxtSrc = fsNode.readFileSync("public/llms.txt", "utf8");
+    const funnelSrc = fsNode.readFileSync("components/WatchlistMiniFunnel.tsx", "utf8");
+    const adminPageSrc = fsNode.readFileSync("app/admin/page.tsx", "utf8");
+    const creatorsPageSrc = fsNode.readFileSync("app/creators/page.tsx", "utf8");
+    const asoPlaybookSrc = fsNode.readFileSync("store-assets/ASO_AB_TESTING_PLAYBOOK.md", "utf8");
+    const asoAbHtmlSrc = fsNode.readFileSync("store-assets/aso-screenshots/ab-variants.html", "utf8");
+
+    const beforeGrowthSnap = await getGrowthSnap();
+    const beforeRed40Scans = beforeGrowthSnap.byAngle?.red40?.scans ?? 0;
+    const beforeRed40Paywalls = beforeGrowthSnap.byAngle?.red40?.paywallViews ?? 0;
+    const beforeOnboardDone = beforeGrowthSnap.onboardingCompleted ?? 0;
+    await trackGrowthEvent({
+      event: "product_scanned",
+      distinctId: `growth_audit_${Date.now()}`,
+      platform: "web",
+      properties: { angle: "red40" },
+    });
+    await trackGrowthEvent({
+      event: "paywall_viewed",
+      distinctId: `growth_audit_${Date.now()}`,
+      platform: "web",
+      properties: { angle: "red40" },
+    });
+    await trackGrowthEvent({
+      event: "onboarding_step",
+      distinctId: `growth_audit_${Date.now()}`,
+      platform: "web",
+      properties: { name: "onboarding_completed", stage: "completed", step: 7, angle: "red40" },
+    });
+    const afterGrowthSnap = await getGrowthSnap();
+
+    check(
+      "Growth Playbook: 6 competitor comparison SEO/AEO pages wired to sitemap & llms.txt with route-specific OG URLs and visible FAQ schema",
+      COMPETITOR_COMPARISONS.length === 6 &&
+        Boolean(getComparisonBySlug("heybroc-vs-yuka")) &&
+        Boolean(getComparisonBySlug("heybroc-vs-bobby-approved")) &&
+        Boolean(getComparisonBySlug("heybroc-vs-trash-panda")) &&
+        Boolean(getComparisonBySlug("heybroc-vs-fig")) &&
+        Boolean(getComparisonBySlug("heybroc-vs-seed-oil-scout")) &&
+        Boolean(getComparisonBySlug("heybroc-vs-olive")) &&
+        COMPETITOR_COMPARISONS.every((c) => c.faqs.length >= 2 && c.rows.length >= 5) &&
+        compareHubSrc.includes('url: "https://www.heybroc.com/compare"') &&
+        compareSlugSrc.includes('"@type": "FAQPage"') &&
+        sitemapSrc.includes("COMPETITOR_COMPARISONS") &&
+        llmsTxtSrc.includes("https://www.heybroc.com/compare"),
+    );
+
+    check(
+      "Growth Playbook: 5 persona angles resolve aliases, WatchlistMiniFunnel emits valid onboarding_step, Superwall/byAngle analytics increment, UGC kits & ASO A/B assets present",
+      GROWTH_ANGLES.length === 5 &&
+        resolveGrowthAngle("red40")?.id === "red40" &&
+        resolveGrowthAngle("dyes")?.id === "red40" &&
+        resolveGrowthAngle("seed-oils")?.id === "seedoils" &&
+        resolveGrowthAngle("yuka")?.id === "online" &&
+        resolveGrowthAngle("store-brand")?.id === "budget" &&
+        (afterGrowthSnap.byAngle?.red40?.scans ?? 0) === beforeRed40Scans + 1 &&
+        (afterGrowthSnap.byAngle?.red40?.paywallViews ?? 0) === beforeRed40Paywalls + 1 &&
+        (afterGrowthSnap.onboardingCompleted ?? 0) === beforeOnboardDone + 1 &&
+        funnelSrc.includes('event: "onboarding_step"') &&
+        adminPageSrc.includes("PAYWALL REACH RATE") &&
+        adminPageSrc.includes("INITIAL CONV. RATE") &&
+        creatorsPageSrc.includes("UGC OPERATOR PLAYBOOK") &&
+        asoPlaybookSrc.includes("Product Page Optimization") &&
+        asoAbHtmlSrc.includes("Challenger B") &&
+        asoAbHtmlSrc.includes("Challenger C"),
+    );
   }
 
   console.log("Checks executed:", checks);

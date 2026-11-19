@@ -2,6 +2,7 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
+import { resolveGrowthAngle, type GrowthAngleSpec } from "@/lib/growth-angles";
 
 export default function ReferralLandingPage({
   params,
@@ -16,9 +17,20 @@ export default function ReferralLandingPage({
   const [copied, setCopied] = useState(false);
   const [creatorName, setCreatorName] = useState<string | null>(null);
   const [creatorNotFound, setCreatorNotFound] = useState(false);
+  const [angleSpec, setAngleSpec] = useState<GrowthAngleSpec | null>(null);
 
   useEffect(() => {
     try {
+      const sp = new URLSearchParams(window.location.search);
+      const resolved = resolveGrowthAngle(sp.get("angle"));
+      if (resolved) {
+        setAngleSpec(resolved);
+        try {
+          sessionStorage.setItem("heybroc_growth_angle", resolved.id);
+        } catch {
+          /* ignore */
+        }
+      }
       let cancelled = false;
       if (isFriendInvite) {
         fetch(`/api/referral?validateCode=${encodeURIComponent(cleanCode)}`)
@@ -98,6 +110,13 @@ export default function ReferralLandingPage({
     }
   };
 
+  const angleQuery = angleSpec ? `&angle=${encodeURIComponent(angleSpec.id)}` : "";
+  const freeTestHref = creatorNotFound
+    ? `/test${angleSpec ? `?angle=${encodeURIComponent(angleSpec.id)}` : ""}`
+    : isFriendInvite
+      ? `/test?ref=${encodeURIComponent(cleanCode)}${angleQuery}`
+      : `/test?code=${encodeURIComponent(cleanCode)}${angleQuery}`;
+
   return (
     <main
       style={{
@@ -148,46 +167,62 @@ export default function ReferralLandingPage({
             marginBottom: 12,
           }}
         >
-          {creatorNotFound
-            ? "🥦 HEYBROC FAMILY PRO · 7-DAY FREE TRIAL"
-            : isFriendInvite
-              ? "🎁 FRIEND INVITE · 7-DAY TRIAL + 7 BONUS DAYS"
-              : "🎉 CREATOR PARTNER · 7-DAY FREE PRO TRIAL"}
+          {angleSpec
+            ? angleSpec.eyebrow
+            : creatorNotFound
+              ? "🥦 HEYBROC FAMILY PRO · 7-DAY FREE TRIAL"
+              : isFriendInvite
+                ? "🎁 FRIEND INVITE · 7-DAY TRIAL + 7 BONUS DAYS"
+                : "🎉 CREATOR PARTNER · 7-DAY FREE PRO TRIAL"}
         </span>
         <h1
           style={{
-            fontSize: 26,
+            fontSize: 25,
             lineHeight: 1.2,
             fontWeight: 800,
             margin: "0 0 10px",
           }}
         >
-          {creatorNotFound
-            ? "Try HeyBroc Family Pro Free for 7 Days"
-            : isFriendInvite
-              ? "Your friend gifted you a 7-Day Free Trial + 7 Bonus Pro Days!"
-              : `${creatorName ? `${creatorName} shared` : "Start"} a 7-Day Free Trial of HeyBroc Family Pro`}
+          {angleSpec
+            ? angleSpec.testHeadline
+            : creatorNotFound
+              ? "Try HeyBroc Family Pro Free for 7 Days"
+              : isFriendInvite
+                ? "Your friend gifted you a 7-Day Free Trial + 7 Bonus Pro Days!"
+                : `${creatorName ? `${creatorName} shared` : "Start"} a 7-Day Free Trial of HeyBroc Family Pro`}
         </h1>
         <p
           style={{
-            fontSize: 15,
+            fontSize: 14.5,
             lineHeight: 1.5,
             color: "#4a5550",
-            margin: "0 0 20px",
+            margin: "0 0 18px",
           }}
         >
-          HeyBroc floats over{" "}
-          <b>
-            Walmart, Target, Costco, Sam&apos;s Club, BJ&apos;s, Amazon Fresh,
-            Instacart, ALDI &amp; more
-          </b>{" "}
-          on your phone to grade food &amp; beverage ingredients (0–100) and
-          swap flagged items for clean 1-for-1 alternatives in 1 tap.{" "}
-          {creatorNotFound
-            ? `Code "${cleanCode}" was not recognized, so you can continue with our standard 7-day free trial below.`
-            : isFriendInvite
-              ? "Scan any grocery item in the app or start your trial below so both you and your friend unlock +7 Free Pro Days!"
-              : "Use this creator code at checkout to support this creator and start your 7-Day Free Family Pro Trial ($0 Today)."}
+          {angleSpec ? (
+            <>
+              {angleSpec.testSubheadline}{" "}
+              {!creatorNotFound &&
+                (creatorName
+                  ? `Shared by ${creatorName} — your 7-day free trial code (${cleanCode}) is pre-applied.`
+                  : `Your invite code (${cleanCode}) is pre-applied.`)}
+            </>
+          ) : (
+            <>
+              HeyBroc works across{" "}
+              <b>
+                Walmart, Target, Costco, Sam&apos;s Club, BJ&apos;s, Amazon Fresh,
+                Instacart, ALDI &amp; more
+              </b>{" "}
+              to grade food &amp; beverage ingredients (0–100) and swap flagged
+              items for clean 1-for-1 alternatives in 1 tap.{" "}
+              {creatorNotFound
+                ? `Code "${cleanCode}" was not recognized, so you can continue with our standard 7-day free trial below.`
+                : isFriendInvite
+                  ? "Scan any grocery item in the app or start your trial below so both you and your friend unlock +7 Free Pro Days!"
+                  : "Use this creator code at checkout to support this creator and start your 7-Day Free Family Pro Trial ($0 Today)."}
+            </>
+          )}
         </p>
 
         {!creatorNotFound && (
@@ -197,12 +232,12 @@ export default function ReferralLandingPage({
               border: "1.5px dashed #0f7a4a",
               borderRadius: 16,
               padding: "14px 16px",
-              marginBottom: 20,
+              marginBottom: 18,
             }}
           >
             <div style={{ fontSize: 12, color: "#68746e", fontWeight: 700 }}>
               {isFriendInvite
-                ? "YOUR INVITE CODE (AUTO-COPIED ON DOWNLOAD)"
+                ? "YOUR INVITE CODE (AUTO-APPLIED BELOW)"
                 : "CREATOR PARTNER CODE (7-DAY FREE TRIAL · $0 TODAY)"}
             </div>
             <div
@@ -236,9 +271,9 @@ export default function ReferralLandingPage({
           </div>
         )}
 
-        <a
-          href="/heybroc.apk"
-          download
+        {/* Primary Low-Friction CTA: Duolingo-Style Free 3-Second Score Test */}
+        <Link
+          href={freeTestHref}
           onClick={copyAndDownload}
           style={{
             display: "block",
@@ -249,20 +284,20 @@ export default function ReferralLandingPage({
             fontSize: 16,
             padding: "15px 20px",
             borderRadius: 999,
-            marginBottom: 12,
+            marginBottom: 10,
             boxShadow: "0 8px 20px rgba(15, 122, 74, 0.25)",
           }}
         >
-          🤖 Download HeyBroc for Android (.APK)
-        </a>
+          ⚡ Test Your First Grocery Item Free (3 Sec) →
+        </Link>
 
         <Link
           href={
             creatorNotFound
-              ? "/?upgrade=1"
+              ? `/?upgrade=1${angleQuery}`
               : isFriendInvite
-                ? `/?ref=${encodeURIComponent(cleanCode)}&upgrade=1`
-                : `/?code=${encodeURIComponent(cleanCode)}&upgrade=1`
+                ? `/?ref=${encodeURIComponent(cleanCode)}&upgrade=1${angleQuery}`
+                : `/?code=${encodeURIComponent(cleanCode)}&upgrade=1${angleQuery}`
           }
           onClick={copyAndDownload}
           style={{
@@ -274,31 +309,31 @@ export default function ReferralLandingPage({
             fontSize: 14,
             padding: "13px 20px",
             borderRadius: 999,
+            marginBottom: 10,
           }}
         >
           {creatorNotFound
             ? "Claim 7-Day Free Pro Trial on Web →"
             : isFriendInvite
-              ? "Open Web App & Claim 7-Day Free Trial →"
-              : "Claim 7-Day Free Pro Trial on Web →"}
+              ? "Skip Straight to 7-Day Free Trial + 7 Bonus Days →"
+              : "Skip Straight to 7-Day Free Family Pro Trial ($0 Today) →"}
         </Link>
 
-        {!isFriendInvite && !creatorNotFound && (
-          <Link
-            href={`/?code=${encodeURIComponent(cleanCode)}`}
-            onClick={copyAndDownload}
-            style={{
-              display: "inline-block",
-              marginTop: 10,
-              color: "#0f7a4a",
-              fontWeight: 700,
-              fontSize: 13,
-              textDecoration: "underline",
-            }}
-          >
-            Or try the free web ingredient scanner first →
-          </Link>
-        )}
+        <a
+          href="/heybroc.apk"
+          download
+          onClick={copyAndDownload}
+          style={{
+            display: "inline-block",
+            marginTop: 4,
+            color: "#0f7a4a",
+            fontWeight: 700,
+            fontSize: 13,
+            textDecoration: "underline",
+          }}
+        >
+          🤖 Or download HeyBroc for Android (.APK)
+        </a>
 
         <p
           style={{

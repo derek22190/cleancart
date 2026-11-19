@@ -503,6 +503,9 @@ export default function InfluencerEngine({
               <th>Clicks</th>
               <th>Trials</th>
               <th>Paid Subs</th>
+              <th title="Non-vanity conversion efficiency: Paid % of clicks and gross revenue per click">
+                Conv / EPC
+              </th>
               <th>Paid Out</th>
               <th>Owed</th>
               <th>My Net Rev</th>
@@ -513,6 +516,10 @@ export default function InfluencerEngine({
             {creators.map((c) => {
               const payoutPerSub = commissionFor("annual", c.commissionPct);
               const isActive = c.active !== false;
+              const totalPaidSubs = c.paidAnnual + c.paidMonthly;
+              const trialRatePct = c.clicks > 0 ? ((c.trials / c.clicks) * 100).toFixed(1) : "0.0";
+              const paidRatePct = c.clicks > 0 ? ((totalPaidSubs / c.clicks) * 100).toFixed(1) : "0.0";
+              const revPerClick = c.clicks > 0 ? c.grossRevenue / c.clicks : 0;
               return (
                 <tr key={c.code} style={!isActive ? { opacity: 0.6 } : undefined}>
                   <td>
@@ -564,12 +571,25 @@ export default function InfluencerEngine({
                     <small className="creator-sub">{usd(payoutPerSub)} / 1st yr</small>
                   </td>
                   <td>{c.clicks}</td>
-                  <td>{c.trials}</td>
+                  <td>
+                    {c.trials}
+                    <small className="creator-sub" style={{ display: "block" }}>
+                      {trialRatePct}%
+                    </small>
+                  </td>
                   <td>
                     {c.paidAnnual}
                     {c.paidMonthly ? (
                       <small className="creator-sub">+{c.paidMonthly} mo</small>
                     ) : null}
+                  </td>
+                  <td>
+                    <strong style={{ color: totalPaidSubs > 0 ? "#0f7a4a" : "#64748b" }}>
+                      {paidRatePct}%
+                    </strong>
+                    <small className="creator-sub" style={{ display: "block" }}>
+                      {usd(revPerClick)} / click
+                    </small>
                   </td>
                   <td>{usd(c.commissionPaid ?? 0)}</td>
                   <td className="num-warn">{usd(c.commissionOwed)}</td>

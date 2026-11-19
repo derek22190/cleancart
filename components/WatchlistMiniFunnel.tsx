@@ -242,15 +242,32 @@ const STEP_TITLES: Record<FunnelStep, string> = {
 function trackOnboardingEvent(event: string, properties: Record<string, unknown>) {
   if (typeof window === "undefined") return;
   const deviceId = window.localStorage.getItem("heybroc_device_id") || "anon-web";
+  const stage =
+    event === "onboarding_completed"
+      ? "completed"
+      : event === "onboarding_dismissed"
+        ? "dismissed"
+        : "viewed";
+  let angle: string | undefined;
+  try {
+    angle = window.sessionStorage.getItem("heybroc_growth_angle") || undefined;
+  } catch {
+    /* ignore */
+  }
   void fetch("/api/analytics", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       action: "track",
-      event,
+      event: "onboarding_step",
       deviceId,
       platform: "web",
-      properties,
+      properties: {
+        ...properties,
+        name: event,
+        stage,
+        ...(angle ? { angle } : {}),
+      },
     }),
   }).catch(() => {});
 }

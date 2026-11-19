@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HeyBroc — App Store &amp; Play Store A/B Screenshot Studio (Variants A / B / C)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #0b1220;
+      color: #f8fafc;
+      padding: 28px 20px 60px;
+      line-height: 1.45;
+    }
+    .wrap { max-width: 1380px; margin: 0 auto; }
+    .top-badge {
+      display: inline-block;
+      background: rgba(16, 185, 129, 0.16);
+      border: 1px solid rgba(52, 211, 153, 0.35);
+      color: #6ee7b7;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 999px;
+      margin-bottom: 8px;
+    }
+    h1 { font-size: 26px; font-weight: 900; letter-spacing: -0.02em; margin-bottom: 6px; }
+    .lead { color: #94a3b8; font-size: 14px; max-width: 820px; margin-bottom: 28px; }
+    .variant-section {
+      background: #111827;
+      border: 1px solid #1e293b;
+      border-radius: 22px;
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+    .variant-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .variant-head h2 { font-size: 18px; font-weight: 900; }
+    .variant-tag {
+      font-size: 11.5px;
+      font-weight: 800;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #1e293b;
+      color: #93c5fd;
+    }
+    .variant-tag.green { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; }
+    .variant-tag.amber { background: rgba(245, 158, 11, 0.2); color: #fcd34d; }
+    .row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 18px;
+    }
+    .slide {
+      aspect-ratio: 9 / 16;
+      border-radius: 24px;
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 24px 18px 0;
+      box-shadow: 0 20px 44px rgba(0, 0, 0, 0.4);
+    }
+    .slide img.full {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .slide-b1 { background: linear-gradient(180deg, #ffffff 0%, #ecfdf5 100%); color: #0f172a; }
+    .slide-b2 { background: linear-gradient(180deg, #0b2418 0%, #14532d 100%); color: #ffffff; }
+    .slide-b3 { background: linear-gradient(180deg, #f8fafc 0%, #dcfce7 100%); color: #0f172a; }
+    .slide-c1 { background: linear-gradient(180deg, #059669 0%, #047857 100%); color: #ffffff; }
+    .slide-c2 { background: linear-gradient(180deg, #111827 0%, #1e293b 100%); color: #ffffff; }
+    .slide-c3 { background: linear-gradient(180deg, #f0fdf4 0%, #bbf7d0 100%); color: #0f172a; }
+    .kicker {
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0.85;
+      margin-bottom: 6px;
+    }
+    .headline {
+      font-size: 25px;
+      font-weight: 900;
+      line-height: 1.08;
+      letter-spacing: -0.03em;
+      margin-bottom: 10px;
+    }
+    .phone {
+      background: #ffffff;
+      color: #0f172a;
+      border: 6px solid #0f172a;
+      border-bottom: none;
+      border-radius: 30px 30px 0 0;
+      padding: 16px 14px 20px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: 0 -8px 26px rgba(15, 23, 42, 0.16);
+    }
+    .score-card {
+      border-radius: 16px;
+      padding: 12px;
+      border: 1.5px solid #fecaca;
+      background: #fef2f2;
+    }
+    .score-card.clean {
+      border-color: #86efac;
+      background: #f0fdf4;
+    }
+    .score-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .pill.red { background: #dc2626; color: #ffffff; }
+    .pill.green { background: #16a34a; color: #ffffff; }
+    .pill.yellow { background: #d97706; color: #ffffff; }
+    .flag-list { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+    .flag {
+      font-size: 10.5px;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .tile {
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 10px;
+      background: #f8fafc;
+      position: relative;
+    }
+    .tile b { display: block; font-size: 11.5px; margin-top: 6px; line-height: 1.25; }
+    .store-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+    .store-chip {
+      font-size: 10.5px;
+      font-weight: 800;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #f1f5f9;
+      color: #0f172a;
+    }
+    .cta-bar {
+      margin-top: auto;
+      background: #0f7a4a;
+      color: #ffffff;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 900;
+      padding: 10px;
+      border-radius: 999px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <span class="top-badge">App Store Connect PPO + Google Play Store Listing Experiments</span>
+    <h1>HeyBroc — A/B Screenshot Testing Studio (First 3 Search-Result Slides)</h1>
+    <p class="lead">
+      The first 3 slides drive ~80% of App Store and Google Play install conversions. Compare your existing
+      <strong>Control (Variant A)</strong> against <strong>Challenger B (Top Food Scanner Shock-Score)</strong>
+      and <strong>Challenger C (Online Grocery Cart Badges)</strong>. All visuals use 100% original HeyBroc UI
+      with zero competitor trademarks and HeyBroc's exact 3-tier scale (75–100 Excellent, 50–74 Mediocre, 0–49 Poor).
+    </p>
+
+    <!-- CONTROL A -->
+    <section class="variant-section">
+      <div class="variant-head">
+        <h2>Control (Variant A) — Current Deepstash Color-Blocked Deck</h2>
+        <span class="variant-tag">Already exported in apple-app-store/ &amp; google-play/</span>
+      </div>
+      <div class="row">
+        <div class="slide"><img class="full" src="./slide-1-hook-poster.jpg" alt="Control Slide 1" /></div>
+        <div class="slide"><img class="full" src="./slide-2-score-card.jpg" alt="Control Slide 2" /></div>
+        <div class="slide"><img class="full" src="./slide-3-flagged-additives.jpg" alt="Control Slide 3" /></div>
+      </div>
+    </section>
+
+    <!-- CHALLENGER B -->
+    <section class="variant-section">
+      <div class="variant-head">
+        <h2>Challenger B — "Top Food Scanner Shock-Score" (Yuka / Trash Panda Structure)</h2>
+        <span class="variant-tag green">Recommended First A/B Test · High Search-Result Tap-Through</span>
+      </div>
+      <div class="row">
+        <div class="slide slide-b1">
+          <div>
+            <div class="kicker" style="color:#0f7a4a;">0–100 INGREDIENT SCANNER</div>
+            <div class="headline">What&apos;s Really Hiding in Your Cart?</div>
+          </div>
+          <div class="phone">
+            <div class="score-card">
+              <div class="score-row">
+                <div>
+                  <div style="font-size:11px;font-weight:800;color:#991b1b;">POPULAR RANCH DRESSING</div>
+                  <strong style="font-size:14px;">Original Ranch</strong>
+                </div>
+                <span class="pill red">0 / 100 · Poor</span>
+              </div>
+              <div class="flag-list">
+                <span class="flag">Soybean Oil</span>
+                <span class="flag">Canola Oil</span>
+                <span class="flag">MSG</span>
+                <span class="flag">Calcium Disodium EDTA</span>
+              </div>
+            </div>
+            <div style="text-align:center;font-size:12px;font-weight:900;color:#0f7a4a;">↓ 1-TAP CLEAN SWAP ↓</div>
+            <div class="score-card clean">
+              <div class="score-row">
+                <div>
+                  <div style="font-size:11px;font-weight:800;color:#166534;">CLEANER ALTERNATIVE</div>
+                  <strong style="font-size:14px;">Avocado Oil Ranch</strong>
+                </div>
+                <span class="pill green">80 / 100 · Excellent</span>
+              </div>
+              <div style="font-size:11px;color:#166534;margin-top:6px;font-weight:700;">
+                ✓ Zero seed oils · Zero synthetic preservatives
+              </div>
+            </div>
+            <div class="cta-bar">Swap Inside Walmart, Target &amp; Instacart ↗</div>
+          </div>
+        </div>
+
+        <div class="slide slide-b2">
+          <div>
+            <div class="kicker" style="color:#6ee7b7;">INSTANT ADDITIVE X-RAY</div>
+            <div class="headline">Spot Red 40, Seed Oils &amp; BHT Fast</div>
+          </div>
+          <div class="phone">
+            <div style="font-size:12px;font-weight:900;color:#0f172a;">Flagged Additives · 2x Family Watchlist</div>
+            <div class="score-card">
+              <div class="score-row">
+                <strong style="font-size:13px;">Red 40 &amp; Blue 1</strong>
+                <span class="pill red">High Risk</span>
+              </div>
+              <p style="font-size:11px;color:#475569;margin-top:4px;">Synthetic food dyes flagged in kids&apos; snacks &amp; drinks.</p>
+            </div>
+            <div class="score-card">
+              <div class="score-row">
+                <strong style="font-size:13px;">Soybean &amp; Canola Oil</strong>
+                <span class="pill yellow">2x Strict</span>
+              </div>
+              <p style="font-size:11px;color:#475569;margin-top:4px;">Refined seed oil blends capped automatically.</p>
+            </div>
+            <div class="score-card">
+              <div class="score-row">
+                <strong style="font-size:13px;">TBHQ &amp; BHT</strong>
+                <span class="pill red">High Risk</span>
+              </div>
+              <p style="font-size:11px;color:#475569;margin-top:4px;">Synthetic preservatives found in crackers &amp; cereals.</p>
+            </div>
+            <div class="cta-bar">100% Independent · Zero Brand Sponsors</div>
+          </div>
+        </div>
+
+        <div class="slide slide-b3">
+          <div>
+            <div class="kicker" style="color:#0f7a4a;">ONLINE + IN-STORE</div>
+            <div class="headline">12 Online Grocery Stores + Barcodes</div>
+          </div>
+          <div class="phone">
+            <div style="font-size:12px;font-weight:900;">Live Shop + Barcode + Label OCR</div>
+            <div class="store-chips">
+              <span class="store-chip">Walmart</span>
+              <span class="store-chip">Target</span>
+              <span class="store-chip">Instacart</span>
+              <span class="store-chip">Costco</span>
+              <span class="store-chip">Kroger</span>
+              <span class="store-chip">ALDI</span>
+              <span class="store-chip">Amazon Fresh</span>
+              <span class="store-chip">Whole Foods</span>
+              <span class="store-chip">Sam&apos;s Club</span>
+              <span class="store-chip">BJ&apos;s</span>
+              <span class="store-chip">Shipt</span>
+              <span class="store-chip">DoorDash</span>
+              <span class="store-chip">Uber Eats</span>
+            </div>
+            <div class="score-card clean" style="margin-top:4px;">
+              <strong style="font-size:12.5px;color:#065f46;">Big-9 Allergen Alerts Included</strong>
+              <p style="font-size:11px;color:#334155;margin-top:4px;">
+                Instant label alerts for Dairy, Gluten/Wheat, Peanuts, Tree Nuts, Soy, Egg, Fish, Shellfish &amp; Sesame.
+              </p>
+            </div>
+            <div class="cta-bar">Scores Always Free · No Sign-Up Needed</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CHALLENGER C -->
+    <section class="variant-section">
+      <div class="variant-head">
+        <h2>Challenger C — "Live Online Grocery Cart Badges" (Category Differentiation)</h2>
+        <span class="variant-tag amber">Best Against Barcode-Only Competitors</span>
+      </div>
+      <div class="row">
+        <div class="slide slide-c1">
+          <div>
+            <div class="kicker" style="color:#d1fae5;">BUILT FOR ONLINE SHOPPING</div>
+            <div class="headline">Live 0–100 Scores Inside Your Cart</div>
+          </div>
+          <div class="phone">
+            <div style="font-size:11.5px;font-weight:800;color:#475569;">Live Shop · Search &amp; Aisles</div>
+            <div class="grid2">
+              <div class="tile">
+                <span class="pill red">0 · Poor</span>
+                <b>Original Baked Crackers</b>
+                <div style="font-size:10px;color:#991b1b;margin-top:3px;">TBHQ · Soybean Oil</div>
+              </div>
+              <div class="tile" style="border-color:#86efac;background:#f0fdf4;">
+                <span class="pill green">90 · Excellent</span>
+                <b>Organic Whole Milk Yogurt</b>
+                <div style="font-size:10px;color:#166534;margin-top:3px;">USDA Organic · Clean</div>
+              </div>
+              <div class="tile">
+                <span class="pill red">0 · Poor</span>
+                <b>Mixed Fruit Snacks</b>
+                <div style="font-size:10px;color:#991b1b;margin-top:3px;">Red 40 · Blue 1</div>
+              </div>
+              <div class="tile" style="border-color:#86efac;background:#f0fdf4;">
+                <span class="pill green">100 · Excellent</span>
+                <b>Organic 21 Whole Grains Bread</b>
+                <div style="font-size:10px;color:#166534;margin-top:3px;">Zero Seed Oils</div>
+              </div>
+            </div>
+            <div class="cta-bar">No Barcode Needed for Online Orders</div>
+          </div>
+        </div>
+
+        <div class="slide slide-c2">
+          <div>
+            <div class="kicker" style="color:#6ee7b7;">STORE-BRAND PRIORITY</div>
+            <div class="headline">Clean Swaps Without Doubling Your Bill</div>
+          </div>
+          <div class="phone">
+            <div class="score-card">
+              <div class="score-row">
+                <strong style="font-size:13px;">Conventional Cereal</strong>
+                <span class="pill red">49 / 100 · Poor</span>
+              </div>
+              <div class="flag-list"><span class="flag">BHT Preservative</span><span class="flag">High Sugar</span></div>
+            </div>
+            <div class="score-card clean">
+              <div class="score-row">
+                <strong style="font-size:13px;">Organic Heritage Flakes</strong>
+                <span class="pill green">100 / 100 · Excellent</span>
+              </div>
+              <div style="font-size:11px;color:#166534;margin-top:6px;font-weight:700;">
+                ✓ Toggle Store-Brand Priority for everyday Walmart, ALDI, Kroger &amp; Costco picks
+              </div>
+            </div>
+            <div class="cta-bar">1-Tap Link Directly to Your Store ↗</div>
+          </div>
+        </div>
+
+        <div class="slide slide-c3">
+          <div>
+            <div class="kicker" style="color:#0f7a4a;">WHOLE-CART AUDIT</div>
+            <div class="headline">Grade Your Entire Weekly Order</div>
+          </div>
+          <div class="phone">
+            <div style="background:#0b2418;color:#fff;border-radius:16px;padding:12px;">
+              <div style="font-size:10.5px;color:#6ee7b7;font-weight:800;">WEEKLY CART HEALTH CHECK</div>
+              <div style="font-size:24px;font-weight:900;margin-top:2px;">42 → 89 / 100</div>
+              <div style="font-size:11px;color:#cbd5e1;">6 flagged items swapped in under 60 seconds</div>
+            </div>
+            <div class="score-card clean">
+              <strong style="font-size:12px;color:#065f46;">Dodged This Week:</strong>
+              <div style="font-size:11px;color:#334155;margin-top:4px;font-weight:700;">
+                Red 40 · Blue 1 · Soybean Oil · TBHQ · BHT · Sodium Nitrite
+              </div>
+            </div>
+            <div class="cta-bar">Works on iPhone, Android, Safari &amp; Chrome</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

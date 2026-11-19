@@ -692,6 +692,14 @@ export async function POST(req: NextRequest) {
       }).catch(() => {});
     }
 
+    const rawGrowthAngle =
+      typeof body.angle === "string" ? body.angle.trim().toLowerCase() : "";
+    const validatedGrowthAngle = ["red40", "seedoils", "allergies", "online", "budget"].includes(
+      rawGrowthAngle,
+    )
+      ? rawGrowthAngle
+      : null;
+
     void import("@/lib/analytics")
       .then(({ assignPaywallVariant, trackServerEvent }) =>
         trackServerEvent({
@@ -704,6 +712,7 @@ export async function POST(req: NextRequest) {
             otoOffer: otoOffer || null,
             trialDays,
             creatorCode: verifiedCode || null,
+            angle: validatedGrowthAngle,
           },
         })
       )

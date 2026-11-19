@@ -10,6 +10,7 @@ import {
   usd,
   type PlanId,
 } from "@/lib/pricing";
+import type { GrowthAngleSpec } from "@/lib/growth-angles";
 import { TERMS_VERSION } from "@/lib/terms";
 import CancelRetentionModal from "./CancelRetentionModal";
 
@@ -34,6 +35,7 @@ interface PaywallProps {
   courtesyRefillAvailable?: boolean;
   onUseCourtesyRefill?: () => void;
   onOpenLogin?: () => void;
+  angleSpec?: GrowthAngleSpec | null;
 }
 
 export default function Paywall({
@@ -48,6 +50,7 @@ export default function Paywall({
   courtesyRefillAvailable = true,
   onUseCourtesyRefill,
   onOpenLogin,
+  angleSpec = null,
 }: PaywallProps) {
   const [selectedPlan, setSelectedPlan] = useState<PlanId>("annual");
   const [codeInput, setCodeInput] = useState(appliedCreator?.code ?? "");
@@ -106,11 +109,12 @@ export default function Paywall({
             deviceId: devId,
             platform: "web",
             variant: d?.assignedVariant === "B" ? "B" : "A",
+            properties: angleSpec ? { angle: angleSpec.id } : undefined,
           }),
         }).catch(() => {});
       })
       .catch(() => {});
-  }, [open]);
+  }, [open, angleSpec]);
 
   if (!open) return null;
 
@@ -361,6 +365,7 @@ export default function Paywall({
         body: JSON.stringify({
           plan: selectedPlan,
           adTestMode: isAdTest || undefined,
+          angle: angleSpec?.id || undefined,
           creatorCode: explicitCreatorCode,
           referredByCode: passiveReferredByCode,
           deviceId: devId || undefined,
@@ -406,6 +411,9 @@ export default function Paywall({
     }
   };
 
+  const displayHeadline = angleSpec?.paywallHeadline || remoteHeadline;
+  const displaySubheadline = angleSpec?.paywallSubheadline || remoteSubheadline;
+
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="HeyBroc Family Pro" onClick={onClose}>
       <div
@@ -426,12 +434,14 @@ export default function Paywall({
               <span className="eyebrow eyebrow--green" style={{ fontSize: 11 }}>
                 {scanCount >= freeScanLimit
                   ? `Free Allowance Reached (${scanCount}/${freeScanLimit})`
-                  : "HeyBroc Family Pro"}
+                  : angleSpec
+                    ? `${angleSpec.emoji} ${angleSpec.shortLabel} · Family Pro`
+                    : "HeyBroc Family Pro"}
               </span>
-              <h2 style={{ fontSize: 18, lineHeight: 1.22, marginTop: 2 }}>{remoteHeadline}</h2>
-              {remoteSubheadline && (
+              <h2 style={{ fontSize: 18, lineHeight: 1.22, marginTop: 2 }}>{displayHeadline}</h2>
+              {displaySubheadline && (
                 <p style={{ margin: "3px 0 0", fontSize: 12.5, color: "#3d5949" }}>
-                  {remoteSubheadline}
+                  {displaySubheadline}
                 </p>
               )}
             </div>

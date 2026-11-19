@@ -33,6 +33,11 @@ interface AnalyticsSnapshotState {
     ios: number;
   };
   byStore: Record<string, number>;
+  byAngle?: Record<
+    string,
+    { scans: number; paywallViews: number; checkouts: number; subscribed: number }
+  >;
+  onboardingCompleted?: number;
   abTest: {
     variantAViews: number;
     variantACheckouts: number;
@@ -356,6 +361,60 @@ export default function AdminPage() {
               </div>
             </div>
 
+            {/* Superwall-Style North-Star Metrics (Anti-Vanity Benchmarks) */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+                gap: 12,
+                marginBottom: 16,
+                padding: 14,
+                borderRadius: 14,
+                background: "#0b2418",
+                color: "#ffffff",
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "#6ee7b7", letterSpacing: "0.06em" }}>
+                  PAYWALL REACH RATE (TARGET 80–90%)
+                </div>
+                <div style={{ fontSize: 28, fontWeight: 900, margin: "4px 0 2px" }}>
+                  {pct(
+                    snapshot.totals.paywall_viewed,
+                    Math.max(snapshot.totals.product_scanned, snapshot.onboardingCompleted || 0),
+                  )}
+                </div>
+                <div style={{ fontSize: 11.5, color: "#cbd5e1" }}>
+                  {snapshot.totals.paywall_viewed.toLocaleString()} paywall views ·{" "}
+                  {(snapshot.onboardingCompleted || 0).toLocaleString()} onboarding completions
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "#6ee7b7", letterSpacing: "0.06em" }}>
+                  INITIAL CONV. RATE (TARGET 10–12.5%+)
+                </div>
+                <div style={{ fontSize: 28, fontWeight: 900, margin: "4px 0 2px" }}>
+                  {pct(snapshot.totals.pro_subscribed, snapshot.totals.paywall_viewed)}
+                </div>
+                <div style={{ fontSize: 11.5, color: "#cbd5e1" }}>
+                  {snapshot.totals.pro_subscribed.toLocaleString()} Pro subs from{" "}
+                  {snapshot.totals.paywall_viewed.toLocaleString()} paywall views (
+                  {pct(snapshot.totals.checkout_started, snapshot.totals.paywall_viewed)} started checkout)
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "#6ee7b7", letterSpacing: "0.06em" }}>
+                  SCAN → PRO CONVERSION
+                </div>
+                <div style={{ fontSize: 28, fontWeight: 900, margin: "4px 0 2px" }}>
+                  {pct(snapshot.totals.pro_subscribed, snapshot.totals.product_scanned)}
+                </div>
+                <div style={{ fontSize: 11.5, color: "#cbd5e1" }}>
+                  Optimize hooks &amp; creator payouts for conversion efficiency, not raw views
+                </div>
+              </div>
+            </div>
+
             {/* A/B Paywall Variant Comparison */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
               <div style={{ padding: 14, borderRadius: 12, border: "1px solid #e2e8e4", background: "#fff" }}>
@@ -377,6 +436,43 @@ export default function AdminPage() {
                 </div>
               </div>
             </div>
+
+            {/* Per-Angle Audience Performance (red40 / seedoils / allergies / online / budget) */}
+            {snapshot.byAngle && Object.keys(snapshot.byAngle).length > 0 && (
+              <div style={{ marginTop: 14, padding: 14, borderRadius: 12, border: "1px solid #e2e8e4", background: "#fff" }}>
+                <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>
+                  Audience Angle Conversion Breakdown (<code>?angle=red40 | seedoils | allergies | online | budget</code>)
+                </div>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                    <thead>
+                      <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb", color: "#64748b" }}>
+                        <th style={{ padding: "6px 8px" }}>Angle</th>
+                        <th style={{ padding: "6px 8px" }}>Scans</th>
+                        <th style={{ padding: "6px 8px" }}>Paywall Views</th>
+                        <th style={{ padding: "6px 8px" }}>Paywall Rate</th>
+                        <th style={{ padding: "6px 8px" }}>Checkouts</th>
+                        <th style={{ padding: "6px 8px" }}>Pro Subs</th>
+                        <th style={{ padding: "6px 8px" }}>Initial Conv</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(snapshot.byAngle).map(([angleKey, m]) => (
+                        <tr key={angleKey} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                          <td style={{ padding: "6px 8px", fontWeight: 800 }}>?angle={angleKey}</td>
+                          <td style={{ padding: "6px 8px" }}>{m.scans}</td>
+                          <td style={{ padding: "6px 8px" }}>{m.paywallViews}</td>
+                          <td style={{ padding: "6px 8px", fontWeight: 700 }}>{pct(m.paywallViews, m.scans)}</td>
+                          <td style={{ padding: "6px 8px" }}>{m.checkouts}</td>
+                          <td style={{ padding: "6px 8px", fontWeight: 800, color: "#0f7a4a" }}>{m.subscribed}</td>
+                          <td style={{ padding: "6px 8px", fontWeight: 800 }}>{pct(m.subscribed, m.paywallViews)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

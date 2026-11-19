@@ -37,6 +37,7 @@ import type { PlanId } from "@/lib/pricing";
 import { brandLetterTileSpec, resolveCategoryStudioArt, type ImageKind } from "@/lib/category-art";
 import { resolveProductMediaFields } from "@/lib/curated-product-photos";
 import { evaluateDietaryAlerts } from "@/lib/dietary";
+import { GROWTH_ANGLES, resolveGrowthAngle, type GrowthAngleSpec } from "@/lib/growth-angles";
 import AuthModal, { type AuthenticatedUser } from "./AuthModal";
 import CancelRetentionModal from "./CancelRetentionModal";
 import CleanArcScoreCard from "./CleanArcScoreCard";
@@ -1054,6 +1055,7 @@ export default function Simulator({
 
   // Paywall, Low-Friction Ad Landing Mode & Post-Checkout OTO state
   const [adTestMode, setAdTestMode] = useState<boolean>(initialAdTestMode);
+  const [activeAngle, setActiveAngle] = useState<GrowthAngleSpec | null>(null);
   const [freeTestCompleted, setFreeTestCompleted] = useState<boolean>(false);
   const [otoModalOpen, setOtoModalOpen] = useState<boolean>(false);
   const [otoInitialPlan, setOtoInitialPlan] = useState<PlanId>("annual");
@@ -1493,6 +1495,31 @@ export default function Simulator({
           initialAdTestMode || params.get("ad") === "test" || params.get("test") === "1";
         if (isAdTestLanding) {
           setAdTestMode(true);
+        }
+        const urlAngleRaw = params.get("angle");
+        let storedAngleRaw: string | null = null;
+        try {
+          storedAngleRaw = window.sessionStorage.getItem("heybroc_growth_angle");
+        } catch {
+          /* ignore */
+        }
+        const resolvedAngle = resolveGrowthAngle(urlAngleRaw || storedAngleRaw);
+        if (resolvedAngle && !cancelled) {
+          setActiveAngle(resolvedAngle);
+          try {
+            window.sessionStorage.setItem("heybroc_growth_angle", resolvedAngle.id);
+          } catch {
+            /* ignore */
+          }
+          if (urlAngleRaw) {
+            setFamilyWatchlist(resolvedAngle.familyWatchlist);
+            if (resolvedAngle.dietaryWatchlist?.length) {
+              setDietaryWatchlist(resolvedAngle.dietaryWatchlist);
+            }
+            if (resolvedAngle.preferStoreBrand) {
+              setPreferStoreBrand(true);
+            }
+          }
         }
         if (params.get("login") === "1") {
           setAuthOpen(true);
@@ -2054,13 +2081,14 @@ export default function Simulator({
             action: "track",
             event: "product_scanned",
             deviceId: devId,
-            platform: isIosAppClient ? "ios-app" : "web",
+            platform: isIosAppClient ? "ios" : "web",
             store,
+            properties: activeAngle ? { angle: activeAngle.id } : undefined,
           }),
         }).catch(() => {});
       }
     },
-    [store, isIosAppClient]
+    [store, isIosAppClient, activeAngle]
   );
 
   const switchStore = useCallback(
@@ -4880,16 +4908,74 @@ export default function Simulator({
               }}
             >
               <span className="eyebrow eyebrow--green">
-                ⚡ FREE 3-SECOND GROCERY SCORE TEST (NO SIGN-UP)
+                {activeAngle
+                  ? activeAngle.eyebrow
+                  : "⚡ FREE 3-SECOND GROCERY SCORE TEST (NO SIGN-UP)"}
               </span>
               <h2 style={{ fontSize: 21, lineHeight: 1.25, margin: "6px 0 6px", color: "#0b2418" }}>
-                What&apos;s Really Hiding in Your Family&apos;s Groceries? Test Your First Item Free.
+                {activeAngle
+                  ? activeAngle.testHeadline
+                  : "What's Really Hiding in Your Family's Groceries? Test Your First Item Free."}
               </h2>
-              <p className="meta" style={{ fontSize: 13.5, marginBottom: 12, color: "#334155" }}>
-                Tap a popular item below or search any food to reveal its{" "}
-                <b>instant 0–100 score</b>, flagged seed oils &amp; synthetic dyes, and{" "}
-                <b>1-tap Clean Swap</b>.
+              <p className="meta" style={{ fontSize: 13.5, marginBottom: 10, color: "#334155" }}>
+                {activeAngle ? (
+                  activeAngle.testSubheadline
+                ) : (
+                  <>
+                    Tap a popular item below or search any food to reveal its{" "}
+                    <b>instant 0–100 score</b>, flagged seed oils &amp; synthetic dyes, and{" "}
+                    <b>1-tap Clean Swap</b>.
+                  </>
+                )}
               </p>
+
+              {/* Persona Motivation Selector (Split Hooks by Exact Buyer Goal) */}
+              <div
+                aria-label="Choose your grocery goal"
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 6,
+                  marginBottom: 12,
+                }}
+              >
+                {GROWTH_ANGLES.map((angle) => {
+                  const isActiveAngle = activeAngle?.id === angle.id;
+                  return (
+                    <button
+                      key={`angle-pill-${angle.id}`}
+                      type="button"
+                      onClick={() => {
+                        setActiveAngle(angle);
+                        setFamilyWatchlist(angle.familyWatchlist);
+                        if (angle.dietaryWatchlist?.length) {
+                          setDietaryWatchlist(angle.dietaryWatchlist);
+                        }
+                        if (typeof angle.preferStoreBrand === "boolean") {
+                          setPreferStoreBrand(angle.preferStoreBrand);
+                        }
+                        try {
+                          window.sessionStorage.setItem("heybroc_growth_angle", angle.id);
+                        } catch {
+                          /* ignore */
+                        }
+                      }}
+                      style={{
+                        padding: "5px 10px",
+                        borderRadius: 999,
+                        border: isActiveAngle ? "1.5px solid #0f7a4a" : "1px solid #cbd5e1",
+                        background: isActiveAngle ? "#dcfce7" : "#ffffff",
+                        color: isActiveAngle ? "#065f46" : "#334155",
+                        fontSize: 11.5,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {angle.emoji} {angle.shortLabel}
+                    </button>
+                  );
+                })}
+              </div>
 
               <div
                 style={{
@@ -4899,46 +4985,54 @@ export default function Simulator({
                   marginBottom: 12,
                 }}
               >
-                {PRESETS.filter((p) => p.id !== "butter").map((p) => {
-                  const s = gradeProduct(
-                    `${p.brand} ${p.title}`,
-                    p.ingredients,
-                    watch,
-                    undefined,
-                    familyWatchlist
-                  );
-                  const isSelected = freeTestCompleted && active.key === p.id;
-                  return (
-                    <button
-                      key={`ad-test-${p.id}`}
-                      id={`ad-test-${p.id}`}
-                      type="button"
-                      onClick={() => {
-                        setFreeTestCompleted(true);
-                        showProduct(presetToProduct(p), true, true);
-                      }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                        padding: "10px 12px",
-                        borderRadius: 12,
-                        border: isSelected
-                          ? "2px solid #0f7a4a"
-                          : "1px solid #cbd5e1",
-                        background: isSelected ? "#ecfdf5" : "#fff",
-                        cursor: "pointer",
-                        textAlign: "left",
-                      }}
-                    >
-                      <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
-                        Test {p.title} →
-                      </span>
-                      <ScoreChip score={s.score} color={s.color} />
-                    </button>
-                  );
-                })}
+                {PRESETS.filter((p) => p.id !== "butter")
+                  .slice()
+                  .sort((a, b) => {
+                    if (!activeAngle) return 0;
+                    if (a.id === activeAngle.featuredPresetId) return -1;
+                    if (b.id === activeAngle.featuredPresetId) return 1;
+                    return 0;
+                  })
+                  .map((p) => {
+                    const s = gradeProduct(
+                      `${p.brand} ${p.title}`,
+                      p.ingredients,
+                      watch,
+                      undefined,
+                      familyWatchlist
+                    );
+                    const isSelected = freeTestCompleted && active.key === p.id;
+                    return (
+                      <button
+                        key={`ad-test-${p.id}`}
+                        id={`ad-test-${p.id}`}
+                        type="button"
+                        onClick={() => {
+                          setFreeTestCompleted(true);
+                          showProduct(presetToProduct(p), true, true);
+                        }}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 8,
+                          padding: "10px 12px",
+                          borderRadius: 12,
+                          border: isSelected
+                            ? "2px solid #0f7a4a"
+                            : "1px solid #cbd5e1",
+                          background: isSelected ? "#ecfdf5" : "#fff",
+                          cursor: "pointer",
+                          textAlign: "left",
+                        }}
+                      >
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
+                          Test {p.title} →
+                        </span>
+                        <ScoreChip score={s.score} color={s.color} />
+                      </button>
+                    );
+                  })}
               </div>
 
               <form className="search" onSubmit={runLive}>
@@ -4977,6 +5071,18 @@ export default function Simulator({
                   style={{ fontSize: 12, fontWeight: 700 }}
                 >
                   🧾 Audit Weekly Pickup Order
+                </button>
+                <button
+                  type="button"
+                  className="trip-pill"
+                  onClick={() => {
+                    setManualFunnelOpen(false);
+                    setWatchlistFunnelStep(1);
+                    setWatchlistFunnelOpen(true);
+                  }}
+                  style={{ fontSize: 12, fontWeight: 700 }}
+                >
+                  🎯 Build 60-Sec Family Plan
                 </button>
               </div>
               {liveState === "error" && (
@@ -5027,15 +5133,43 @@ export default function Simulator({
                       <>Zero high-risk additives flagged — verified clean pick!</>
                     )}
                   </div>
-                  <button
-                    id="ad-test-unlock-pro-btn"
-                    type="button"
-                    className="swap-btn"
-                    onClick={requestProUpgrade}
-                    style={{ width: "100%", fontWeight: 800 }}
-                  >
-                    Step 2: Unlock Unlimited 1-Tap Clean Swaps Across All 12 Stores ($0 Today) →
-                  </button>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <button
+                      id="ad-test-unlock-pro-btn"
+                      type="button"
+                      className="swap-btn"
+                      onClick={requestProUpgrade}
+                      style={{ width: "100%", fontWeight: 800 }}
+                    >
+                      {activeAngle
+                        ? activeAngle.step2CtaLabel
+                        : "Step 2: Unlock Unlimited 1-Tap Clean Swaps Across All 12 Stores ($0 Today) →"}
+                    </button>
+                    {!onboardingDoneState && (
+                      <button
+                        id="ad-test-personalize-plan-btn"
+                        type="button"
+                        onClick={() => {
+                          setManualFunnelOpen(false);
+                          setWatchlistFunnelStep(1);
+                          setWatchlistFunnelOpen(true);
+                        }}
+                        style={{
+                          width: "100%",
+                          padding: "9px 14px",
+                          borderRadius: 999,
+                          border: "1px solid rgba(110, 231, 183, 0.45)",
+                          background: "rgba(16, 185, 129, 0.14)",
+                          color: "#d1fae5",
+                          fontSize: 12.5,
+                          fontWeight: 800,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Or Customize My 60-Second Family Watchlist &amp; Allergen Plan →
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -7178,6 +7312,7 @@ export default function Simulator({
         scanCount={swapsUsedThisWeek}
         freeScanLimit={weeklySwapLimit}
         appliedCreator={appliedCreator}
+        angleSpec={activeAngle}
         onCreatorApplied={(c) => {
           setAppliedCreator(c);
         }}

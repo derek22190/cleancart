@@ -1,8 +1,10 @@
 import type { MetadataRoute } from "next";
+import { COMPETITOR_COMPARISONS } from "@/lib/comparisons";
 import { hasValidCatalogProvenance } from "@/lib/drinks-catalog";
 import { SEO_PRODUCTS } from "@/lib/seo-catalog";
 
 const SITE_UPDATED = new Date("2026-11-18");
+const COMPARE_UPDATED = new Date("2026-11-19");
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = "https://www.heybroc.com";
@@ -14,6 +16,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
     lastModified: new Date(p.verifiedAt),
     changeFrequency: "weekly",
     priority: 0.85,
+  }));
+
+  const comparisonUrls: MetadataRoute.Sitemap = COMPETITOR_COMPARISONS.map((c) => ({
+    url: `${baseUrl}/compare/${c.slug}`,
+    lastModified: COMPARE_UPDATED,
+    changeFrequency: "weekly",
+    priority: 0.9,
   }));
 
   return [
@@ -29,6 +38,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "weekly",
       priority: 0.9,
     },
+    {
+      url: `${baseUrl}/compare`,
+      lastModified: SITE_UPDATED,
+      changeFrequency: "weekly",
+      priority: 0.95,
+    },
+    ...comparisonUrls,
     {
       url: `${baseUrl}/independence`,
       lastModified: SITE_UPDATED,

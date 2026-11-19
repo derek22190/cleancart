@@ -142,6 +142,9 @@ export default function AnswerBlock() {
             borderTop: "1px solid #f1f5f9",
           }}
         >
+          <Link href="/compare" style={{ color: "#059669", textDecoration: "none" }}>
+            HeyBroc vs. Yuka &amp; Food Scanners →
+          </Link>
           <Link href="/swaps" style={{ color: "#059669", textDecoration: "none" }}>
             Clean Grocery Swaps Directory →
           </Link>

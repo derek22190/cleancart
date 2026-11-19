@@ -61,10 +61,19 @@ export interface PaywallExperimentConfig {
   updatedAt: string;
 }
 
+export interface AngleFunnelMetrics {
+  scans: number;
+  paywallViews: number;
+  checkouts: number;
+  subscribed: number;
+}
+
 export interface AnalyticsSnapshot {
   totals: Record<AnalyticsEventName, number>;
   byPlatform: Record<PlatformType, number>;
   byStore: Record<string, number>;
+  byAngle?: Record<string, AngleFunnelMetrics>;
+  onboardingCompleted?: number;
   abTest: {
     variantAViews: number;
     variantACheckouts: number;
@@ -97,6 +106,13 @@ const ALLOWED_ANALYTICS_STORES = new Set([
   "ubereats",
   "search",
 ]);
+const ALLOWED_ANALYTICS_ANGLES = new Set([
+  "red40",
+  "seedoils",
+  "allergies",
+  "online",
+  "budget",
+]);
 
 export const DEFAULT_PAYWALL_CONFIG: PaywallExperimentConfig = {
   headline: "Shop clean on every aisle — without doing the homework",
@@ -128,6 +144,8 @@ function emptySnapshot(): AnalyticsSnapshot {
       ios: 0,
     },
     byStore: {},
+    byAngle: {},
+    onboardingCompleted: 0,
     abTest: {
       variantAViews: 0,
       variantACheckouts: 0,
@@ -207,6 +225,8 @@ export async function getAnalyticsSnapshot(): Promise<AnalyticsSnapshot> {
     totals: { ...emptySnapshot().totals, ...(base.totals || {}) },
     byPlatform: { ...emptySnapshot().byPlatform, ...(base.byPlatform || {}) },
     byStore: { ...(base.byStore || {}) },
+    byAngle: { ...(base.byAngle || {}) },
+    onboardingCompleted: Number(base.onboardingCompleted || 0),
     abTest: { ...emptySnapshot().abTest, ...(base.abTest || {}) },
     recentEvents: Array.isArray(base.recentEvents) ? base.recentEvents.slice(0, 60) : [],
     posthogConnected: Boolean(process.env.POSTHOG_API_KEY || process.env.NEXT_PUBLIC_POSTHOG_KEY),
@@ -313,6 +333,34 @@ export async function trackServerEvent(input: AnalyticsEventInput): Promise<void
       } else if (typeof rawVal === "boolean" || rawVal === null) {
         sanitizedProps[k] = rawVal;
       }
+    }
+
+    const rawAngle =
+      typeof sanitizedProps.angle === "string"
+        ? sanitizedProps.angle.trim().toLowerCase()
+        : "";
+    if (rawAngle && ALLOWED_ANALYTICS_ANGLES.has(rawAngle)) {
+      snap.byAngle = snap.byAngle || {};
+      const bucket = snap.byAngle[rawAngle] || {
+        scans: 0,
+        paywallViews: 0,
+        checkouts: 0,
+        subscribed: 0,
+      };
+      if (input.event === "product_scanned") bucket.scans += 1;
+      else if (input.event === "paywall_viewed") bucket.paywallViews += 1;
+      else if (input.event === "checkout_started") bucket.checkouts += 1;
+      else if (input.event === "pro_subscribed") bucket.subscribed += 1;
+      snap.byAngle[rawAngle] = bucket;
+    }
+
+    if (
+      input.event === "onboarding_step" &&
+      (sanitizedProps.stage === "completed" ||
+        sanitizedProps.name === "onboarding_completed" ||
+        sanitizedProps.step === 7)
+    ) {
+      snap.onboardingCompleted = (snap.onboardingCompleted || 0) + 1;
     }
 
     const variant = input.variant || (sanitizedProps.variant === "B" ? "B" : "A");
