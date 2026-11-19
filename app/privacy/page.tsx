@@ -108,7 +108,11 @@ export default function PrivacyPage() {
             <strong>Optional user accounts (up to 400 days or until deleted):</strong> If you create a HeyBroc account to sync your Family Watchlist and Pro
             entitlement across devices, we store your normalized email address, optional display name, scrypt-hashed password, SHA-256 hashed session token,
             linked <code>deviceId</code>, and watchlist preferences. Transactional verification and password-reset emails are delivered via Resend. You can
-            permanently delete your account and associated server records at any time from the Account menu in the web or Android app.
+            permanently delete your account and associated server records at any time from the Account menu in the app or online at{" "}
+            <a href="/delete-account" style={{ color: "#0F7A4A", fontWeight: 600 }}>
+              heybroc.com/delete-account
+            </a>
+            .
           </li>
           <li>
             <strong>On-device preferences &amp; trip history:</strong> Your ingredient watchlist preferences, floating bubble position, and recently
@@ -172,7 +176,11 @@ export default function PrivacyPage() {
       <section style={{ marginTop: 28 }}>
         <h2 style={{ fontSize: 20 }}>6. Manufacturer Reformulation Updates, Corrections &amp; Data Deletion Requests</h2>
         <p>
-          Signed-in users can delete their account and saved data directly in the app&apos;s Account menu. Food and beverage manufacturers, brand owners,
+          Signed-in users can permanently delete their account and saved cloud data directly in the app&apos;s Account menu or on the web at{" "}
+          <a href="/delete-account" style={{ color: "#0F7A4A", fontWeight: 600 }}>
+            heybroc.com/delete-account
+          </a>
+          . Food and beverage manufacturers, brand owners,
           and retailers may submit updated ingredient panels, reformulation notices, or trademark inquiries—and users may submit privacy or device-record
           deletion requests—by contacting the HeyBroc team at{" "}
           <a href="mailto:privacy@heybroc.com" style={{ color: "#0F7A4A", fontWeight: 600 }}>

@@ -5688,7 +5688,7 @@ class MainActivity : Activity() {
             val isStoreBrand = swap.optBoolean("isStoreBrand", false)
             val rem = ScanApi.swapsRemaining(this)
             val lim = ScanApi.weeklySwapsLimit(this)
-            val isPaidLink = swap.optBoolean("isPaidLink", false)
+            val isPaidLink = resolveTrackedPaidSwapUrl(swap, itemStoreKey) != null
 
             val swapCard = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -5855,7 +5855,7 @@ class MainActivity : Activity() {
             sheet.addView(swapCard)
         } else if (storeSwapLink != null) {
             ScanHistoryStore.upgradeSwapForStore(storeSwapLink, "", itemStoreKey)
-            val isPaidLink = storeSwapLink.optBoolean("isPaidLink", false)
+            val isPaidLink = resolveTrackedPaidSwapUrl(storeSwapLink, itemStoreKey) != null
             val directCta = if (isPaidLink) {
                 "🛒 Find in $storeDisplayName ↗ · paid link"
             } else {
@@ -6260,6 +6260,19 @@ class MainActivity : Activity() {
             .firstOrNull { candidatePkg -> runCatching { packageManager.getLaunchIntentForPackage(candidatePkg) }.getOrNull() != null }
     }
 
+    private fun resolveTrackedPaidSwapUrl(swap: JSONObject?, storeKey: String): String? {
+        if (swap == null || !swap.optBoolean("isPaidLink", false)) return null
+        val raw = swap.optString("webUrl").trim().ifBlank { swap.optString("deepLink").trim() }
+        if (raw.isBlank()) return null
+        val normalized = normalizeSwapUrl(raw).let {
+            if (it.startsWith("http://", ignoreCase = true)) "https://" + it.substring(7) else it
+        }
+        if (!normalized.startsWith("https://", ignoreCase = true)) return null
+        if (!ScanHistoryStore.urlMatchesStore(normalized, storeKey)) return null
+        if (!ScanHistoryStore.isTrackedAffiliateUrl(normalized)) return null
+        return LiveStoreBrowserActivity.validatedRetailerUrl(normalized)
+    }
+
     private fun openStoreSwap(
         query: String,
         storeKey: String = "walmart",
@@ -6302,6 +6315,29 @@ class MainActivity : Activity() {
             }
         }
 
+        val preferInApp = isPreferInAppShop()
+        val trackedPaidUrl = resolveTrackedPaidSwapUrl(swapObj, storeKey)
+        if (trackedPaidUrl != null) {
+            if (preferInApp) {
+                startActivity(
+                    LiveStoreBrowserActivity.createIntent(
+                        context = this,
+                        storeKey = storeKey,
+                        initialUrl = trackedPaidUrl,
+                        searchQuery = null
+                    )
+                )
+                return
+            }
+            val paidIntent = Intent(Intent.ACTION_VIEW, Uri.parse(trackedPaidUrl))
+            resolveExternalBrowserPackage()?.let { paidIntent.setPackage(it) }
+            if (runCatching { startActivity(paidIntent) }.isSuccess ||
+                runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(trackedPaidUrl))) }.isSuccess
+            ) {
+                return
+            }
+        }
+
         val rawDeepLink = swapObj?.optString("deepLink").orEmpty().ifBlank { swapObj?.optString("webUrl").orEmpty() }
         val normalizedLink = normalizeSwapUrl(rawDeepLink)
         val explicitDeepLink = if (ScanHistoryStore.urlMatchesStore(normalizedLink, storeKey)) normalizedLink else ""
@@ -6315,7 +6351,6 @@ class MainActivity : Activity() {
                 !explicitDeepLink.contains("goto.") &&
                 !explicitDeepLink.contains("impact")
             )
-        val preferInApp = isPreferInAppShop()
         if (!preferInApp && explicitDeepLink.startsWith("http") && supportsDirectUrlDeepLink && explicitPkg.isNotBlank()) {
             if (runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(explicitDeepLink)).setPackage(explicitPkg)) }.isSuccess) {
                 return

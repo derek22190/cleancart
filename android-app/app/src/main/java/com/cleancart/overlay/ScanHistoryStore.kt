@@ -2051,11 +2051,11 @@ object ScanHistoryStore {
 
     fun isTrackedAffiliateUrl(url: String): Boolean {
         val low = url.lowercase()
-        return low.contains("goto.") ||
-            low.contains("/c/") ||
+        val host = runCatching { android.net.Uri.parse(url).host?.lowercase().orEmpty() }.getOrDefault("")
+        return LiveStoreBrowserActivity.isAllowedAffiliateRedirectHost(host) ||
             low.contains("subid1=") ||
             low.contains("tag=") ||
-            low.contains("%2fip%2f") ||
+            low.contains("irclickid=") ||
             low.contains("ojrq.net") ||
             low.contains("pntra.com") ||
             low.contains("oloiyb.net")

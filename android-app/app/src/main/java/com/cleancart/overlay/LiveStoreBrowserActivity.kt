@@ -252,6 +252,23 @@ class LiveStoreBrowserActivity : Activity() {
                 host.endsWith(".smart.link")
         }
 
+        fun isAllowedAffiliateRedirectHost(rawHost: String?): Boolean {
+            val host = rawHost?.lowercase()?.trim().orEmpty().removeSuffix(".")
+            if (host.isEmpty()) return false
+            return host == "goto.walmart.com" ||
+                host == "goto.target.com" ||
+                host == "instacart.oloiyb.net" ||
+                host == "impact.com" ||
+                host.endsWith(".impact.com") ||
+                host.endsWith(".pxf.io") ||
+                host.endsWith(".sjv.io") ||
+                host.endsWith(".evyy.net") ||
+                host.endsWith(".7eer.net") ||
+                host.endsWith(".ojrq.net") ||
+                host.endsWith(".oloiyb.net") ||
+                host.endsWith(".pntra.com")
+        }
+
         fun validatedRetailerUrl(rawUrl: String?): String? {
             val trimmed = rawUrl?.trim().orEmpty()
             if (trimmed.isEmpty()) return null
@@ -260,10 +277,7 @@ class LiveStoreBrowserActivity : Activity() {
             if (scheme != "https") return null
             val host = uri.host?.lowercase().orEmpty()
             if (isBlockedAppRedirectHost(host)) return null
-            val isAffiliateRedirect =
-                host == "goto.walmart.com" ||
-                    host == "goto.target.com" ||
-                    uri.path?.lowercase()?.startsWith("/c/") == true
+            val isAffiliateRedirect = isAllowedAffiliateRedirectHost(host)
             if (isAffiliateRedirect) {
                 val rawInner = (uri.getQueryParameter("u") ?: uri.getQueryParameter("url"))?.trim().orEmpty()
                 if (rawInner.isNotEmpty()) {

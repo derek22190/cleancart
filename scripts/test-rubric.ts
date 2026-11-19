@@ -10665,6 +10665,59 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const fsNode = await import("node:fs");
+    const liveBrowserKt = fsNode.readFileSync(
+      "android-app/app/src/main/java/com/cleancart/overlay/LiveStoreBrowserActivity.kt",
+      "utf8",
+    );
+    const scanHistKt = fsNode.readFileSync(
+      "android-app/app/src/main/java/com/cleancart/overlay/ScanHistoryStore.kt",
+      "utf8",
+    );
+    const mainActKt = fsNode.readFileSync(
+      "android-app/app/src/main/java/com/cleancart/overlay/MainActivity.kt",
+      "utf8",
+    );
+    const gradleKts = fsNode.readFileSync("android-app/app/build.gradle.kts", "utf8");
+    const proguardRules = fsNode.readFileSync("android-app/app/proguard-rules.pro", "utf8");
+    const a11yXmlP212 = fsNode.readFileSync(
+      "android-app/app/src/main/res/xml/accessibility_service_config.xml",
+      "utf8",
+    );
+    const delPageSrc = fsNode.readFileSync("app/delete-account/page.tsx", "utf8");
+    const delClientSrc = fsNode.readFileSync("app/delete-account/DeleteAccountClient.tsx", "utf8");
+    const privacySrcP212 = fsNode.readFileSync("app/privacy/page.tsx", "utf8");
+    const sitemapSrcP212 = fsNode.readFileSync("app/sitemap.ts", "utf8");
+
+    check(
+      "P2-12 Android restricts /c/ affiliate redirects to allowlisted domains, guards paid-link labels, enables R8 with @JavascriptInterface keep rules, hardens a11y config, and publishes web /delete-account",
+      liveBrowserKt.includes("fun isAllowedAffiliateRedirectHost(") &&
+        !liveBrowserKt.includes('uri.path?.lowercase()?.startsWith("/c/") == true') &&
+        liveBrowserKt.includes("val isAffiliateRedirect = isAllowedAffiliateRedirectHost(host)") &&
+        scanHistKt.includes("LiveStoreBrowserActivity.isAllowedAffiliateRedirectHost(host)") &&
+        !scanHistKt.includes('low.contains("/c/")') &&
+        mainActKt.includes("private fun resolveTrackedPaidSwapUrl(") &&
+        mainActKt.includes("val isPaidLink = resolveTrackedPaidSwapUrl(swap, itemStoreKey) != null") &&
+        mainActKt.includes("val isPaidLink = resolveTrackedPaidSwapUrl(storeSwapLink, itemStoreKey) != null") &&
+        gradleKts.includes("isMinifyEnabled = true") &&
+        gradleKts.includes("isShrinkResources = true") &&
+        gradleKts.includes('"proguard-rules.pro"') &&
+        proguardRules.includes("@android.webkit.JavascriptInterface") &&
+        proguardRules.includes("LiveStoreBrowserActivity$AndroidStoreBridge") &&
+        proguardRules.includes("com.android.billingclient.**") &&
+        a11yXmlP212.includes('android:canPerformGestures="false"') &&
+        a11yXmlP212.includes('android:canRequestFilterKeyEvents="false"') &&
+        a11yXmlP212.includes('android:isAccessibilityTool="false"') &&
+        delPageSrc.includes('canonical: "https://www.heybroc.com/delete-account"') &&
+        delClientSrc.includes('action: "delete_account"') &&
+        delClientSrc.includes('href="/?login=1"') &&
+        !delClientSrc.includes('href="/login"') &&
+        privacySrcP212.includes('href="/delete-account"') &&
+        sitemapSrcP212.includes("/delete-account"),
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
