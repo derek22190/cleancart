@@ -102,6 +102,11 @@
     "barcode": "0889392000412",
     "verifiedAt": "2026-11-17"
   },
+  "cheetos::cheetos crunchy cheese flavored snacks": {
+    "imageUrl": "https://images.openfoodfacts.org/images/products/002/840/058/9895/front_en.53.400.jpg",
+    "barcode": "0028400589895",
+    "verifiedAt": "2026-11-19"
+  },
   "cheez it::cheez it original baked snack crackers": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/002/410/012/2615/front_en.44.400.jpg",
     "barcode": "0024100122615",
@@ -115,6 +120,9 @@
     "imageUrl": "https://images.openfoodfacts.org/images/products/000/004/484/3113/front_en.3.400.jpg",
     "barcode": "44843113",
     "verifiedAt": "2026-11-18"
+  },
+  "clancys::clancys classic potato chips": {
+    "verifiedAt": "2026-11-19"
   },
   "claussen::claussen refrigerated kosher dill pickles": {
     "barcode": "044700019559",
@@ -382,6 +390,9 @@
     "barcode": "0028400090858",
     "verifiedAt": "2026-11-18"
   },
+  "little debbie::little debbie nutty buddy wafer bars": {
+    "verifiedAt": "2026-11-19"
+  },
   "lotus foods::lotus foods organic millet and brown rice ramen": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/070/895/362/8172/front_en.3.400.jpg",
     "barcode": "0708953628172",
@@ -586,6 +597,11 @@
     "barcode": "0810063710668",
     "verifiedAt": "2026-11-17"
   },
+  "post::post oreo os cereal": {
+    "imageUrl": "https://images.openfoodfacts.org/images/products/088/491/244/9641/front_en.5.400.jpg",
+    "barcode": "0884912449641",
+    "verifiedAt": "2026-11-19"
+  },
   "primal kitchen::primal kitchen organic unsweetened ketchup": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/827/574/200/7125/front_en.8.400.jpg",
     "barcode": "8275742007125",
@@ -645,11 +661,20 @@
   "representative category formulation::representative category formulation white enriched sandwich bread representative formulation": {
     "verifiedAt": "2026-11-18"
   },
+  "representative frozen potato formulation::representative frozen potato formulation frozen french fried potatoes and tater tots representative formulation": {
+    "verifiedAt": "2026-11-19"
+  },
+  "representative instant potato formulation::representative instant potato formulation instant mashed potatoes representative formulation": {
+    "verifiedAt": "2026-11-19"
+  },
   "representative process cheese formulation::representative process cheese formulation pasteurized process cheese and queso dip representative formulation": {
     "verifiedAt": "2026-11-18"
   },
   "representative smoked sausage formulation::representative smoked sausage formulation smoked sausage and kielbasa representative formulation": {
     "verifiedAt": "2026-11-18"
+  },
+  "representative soup formulation::representative soup formulation homestyle canned soup representative formulation": {
+    "verifiedAt": "2026-11-19"
   },
   "ritz::ritz original baked crackers": {
     "verifiedAt": "2026-11-18"
