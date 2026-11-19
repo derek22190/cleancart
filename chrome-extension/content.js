@@ -1208,7 +1208,7 @@
 
   /* ---------------- Multi-Food DOM Scoping & Carousel Exclusion ---------------- */
   const NON_TITLE_RE =
-    /^(search|your cart|shopping cart|cart|bag|basket|checkout|review order|order summary|items to add next|product information|similar items|customers also.*|sponsored.*|buy (?:it )?again|frequently bought together|saved for later|product|item|ad|advertisement|walmart|target|costco(?:\s+wholesale)?|sam'?s\s+club|aldi|kroger|instacart|whole\s+foods(?:\s+market)?|amazon(?:\s+fresh)?|bj'?s(?:\s+wholesale\s+club)?|doordash|dashmart|uber\s*eats|shipt|boost\s+by\s+kroger|continue\s+as\s+guest|log\s*in|sign\s*in|sign\s*up|same-day\s+delivery|choose\s+a\s+store|departments|grocery|savings|deals|weekly\s+ad|dairy\s*&\s*eggs|fresh\s+produce|fruits?\s*&\s*vegetables?|meat\s*&\s*seafood|bakery(?:\s*&\s*bread)?|deli|frozen(?:\s+foods?)?|pantry|snacks|beverages|household|personal\s+care|all\s+products|shop\s+all|subtotal.*|estimated\s+total.*|substitutions?.*)$/i;
+    /^(search|your cart|shopping cart|cart|bag|basket|checkout|review order|order summary|items to add next|product information|similar items|customers also.*|sponsored.*|buy (?:it )?again|frequently bought together|saved for later|product|item|ad|advertisement|walmart|target|costco(?:\s+wholesale)?|sam'?s\s+club|aldi|kroger|instacart|whole\s+foods(?:\s+market)?|amazon(?:\s+fresh)?|bj'?s(?:\s+wholesale\s+club)?|doordash|dashmart|uber\s*eats|shipt|boost\s+by\s+kroger|continue\s+as\s+guest|log\s*in|sign\s*in|sign\s*up|same-day\s+delivery|choose\s+a\s+store|departments|grocery|new\s+grocery|produce|fresh\s+produce|fruits?(?:\s*&\s*vegetables?)?|vegetables?|meat(?:\s*&\s*seafood)?|seafood|dairy(?:\s*&\s*eggs)?|eggs|bakery(?:\s*&\s*bread)?|bread|deli|frozen(?:\s+foods?)?|pantry|snacks(?:\s*&\s*candy)?|candy|beverages|drinks|coffee(?:\s*&\s*tea)?|breakfast(?:\s*&\s*cereal)?|condiments|baking|household|personal\s+care|health(?:\s*&\s*beauty)?|baby|pets?|savings|deals|weekly\s+ad|instant\s+savings|top\s+deals|rollbacks?|clearance|new\s+arrivals|best\s+sellers|trending|featured(?:\s+categories|\s+items)?|shop\s+by\s+(?:category|department|brand|diet)|all\s+products|shop\s+all|subtotal.*|estimated\s+total.*|substitutions?.*)$/i;
 
   const NON_INGREDIENT_RE =
     /\b(items to add next|product information|similar items|customers also|you might also|related items|frequently bought together|compare with similar|sold by|fulfilled by|see packaging|refer to packaging|nutrition facts|serving size)\b/i;
@@ -1370,6 +1370,7 @@
   function cleanProductTitleText(raw) {
     return String(raw || "")
       .replace(/\s+/g, " ")
+      .replace(/^(?:sponsored\s+ad|ad)\s*[-–—:|•]\s*/i, "")
       .replace(/^(?:sponsored|best\s+seller|overall\s+pick|popular\s+pick|rollback)\s*[,•|:\-]?\s*/i, "")
       .replace(/\s*\(\d+(?:\.\d+)?\s*stars?.*$/i, "")
       .trim();
@@ -1593,6 +1594,7 @@
     '[data-testid*="product-card" i]',
     '[data-testid*="product_card" i]',
     '[data-testid*="item-card" i]',
+    '[data-testid^="item_list_item" i]',
     '[data-testid*="product-tile" i]',
     '[data-testid*="RetailItem" i]',
     '[data-testid*="StoreItem" i]',
@@ -1609,9 +1611,15 @@
     '[data-automation-id="product-tile"]',
     '[data-automation-id*="product-tile" i]',
     '[data-automation-id*="product-card" i]',
+    '[automation-id*="productTile" i]',
     '[data-component-type="s-search-result"]',
+    '[data-csa-c-type="productTile"]',
+    'li[data-csa-c-type="item"][data-csa-c-item-id*="asin."]',
     'div[class*="s-result-item"][data-asin]:not([data-asin=""])',
     '[data-asin]:not([data-asin=""])',
+    "app-product-card",
+    '[auto-data*="productCard" i]',
+    '[class*="sc-pc-" i][class*="card" i]',
     '[class*="ProductCard" i]',
     '[class*="ItemCard" i]',
     '[class*="product-tile" i]',
@@ -1619,21 +1627,66 @@
     'li[class*="product" i]',
   ].join(", ");
 
-  const MULTI_CARD_UNIT_SEL = [
+  const EXPLICIT_PRODUCT_CARD_SEL = [
     "[data-item-id]",
     '[data-asin]:not([data-asin=""])',
     '[data-component-type="s-search-result"]',
+    '[data-csa-c-type="productTile"]',
+    'li[data-csa-c-type="item"][data-csa-c-item-id*="asin."]',
     '[data-test*="@web/site-top-of-funnel/ProductCardWrapper"]',
     '[data-testid*="product-card" i]',
     '[data-testid*="product_card" i]',
     '[data-testid*="item-card" i]',
+    '[data-testid^="item_list_item" i]',
+    '[data-testid*="product-tile" i]',
+    '[data-testid*="RetailItem" i]',
+    '[data-testid*="StoreItem" i]',
+    '[data-testid*="store-item" i]',
+    '[data-test*="product-card" i]',
+    '[data-qa*="product-card" i]',
+    '[data-automation-id="product-tile"]',
+    '[automation-id*="productTile" i]',
+    "app-product-card",
+    '[auto-data*="productCard" i]',
+    '[class*="ProductCard" i]',
+    '[class*="product-tile" i]',
+  ].join(", ");
+
+  const MULTI_CARD_UNIT_SEL = [
+    "[data-item-id]",
+    '[data-asin]:not([data-asin=""])',
+    '[data-component-type="s-search-result"]',
+    '[data-csa-c-type="productTile"]',
+    '[data-test*="@web/site-top-of-funnel/ProductCardWrapper"]',
+    '[data-testid*="product-card" i]',
+    '[data-testid*="product_card" i]',
+    '[data-testid*="item-card" i]',
+    '[data-testid^="item_list_item" i]',
     '[data-testid*="product-tile" i]',
     '[data-testid*="RetailItem" i]',
     '[data-testid*="StoreItem" i]',
     '[data-testid*="MenuItem" i]',
+    '[data-testid*="store-item" i]',
     '[data-qa*="product-card" i]',
     '[data-automation-id="product-tile"]',
+    "app-product-card",
+    '[auto-data*="productCard" i]',
   ].join(", ");
+
+  const DEFINITIVE_SINGLE_CARD_SEL = [
+    '[data-component-type="s-search-result"]',
+    '[data-csa-c-type="productTile"]',
+    'li[data-csa-c-type="item"][data-csa-c-item-id*="asin."]',
+    "[data-item-id]",
+    '[data-test*="@web/site-top-of-funnel/ProductCardWrapper"]',
+    '[data-testid^="item_list_item" i]',
+    '[data-testid*="RetailItem" i]',
+    '[data-testid*="store-item" i]',
+    '[auto-data*="productCard" i]',
+  ].join(", ");
+
+  const PRODUCT_LINK_FALLBACK_SEL =
+    'a[data-csa-c-type="productTile"], a[link-identifier], a[href*="/sp/track"], a[href*="/gp/slredirect"], a[href*="/ip/"], a[href*=".product."], a[href*="/products/"], a[href*="/product/"], a[href*="/items/"], a[href*="item_id="], a[href*="product_id="], a[href*="/p/"], a[href*="/sams/shop/product/"], a[href*="/detail/ps/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"]';
 
   const CARD_CTA_NOISE_RE =
     /^(?:(?:\+\s*)?add(?:\s+to\s+(?:cart|bag|list|order))?|choose\s+options?|options?|select(?:\s+options?)?|view(?:\s+details|\s+item|\s+product)?|shop\s+now|quick\s+(?:add|look|shop|view)|sign\s+in(?:\s+to\s+add)?|out\s+of\s+stock|in\s+stock|many\s+in\s+stock|low\s+stock|sold\s+out|unavailable|notify\s+me|subscribe(?:\s*&\s*save)?|clip(?:\s+coupon)?|coupon(?:\s+available)?|sponsored|best\s+seller|overall\s+pick|popular(?:\s+pick)?|rollback|clearance|sale|deal|snap(?:\s+ebt)?(?:\s+eligible)?|ebt(?:\s+eligible)?|pickup|delivery|shipping|free\s+(?:shipping|pickup|delivery).*|save\s+\$?\d.*|\$?\d+(?:\.\d+)?\s+off\b.*|\d+%\s+off\b.*|buy\s+\d+.*get\s+\d+.*|bogo\b.*|\d+%\s*(?:\(\d+\))?|\d+(?:\.\d+)?\s*(?:stars?|out\s+of\s+5).*|\d+\s*(?:cal|kcal|calories?)\b.*|\$?\d+(?:\.\d+)?\s*\/\s*[a-z]+.*|\d+(?:\.\d+)?\s*(?:fl\.?\s*oz|oz|lb|lbs|gal|qt|pt|ml|l|g|kg|ct|count|pk|pack)\b)$/i;
@@ -1679,6 +1732,54 @@
       /* ignore */
     }
     return h;
+  }
+
+  function isRealProductHrefPath(rawHref) {
+    const unwrapped = unwrapProductHref(rawHref);
+    let pathOnly = unwrapped.split("#")[0].split("?")[0];
+    try {
+      if (/^https?:\/\//i.test(unwrapped)) {
+        pathOnly = new URL(unwrapped).pathname || "";
+      }
+    } catch {
+      /* ignore */
+    }
+    if (
+      !pathOnly ||
+      pathOnly === "/" ||
+      /^\/(?:browse|cp|c|categories|category|departments|aisles|fmc|stores|shop\/categories|all-departments|my-items)\b/i.test(pathOnly)
+    ) {
+      if (/[?&](?:item_id|product_id)=/i.test(unwrapped)) return unwrapped.split("#")[0];
+      return "";
+    }
+    if (
+      /(\/ip\/|\/dp\/|\/gp\/product\/|\/gp\/aw\/d\/|\/sams\/shop\/product\/|\.product\.|\/p\/|\/products?\/|\/items?\/|\/detail\/ps\/p\/)/i.test(
+        pathOnly
+      ) ||
+      /[?&](?:item_id|product_id)=/i.test(unwrapped)
+    ) {
+      return unwrapped.split("#")[0];
+    }
+    return "";
+  }
+
+  function hasMultipleDistinctProductLinks(el) {
+    if (!el || typeof el.querySelectorAll !== "function") return false;
+    if (el.matches?.(DEFINITIVE_SINGLE_CARD_SEL) && el.querySelectorAll(DEFINITIVE_SINGLE_CARD_SEL).length === 0) {
+      return false;
+    }
+    if (el.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) return true;
+    const pLinks = el.querySelectorAll(PRODUCT_LINK_FALLBACK_SEL);
+    if (pLinks.length <= 1) return false;
+    let firstKey = "";
+    for (const a of pLinks) {
+      const csaId = a.getAttribute?.("data-csa-c-content-id") || "";
+      const key = csaId || isRealProductHrefPath(a.getAttribute?.("href") || "");
+      if (!key) continue;
+      if (!firstKey) firstKey = key;
+      else if (key !== firstKey) return true;
+    }
+    return false;
   }
 
   function humanizeProductSlug(slug) {
@@ -1828,8 +1929,16 @@
       '[data-testid*="product-card-name" i]',
       '[data-testid*="product-card-description" i]',
       '[data-testid*="store-item-title" i]',
+      '[data-telemetry-id*="storeItem.title" i]',
+      '[data-test="product-card-title"]',
+      '[auto-data="productTitle"]',
+      '[auto-data*="product_name" i]',
+      '[automation-id*="productDescriptionLink" i]',
       '[data-qa*="product-name" i]',
       '[data-qa*="item-name" i]',
+      '[class*="sc-pc-title" i]',
+      ".product-tile__name",
+      ".base-product-tile__name",
       '[class*="ProductCard-name" i]',
       '[class*="ProductTitle" i]',
       "a[link-identifier]",
@@ -1842,7 +1951,9 @@
       "h3",
       "h4",
       '[data-testid="rich-text"]',
+      'a[data-csa-c-type="productTile"]',
       'a[href*="/sp/track"]',
+      'a[href*="/gp/slredirect"]',
       'a[href*="/ip/"]',
       'a[href*=".product."]',
       'a[href*="/sams/shop/product/"]',
@@ -1905,7 +2016,7 @@
     let bestImgRank = -999;
     const cardRect = typeof cardEl.getBoundingClientRect === "function" ? cardEl.getBoundingClientRect() : null;
     const promoSlideAltRe =
-      /\b(?:satisfaction\s+guaranteed|money\s+back\s+guarantee|100%\s+guaranteed|quality\s+guaranteed|freshness\s+guaranteed)\b/i;
+      /\b(?:satisfaction\s+guaranteed|money\s+back\s+guarantee|100%\s+guaranteed|quality\s+guaranteed|freshness\s+guaranteed|shopping\s+(?:basket|cart|bag)|checkout\s+conveyor|in\s+a\s+(?:blue|red|green|white|wooden|wicker)\s+(?:basket|bowl|cart)|promotional\s+banner|hero\s+banner)\b/i;
     const imgs = cardEl.querySelectorAll("img");
     let idx = 0;
     for (const img of imgs) {
@@ -1967,7 +2078,27 @@
     }
     const rec = recoverFromCardLinks(cardEl, title);
     title = rec.title;
-    if (!title) return null;
+    if (!title || isNonFoodGridTitle(title)) return null;
+    if (!isCartPageUrl()) {
+      const hasExplicitCardSignal = Boolean(
+        cardEl.matches?.(EXPLICIT_PRODUCT_CARD_SEL) || cardEl.querySelector?.(EXPLICIT_PRODUCT_CARD_SEL)
+      );
+      if (!hasExplicitCardSignal) {
+        let hasProdHref = false;
+        for (const aEl of cardEl.querySelectorAll("a[href]")) {
+          if (isRealProductHrefPath(aEl.getAttribute("href") || "")) {
+            hasProdHref = true;
+            break;
+          }
+        }
+        if (!hasProdHref && cardEl.tagName === "A" && isRealProductHrefPath(cardEl.getAttribute("href") || "")) {
+          hasProdHref = true;
+        }
+        if (!hasProdHref && !/\$\s*\d|\b\d+\s*¢/.test(cardEl.textContent || "")) {
+          return null;
+        }
+      }
+    }
     const effectiveHref = rec.hrefKey || unwrapProductHref(matchedHref) || matchedHref;
     const itemId = extractRetailerItemIdFromUrlOrNode(effectiveHref, cardEl);
     return {
@@ -4267,8 +4398,6 @@
 
   /* ---------------- Automatic On-Photo Score Badges (Search / Aisle Grids) ---------------- */
   const PHOTO_BADGE_STYLE_ID = "cleancart-photo-badge-styles";
-  const PRODUCT_LINK_FALLBACK_SEL =
-    'a[link-identifier], a[href*="/sp/track"], a[href*="/ip/"], a[href*=".product."], a[href*="/products/"], a[href*="/product/"], a[href*="/items/"], a[href*="item_id="], a[href*="product_id="], a[href*="/p/"], a[href*="/sams/shop/product/"], a[href*="/detail/ps/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"]';
   const MAX_IN_FLIGHT_PHOTO_BATCHES = 2;
 
   const gridScanCache = new Map();
@@ -4356,7 +4485,7 @@
   const EXT_MEDIA_ICON_BTN_RE =
     /^(?:save|favorite|favourite|wishlist|add\s+to\s+(?:list|registry|favorites)|sign\s+in\s+to\s+save|like|heart|next|previous|prev|slide\s*\d*|image\s*\d*|photo\s*\d*|dot\s*\d*|close|zoom|expand)$/i;
   const EXT_PROMO_SLIDE_ALT_RE =
-    /\b(?:satisfaction\s+guaranteed|money\s+back\s+guarantee|100%\s+guaranteed|quality\s+guaranteed|freshness\s+guaranteed)\b/i;
+    /\b(?:satisfaction\s+guaranteed|money\s+back\s+guarantee|100%\s+guaranteed|quality\s+guaranteed|freshness\s+guaranteed|shopping\s+(?:basket|cart|bag)|checkout\s+conveyor|in\s+a\s+(?:blue|red|green|white|wooden|wicker)\s+(?:basket|bowl|cart)|promotional\s+banner|hero\s+banner)\b/i;
 
   function extNodeHasDetailsOrCta(el) {
     if (!el || typeof el.querySelector !== "function") return false;
@@ -4633,12 +4762,28 @@
     for (const img of imgs) {
       idx++;
       if (!img || img.closest?.(".cc-photo-badge, .cc-photo-badge-slot")) continue;
-      const src = img.currentSrc || img.getAttribute("src") || img.getAttribute("srcset") || "";
-      if (isPlaceholderCardImage(src, img)) continue;
+      let src = img.currentSrc || img.getAttribute("src") || "";
+      let usedAltSrc = false;
+      if (!src || /^data:|^blob:/i.test(src) || isPlaceholderCardImage(src, img)) {
+        const altSrc = img.getAttribute("srcset") || img.getAttribute("data-src") || img.getAttribute("data-lazy-src") || "";
+        if (altSrc) {
+          const parsedAlt = String(altSrc).split(",")[0].trim().split(/\s+/)[0] || "";
+          if (parsedAlt) {
+            src = parsedAlt;
+            usedAltSrc = true;
+          }
+        }
+      }
       const r = img.getBoundingClientRect();
       const parentR = img.parentElement?.getBoundingClientRect?.() || r;
       const effW = Math.max(r.width, parentR.width);
       const effH = Math.max(r.height, parentR.height);
+      const isExplicitLazyTile = Boolean(
+        cardEl.matches?.('[data-csa-c-type="productTile"], li[data-csa-c-type="item"][data-csa-c-item-id*="asin."]') &&
+          effW >= 60 &&
+          effH >= 60
+      );
+      if (!isExplicitLazyTile && isPlaceholderCardImage(src, usedAltSrc ? null : img)) continue;
       if (effW >= 44 && effH >= 44 && effW <= 640 && effH <= 640) {
         const boxR = r.width >= 32 && r.height >= 32 ? r : parentR;
         const horizVisible =
@@ -4687,7 +4832,7 @@
     let resolved = positionedCand || fallbackBlock;
     if (!resolved && cardEl && cardEl !== document.body) {
       const cr = cardEl.getBoundingClientRect();
-      if (cr.width >= 44 && cr.height >= 44 && cr.height <= 780) {
+      if (cr.width >= 44 && cr.height >= 44 && cr.height <= 920) {
         resolved = cardEl;
       }
     }
@@ -4703,7 +4848,7 @@
         resolved.style.position = prevPos;
         if (cardEl && cardEl !== resolved) {
           const fbR = cardEl.getBoundingClientRect();
-          if (fbR.width >= 44 && fbR.height >= 44 && fbR.height <= 780) {
+          if (fbR.width >= 44 && fbR.height >= 44 && fbR.height <= 920) {
             if (window.getComputedStyle(cardEl).position === "static") {
               cardEl.style.position = "relative";
             }
@@ -5177,13 +5322,17 @@
     const addCandidate = (el) => {
       if (!el || seen.has(el) || host?.contains(el)) return;
       if (el.closest('header, nav, footer, [role="contentinfo"]')) return;
-      if (el.querySelectorAll && el.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) return;
+      if (!el.querySelector?.("img")) return;
+      if (hasMultipleDistinctProductLinks(el)) return;
       const r = el.getBoundingClientRect();
-      if (r.width > 0 && (r.width < 84 || r.width > maxCardW || r.height < 84 || r.height > 780)) return;
+      if (r.width > 0 && (r.width < 84 || r.width > maxCardW || r.height < 84 || r.height > 1080)) return;
       for (let i = 0; i < found.length; i++) {
         const ex = found[i];
         if (ex.contains(el)) return;
         if (el.contains(ex)) {
+          if (ex.matches?.(DEFINITIVE_SINGLE_CARD_SEL) && !el.matches?.(DEFINITIVE_SINGLE_CARD_SEL)) {
+            return;
+          }
           seen.delete(ex);
           seen.add(el);
           found[i] = el;
@@ -5206,9 +5355,9 @@
         let tile = null;
         for (let depth = 0; depth < 5 && cur && cur !== document.body; depth++) {
           if (cur.querySelector("img")) {
-            if (cur.querySelectorAll && cur.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) break;
+            if (hasMultipleDistinctProductLinks(cur)) break;
             const r = cur.getBoundingClientRect();
-            if (r.width >= 90 && r.width <= maxCardW && r.height >= 90 && r.height <= 760) {
+            if (r.width >= 90 && r.width <= maxCardW && r.height >= 90 && r.height <= 900) {
               tile = cur;
               if (/^(ARTICLE|LI)$/i.test(cur.tagName)) break;
             }
@@ -5368,7 +5517,7 @@
     const candidates = [];
     const addMobileCandidate = (el) => {
       if (!el || host?.contains(el) || seen.has(el)) return;
-      if (el.querySelectorAll && el.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) return;
+      if (hasMultipleDistinctProductLinks(el)) return;
       for (let i = 0; i < candidates.length; i++) {
         const ex = candidates[i];
         if (ex.contains(el)) return;
@@ -5395,7 +5544,7 @@
         let cur = a.parentElement;
         let depth = 0;
         while (cur && cur !== document.body && !/^(MAIN|UL|OL|SECTION)$/i.test(cur.tagName) && depth < 6) {
-          if (cur.querySelectorAll && cur.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) break;
+          if (hasMultipleDistinctProductLinks(cur)) break;
           const r = cur.getBoundingClientRect();
           if (r.height >= 64 && r.height <= 760 && r.width >= 100) {
             card = cur;

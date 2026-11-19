@@ -5665,6 +5665,37 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     verifiedAt: "2026-11-08",
     match: /\bhealth[- ]?ade\b/i,
   },
+  {
+    id: "stewarts-orange-cream-soda",
+    title: "Stewart's Orange 'n Cream Soda, 12 fl oz Glass Bottles",
+    brand: "Stewart's",
+    category: "Sodas & Prebiotic Sodas",
+    description:
+      "Fountain-style orange cream soda sweetened with cane sugar, preserved with sodium benzoate, and colored with Yellow 6.",
+    keywords: [
+      "stewart's orange cream",
+      "stewarts orange and cream soda",
+      "orange cream soda",
+      "soda",
+    ],
+    ingredients:
+      "Carbonated Water, Cane Sugar, Citric Acid, Natural and Artificial Flavors, Gum Acacia, Sodium Benzoate (Preserves Freshness), Ester Gum, Yellow 6.",
+    nutrition: {
+      caloriesKcal100g: 48,
+      sugarsG100g: 12.1,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 14,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "e",
+      isOrganic: false,
+      isWholeFood: false,
+    },
+    sourceUrl: "https://www.drinkstewarts.com/flavors/orange-n-cream",
+    verifiedAt: "2026-11-18",
+    match: /^(?!.*\b(?:zero|diet)\b).*\bstewart'?s\b.*\borange\b.*\bcream\b.*\bsoda\b/i,
+  },
 ];
 
 const MAX_VERIFIED_AGE_MS = 90 * 86400 * 1000;

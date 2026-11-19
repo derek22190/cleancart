@@ -1067,6 +1067,9 @@ export default function Simulator({
   const [authOpen, setAuthOpen] = useState(false);
   const [authInitialTab, setAuthInitialTab] = useState<"signup" | "signin">("signup");
   const [authBannerMessage, setAuthBannerMessage] = useState<string>("");
+  const [authReadyHeading, setAuthReadyHeading] = useState<string>("");
+  const [authReadySubheading, setAuthReadySubheading] = useState<string>("");
+  const [pendingPostProSaveTag, setPendingPostProSaveTag] = useState<string>("");
   const [watchlistFunnelOpen, setWatchlistFunnelOpen] = useState(false);
   const [watchlistFunnelStep, setWatchlistFunnelStep] = useState<FunnelStep>(1);
   const [manualFunnelOpen, setManualFunnelOpen] = useState(false);
@@ -1319,6 +1322,21 @@ export default function Simulator({
     return () => window.removeEventListener("heybroc-native-prefs", handleNativePrefsPush);
   }, []);
 
+  const openPostProSaveSheet = useCallback((tag: string) => {
+    if (typeof window === "undefined") return;
+    const hasToken = Boolean((window.localStorage.getItem("heybroc_auth_token") || "").trim());
+    if (hasToken) return;
+    const safeTag = (tag || "pro").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
+    const dedupKey = `heybroc_post_pro_save_prompted_${safeTag}`;
+    if (window.localStorage.getItem(dedupKey) === "1") return;
+    window.localStorage.setItem(dedupKey, "1");
+    setAuthInitialTab("signup");
+    setAuthBannerMessage("");
+    setAuthReadyHeading("Your Family Pro is active");
+    setAuthReadySubheading("Sync Pro & your Watchlist across devices.");
+    setAuthOpen(true);
+  }, []);
+
   const requestProUpgrade = useCallback(() => {
     if (isIosAppClient || detectIosAppClient()) {
       setIsIosAppClient(true);
@@ -1337,9 +1355,9 @@ export default function Simulator({
       }
       if (!authUser) {
         setAuthInitialTab("signup");
-        setAuthBannerMessage(
-          "✓ Personalized Watchlist saved! Create your free account below to sync across iPhone & Web — all 0–100 scores & 3 weekly Clean Swaps are ready right now."
-        );
+        setAuthBannerMessage("");
+        setAuthReadyHeading("Your Watchlist is ready");
+        setAuthReadySubheading("Save it and you're all set.");
         setAuthOpen(true);
         return;
       }
@@ -1737,6 +1755,7 @@ export default function Simulator({
                   ? "Pro is active on your phone! Return to the HeyBroc app to enjoy unlimited store overlays and 1-tap swaps."
                   : "Unlimited store overlays, 1-tap clean swaps & whole-cart health checks are now active.",
             });
+            let openedOto = false;
             if (!iosApp && !isPhoneCheckout && !urlOto) {
               const otoSeenKey = `heybroc_oto_seen_${urlSessionId}`;
               if (!window.localStorage.getItem(otoSeenKey)) {
@@ -1744,6 +1763,14 @@ export default function Simulator({
                 setOtoInitialPlan(urlPlan);
                 setOtoSessionId(urlSessionId);
                 setOtoModalOpen(true);
+                openedOto = true;
+              }
+            }
+            if (!isPhoneCheckout && !storedToken) {
+              if (openedOto) {
+                setPendingPostProSaveTag(urlSessionId);
+              } else {
+                openPostProSaveSheet(urlSessionId);
               }
             }
           }
@@ -2603,10 +2630,15 @@ export default function Simulator({
         title: info?.restored ? "✓ Family Pro Restored" : "🎉 Family Pro Active!",
         body: "Unlimited Clean Swaps, Live Store Bubbles & Family Watchlists are unlocked.",
       });
+      if (!info?.restored) {
+        openPostProSaveSheet(`ios_${info?.productId || "pro"}`);
+      }
     };
     win.__heybrocOpenAuthModal = (tab, banner) => {
       setAuthInitialTab(tab === "signin" ? "signin" : "signup");
       setAuthBannerMessage(banner || "");
+      setAuthReadyHeading("");
+      setAuthReadySubheading("");
       setAuthOpen(true);
     };
     return () => {
@@ -2614,7 +2646,7 @@ export default function Simulator({
       delete win.__heybrocNativeProUnlocked;
       delete win.__heybrocOpenAuthModal;
     };
-  }, [executeLiveLookup, stopCameraScanner]);
+  }, [executeLiveLookup, openPostProSaveSheet, stopCameraScanner]);
 
   const startCameraScanner = useCallback(async () => {
     setBarcodeStatus("");
@@ -3111,6 +3143,8 @@ export default function Simulator({
                 onClick={() => {
                   setAuthInitialTab("signup");
                   setAuthBannerMessage("");
+                  setAuthReadyHeading("");
+                  setAuthReadySubheading("");
                   setAuthOpen(true);
                 }}
               >
@@ -7066,9 +7100,9 @@ export default function Simulator({
           persistOnboardingSelections(selected, extras);
           setWatchlistFunnelOpen(false);
           setAuthInitialTab("signup");
-          setAuthBannerMessage(
-            "✓ Personalized Watchlist saved! Create your free account below to sync across iPhone & Web."
-          );
+          setAuthBannerMessage("");
+          setAuthReadyHeading("Your Watchlist is ready");
+          setAuthReadySubheading("Save it and you're all set.");
           setAuthOpen(true);
         }}
         onApplyAndStartTrial={(selected, extras?: OnboardingSelections) => {
@@ -7083,12 +7117,16 @@ export default function Simulator({
         onClose={() => {
           setAuthOpen(false);
           setAuthBannerMessage("");
+          setAuthReadyHeading("");
+          setAuthReadySubheading("");
         }}
         user={authUser}
         deviceId={deviceIdState}
         watchlist={watch}
         initialTab={authInitialTab}
         bannerMessage={authBannerMessage}
+        readyHeading={authReadyHeading}
+        readySubheading={authReadySubheading}
         onAuthSuccess={(loggedInUser, token) => {
           setAuthUser(loggedInUser);
           if (typeof window !== "undefined") {
@@ -7144,12 +7182,16 @@ export default function Simulator({
         }}
         onConversionComplete={({ plan, creator, trialDays }) => {
           setIsPro(true);
+          setPaywallOpen(false);
           setToast({
             title: creator
               ? `HeyBroc Family Pro Unlocked (${trialDays}-Day Free Trial)`
               : `HeyBroc Family Pro Unlocked (${plan})`,
             body: "Unlimited store overlays, 1-tap clean swaps & whole-cart health checks are now active.",
           });
+          if (!authUser) {
+            openPostProSaveSheet(`paywall_${plan}`);
+          }
         }}
         personalReferralCode={personalReferralCode}
         courtesyRefillAvailable={courtesyRefillAvailable}
@@ -7180,13 +7222,26 @@ export default function Simulator({
         }}
         onOpenLogin={() => {
           setPaywallOpen(false);
+          setAuthInitialTab("signin");
+          setAuthBannerMessage("");
+          setAuthReadyHeading("");
+          setAuthReadySubheading("");
           setAuthOpen(true);
         }}
       />
 
       <PostCheckoutOtoModal
         open={!isIosAppClient && otoModalOpen}
-        onClose={() => setOtoModalOpen(false)}
+        onClose={() => {
+          setOtoModalOpen(false);
+          if (pendingPostProSaveTag) {
+            const tag = pendingPostProSaveTag;
+            setPendingPostProSaveTag("");
+            if (!authUser) {
+              openPostProSaveSheet(tag);
+            }
+          }
+        }}
         initialPlan={otoInitialPlan}
         sessionId={otoSessionId}
         deviceId={deviceIdState}
