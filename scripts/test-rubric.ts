@@ -10865,6 +10865,246 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         mainActivityAuthKt.includes("One tap. No password needed.") &&
         mainActivityAuthKt.includes("Gravity.BOTTOM"),
     );
+
+    // ==================== PHOTO RELIABILITY, SPEED, CACHING & VARIANT ACCURACY REGRESSIONS ====================
+    {
+      const prodImgFastMod = await import("../app/api/product-image/route");
+      const catArtFastMod = await import("../lib/category-art");
+      const offIdxFastMod = await import("../lib/off-photo-index");
+      const prevFetchPhoto = globalThis.fetch;
+      const validMockJpeg = new Uint8Array(400);
+      validMockJpeg[0] = 0xff;
+      validMockJpeg[1] = 0xd8;
+      validMockJpeg[2] = 0xff;
+      validMockJpeg[3] = 0xe0;
+
+      const observedSearchQueries: string[] = [];
+      let coalesceSearchHits = 0;
+      let nonFoodSearchHits = 0;
+
+      try {
+        globalThis.fetch = async (input: RequestInfo | URL) => {
+          const u = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+          if (/images\.openfoodfacts\.(?:org|net)\//i.test(u)) {
+            return new Response(validMockJpeg, {
+              status: 200,
+              headers: { "content-type": "image/jpeg", "content-length": String(validMockJpeg.byteLength) },
+            });
+          }
+          if (u.includes("search.openfoodfacts.org/search")) {
+            const parsed = new URL(u);
+            const q = (parsed.searchParams.get("q") || "").toLowerCase();
+            observedSearchQueries.push(q);
+            if (q.includes("claveles") || q.includes("shears") || q.includes("quesadilla maker")) {
+              nonFoodSearchHits += 1;
+              return Response.json({ hits: [] });
+            }
+            if (q.includes("galbani") && q.includes("mozzarella")) {
+              return Response.json({
+                hits: [
+                  {
+                    code: "0074030101014",
+                    product_name: "Galbani Part Skim Mozzarella Cheese",
+                    brands: "Galbani",
+                    image_front_url:
+                      "https://images.openfoodfacts.org/images/products/007/403/010/1014/front_en.3.400.jpg",
+                  },
+                ],
+              });
+            }
+            if (q.includes("kix") && q.includes("cereal")) {
+              return Response.json({
+                hits: [
+                  {
+                    code: "0016000275157",
+                    product_name: "General Mills Kix Corn Cereal",
+                    brands: "General Mills",
+                    image_front_url:
+                      "https://images.openfoodfacts.org/images/products/001/600/027/5157/front_en.10.400.jpg",
+                  },
+                ],
+              });
+            }
+            if (q.includes("coalescetest")) {
+              coalesceSearchHits += 1;
+              await new Promise((resolve) => setTimeout(resolve, 45));
+              return Response.json({
+                hits: [
+                  {
+                    code: "0099988877711",
+                    product_name: "CoalesceTest Artisan Cheddar Cheese",
+                    brands: "CoalesceTest",
+                    image_front_url:
+                      "https://images.openfoodfacts.org/images/products/009/998/887/7711/front_en.3.400.jpg",
+                  },
+                ],
+              });
+            }
+            return Response.json({ hits: [] });
+          }
+          return Response.json({ status: 0, hits: [], products: [] });
+        };
+
+        // 1. Pseudo-brand ("Category Estimate") must NOT poison brand matching
+        const galbaniRes = await prodImgFastMod.GET(
+          new Request(
+            "https://www.heybroc.com/api/product-image?title=" +
+              encodeURIComponent("Galbani Italian Style Part Skim Mozzarella") +
+              "&brand=" +
+              encodeURIComponent("Dairy Cheese (Category Estimate — Verify Package Label)") +
+              "&fallback=404",
+            { headers: { "x-forwarded-for": "10.220.1.1" } },
+          ),
+        );
+
+        // 2. Retail multipack fluff ("Bulk Bag 4/25 oz") stripped before OFF query & Edge CDN cache headers emitted
+        const kixRes = await prodImgFastMod.GET(
+          new Request(
+            "https://www.heybroc.com/api/product-image?title=" +
+              encodeURIComponent("Kix Cereal Bulk Bag 4/25 oz") +
+              "&fallback=404",
+            { headers: { "x-forwarded-for": "10.220.1.2" } },
+          ),
+        );
+        const kixQueryCleaned = observedSearchQueries.some(
+          (q) => q.includes("kix") && !q.includes("4/25") && !q.includes("bulk"),
+        );
+
+        // 3. Concurrent in-flight coalescing avoids duplicate OFF round-trips
+        const [coalA, coalB] = await Promise.all([
+          prodImgFastMod.GET(
+            new Request(
+              "https://www.heybroc.com/api/product-image?title=" +
+                encodeURIComponent("CoalesceTest Artisan Cheddar") +
+                "&fallback=404",
+              { headers: { "x-forwarded-for": "10.220.1.3" } },
+            ),
+          ),
+          prodImgFastMod.GET(
+            new Request(
+              "https://www.heybroc.com/api/product-image?title=" +
+                encodeURIComponent("CoalesceTest Artisan Cheddar") +
+                "&fallback=404",
+              { headers: { "x-forwarded-for": "10.220.1.4" } },
+            ),
+          ),
+        ]);
+
+        // 4. Non-food / kitchenware items short-circuit immediately with 0 upstream OFF calls and no studio art
+        const shearsRes = await prodImgFastMod.GET(
+          new Request(
+            "https://www.heybroc.com/api/product-image?title=" +
+              encodeURIComponent("3 Claveles Prof Professional Shears") +
+              "&fallback=404",
+            { headers: { "x-forwarded-for": "10.220.1.5" } },
+          ),
+        );
+        const makerRes = await prodImgFastMod.GET(
+          new Request(
+            "https://www.heybroc.com/api/product-image?title=" +
+              encodeURIComponent("Mymini 550W Street Taco Quesadilla Maker") +
+              "&fallback=404",
+            { headers: { "x-forwarded-for": "10.220.1.6" } },
+          ),
+        );
+
+        // 5. OFF photo index strips Category Estimate pseudo-brand too
+        const idxHeinz = offIdxFastMod.lookupOffPhotoIndexSync({
+          title: "Heinz Tomato Ketchup",
+          brand: "Condiments (Category Estimate — Verify Package Label)",
+        });
+
+        check(
+          "Photo reliability & speed API: strips Category-Estimate pseudo-brands (Galbani Mozzarella 200), cleans retail multipack fluff (Kix 4/25 oz 200 + CDN-Cache-Control), coalesces concurrent OFF fetches (1 upstream call for 2 concurrent requests), and short-circuits non-food/kitchenware with 0 OFF fetches",
+          galbaniRes.status === 200 &&
+            galbaniRes.headers.get("content-type") === "image/jpeg" &&
+            Boolean(galbaniRes.headers.get("cdn-cache-control")?.includes("s-maxage=604800")) &&
+            kixRes.status === 200 &&
+            kixRes.headers.get("content-type") === "image/jpeg" &&
+            kixQueryCleaned &&
+            coalA.status === 200 &&
+            coalB.status === 200 &&
+            coalesceSearchHits === 1 &&
+            shearsRes.status === 404 &&
+            makerRes.status === 404 &&
+            nonFoodSearchHits === 0 &&
+            catArtFastMod.isLikelyNonFoodOrAppliance("3 Claveles Prof Professional Shears") === true &&
+            catArtFastMod.resolveCategoryStudioArt({ title: "3 Claveles Prof Professional Shears" }) === null &&
+            catArtFastMod.resolveCategoryStudioArt({ title: "Boulder Canyon Avocado Oil Kettle Chips Sea Salt" }) === "/swaps/chips.jpg" &&
+            catArtFastMod.resolveCategoryStudioArt({ title: "Favorite Day Cookies & Cream Ice Cream" }) === "/swaps/icecream.png" &&
+            catArtFastMod.resolveCategoryStudioArt({ title: "Cinnamon Toast Crunch Cereal" }) === "/swaps/cereal.jpg" &&
+            Boolean(idxHeinz && idxHeinz.imageUrl.includes("openfoodfacts.org")),
+        );
+      } finally {
+        globalThis.fetch = prevFetchPhoto;
+      }
+
+      const fsPhoto = await import("node:fs");
+      const safeBmpKt = fsPhoto.readFileSync(
+        "android-app/app/src/main/java/com/cleancart/overlay/SafeBitmapLoader.kt",
+        "utf8",
+      );
+      const scanStoreKt = fsPhoto.readFileSync(
+        "android-app/app/src/main/java/com/cleancart/overlay/ScanHistoryStore.kt",
+        "utf8",
+      );
+      const mainActKt = fsPhoto.readFileSync(
+        "android-app/app/src/main/java/com/cleancart/overlay/MainActivity.kt",
+        "utf8",
+      );
+      const liveBrowserKt = fsPhoto.readFileSync(
+        "android-app/app/src/main/java/com/cleancart/overlay/LiveStoreBrowserActivity.kt",
+        "utf8",
+      );
+      const overlaySvcKt = fsPhoto.readFileSync(
+        "android-app/app/src/main/java/com/cleancart/overlay/OverlayWindowService.kt",
+        "utf8",
+      );
+      const iosShortcutsSwift = fsPhoto.readFileSync("ios-app/App/HeyBrocShortcuts.swift", "utf8");
+      const iosBrowserSwift = fsPhoto.readFileSync("ios-app/App/LiveStoreBrowserViewController.swift", "utf8");
+
+      const verifiedOffBlockStart = scanStoreKt.indexOf("private val VERIFIED_OFF_IMAGES");
+      const verifiedOffBlockEnd = scanStoreKt.indexOf("private val REVOKED_OFF_IMAGE_RE", verifiedOffBlockStart);
+      const verifiedOffBlock =
+        verifiedOffBlockStart >= 0 && verifiedOffBlockEnd > verifiedOffBlockStart
+          ? scanStoreKt.slice(verifiedOffBlockStart, verifiedOffBlockEnd)
+          : "";
+
+      check(
+        "Android & iOS photo pipeline hardening: persistent OFF/HeyBroc-only disk cache + DNS cache + in-flight dedupe, revoked Organic Valley Milk / Applegate mismatches removed, Boulder Canyon malt-vinegar guard, studio art fallback, priority pool + viewport lazy-loading + /api/product-image deduplication",
+        safeBmpKt.includes("heybroc_img_v1") &&
+          safeBmpKt.includes("isDiskCacheableUrl") &&
+          safeBmpKt.includes("verifiedHostCache") &&
+          safeBmpKt.includes("inFlightLocks") &&
+          safeBmpKt.includes("getCachedMemoryBitmap") &&
+          safeBmpKt.includes("isPublicRoutableAddress") &&
+          !verifiedOffBlock.includes("009/396/600/6469") &&
+          !verifiedOffBlock.includes("022/517/201/1436") &&
+          scanStoreKt.includes("009/396/600/6469") &&
+          scanStoreKt.includes("022/517/201/1436") &&
+          scanStoreKt.includes("fun resolveCategoryStudioArt") &&
+          scanStoreKt.includes("fun sanitizeApiBrand") &&
+          scanStoreKt.includes('remove("storeImageUrl")') &&
+          mainActKt.includes("SafeBitmapLoader.init(applicationContext)") &&
+          mainActKt.includes("PriorityBlockingQueue") &&
+          mainActKt.includes("imageRenderEpoch") &&
+          mainActKt.includes("deferredThumbLoaders") &&
+          mainActKt.includes("triggerVisibleDeferredThumbnails") &&
+          mainActKt.includes('primaryUrl.contains("/api/product-image")') &&
+          mainActKt.includes("ScanHistoryStore.resolveCategoryStudioArt") &&
+          liveBrowserKt.includes("SafeBitmapLoader.init(applicationContext)") &&
+          liveBrowserKt.includes("Executors.newFixedThreadPool(4)") &&
+          liveBrowserKt.includes('bestUrl.contains("/api/product-image")') &&
+          liveBrowserKt.includes("ScanHistoryStore.resolveCategoryStudioArt") &&
+          overlaySvcKt.includes("SafeBitmapLoader.init(applicationContext)") &&
+          overlaySvcKt.includes("Executors.newFixedThreadPool(4)") &&
+          overlaySvcKt.includes('fullUrl.contains("/api/product-image")') &&
+          overlaySvcKt.includes("ScanHistoryStore.resolveCategoryStudioArt") &&
+          iosShortcutsSwift.includes("sanitizeApiBrand") &&
+          iosShortcutsSwift.includes("isLikelyNonFoodQuery") &&
+          iosBrowserSwift.includes("alreadyHasProductImageEndpoint"),
+      );
+    }
   }
 
   console.log("Checks executed:", checks);

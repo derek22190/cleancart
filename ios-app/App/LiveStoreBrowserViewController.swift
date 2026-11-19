@@ -3864,7 +3864,9 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
                 appendCandidate(directImg, isIllustration: false)
             }
         }
-        if let apiLookupImg = HeyBrocNativeScannerAPI.productImageEndpointURL(title: title, brand: brand, barcode: barcode) {
+        let alreadyHasProductImageEndpoint = candidates.contains { $0.url.contains("/api/product-image") }
+        if !alreadyHasProductImageEndpoint,
+           let apiLookupImg = HeyBrocNativeScannerAPI.productImageEndpointURL(title: title, brand: brand, barcode: barcode) {
             appendCandidate(apiLookupImg, isIllustration: false)
         }
         if let catArt = HeyBrocNativeScannerAPI.normalizeProductArtURL(categoryArtUrl) {

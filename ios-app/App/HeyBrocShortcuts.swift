@@ -410,11 +410,46 @@ enum HeyBrocNativeScannerAPI {
         return trimmed.hasPrefix("/swaps/") || trimmed.contains("heybroc.com/swaps/")
     }
 
+    private static func sanitizeApiBrand(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        let lower = trimmed.lowercased()
+        let placeholderBrands: Set<String> = [
+            "generic", "unknown", "grocery", "fresh produce", "usda",
+            "n/a", "none", "unbranded", "store brand", "assorted", "various"
+        ]
+        if placeholderBrands.contains(lower) { return "" }
+        if lower.contains("category estimate")
+            || lower.contains("representative formulation")
+            || lower.contains("verify package label")
+            || lower.contains("verify label")
+            || lower.contains("typical formulation") {
+            return ""
+        }
+        return trimmed
+    }
+
+    private static func isLikelyNonFoodQuery(_ title: String) -> Bool {
+        let lower = title.lowercased()
+        let nonFoodKeywords = [
+            "kitchen shears", "professional shears", "poultry shears", "3 claveles", "claveles prof",
+            "scissors", "quesadilla maker", "waffle maker", "toaster oven", "air fryer",
+            "coffee maker", "food processor", "stand mixer", "electric kettle", "rice cooker",
+            "pressure cooker", "slow cooker", "cookware", "bakeware", "knife set", "cutting board",
+            "can opener", "paper towels", "toilet paper", "trash bags", "laundry detergent",
+            "dish soap", "shampoo", "conditioner", "toothpaste", "deodorant", "diapers"
+        ]
+        return nonFoodKeywords.contains { lower.contains($0) }
+    }
+
     static func productImageEndpointURL(title: String, brand: String, barcode: String) -> String? {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let cleanBrand = brand.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanBrand = sanitizeApiBrand(brand)
         let cleanCode = barcode.filter { $0.isNumber }
         guard !cleanTitle.isEmpty || cleanCode.count >= 8 else { return nil }
+        if cleanCode.count < 8 && isLikelyNonFoodQuery(cleanTitle) {
+            return nil
+        }
         var comps = URLComponents(string: "https://www.heybroc.com/api/product-image")
         var items: [URLQueryItem] = []
         if cleanCode.count >= 8 {

@@ -14,10 +14,17 @@
 export type ImageKind = "photo" | "store-photo" | "category-art" | "none";
 
 const NON_FOOD_OR_APPLIANCE_RE =
-  /\b(?:\d{2,4}\s*w\b|watts?\b|quesadilla\s+maker|waffle\s+maker|coffee\s+maker|espresso\s+machine|air\s+fryer|slow\s+cooker|pressure\s+cooker|rice\s+cooker|toaster(?:\s+oven)?(?!\s+pastr(?:y|ies))|blender|food\s+processor|stand\s+mixer|hand\s+mixer|microwave|electric\s+kettle|griddle|skillet|frying\s+pan|saucepan|cookware|bakeware|spatula|tongs|cutting\s+board|storage\s+containers?|food\s+wrap|aluminum\s+foil|parchment\s+paper|zip\s*top\s+bags?|freezer\s+bags?|trash\s+bags?|garbage\s+bags?|paper\s+towels?|toilet\s+paper|bath\s+tissue|facial\s+tissue|napkins|paper\s+plates|plastic\s+cups|laundry\s+detergent|fabric\s+softener|dryer\s+sheets?|dish\s+soap|dishwasher\s+pods?|bleach|disinfectant|surface\s+cleaner|glass\s+cleaner|sponges?|shampoo|conditioner|body\s+wash|face\s+wash|cleanser|moisturizer|lotion|sunscreen|spf\s*\d+|deodorant|antiperspirant|toothpaste|mouthwash|dental\s+floss|toothbrush|razors?|shaving\s+cream|diapers?|baby\s+wipes|tampons?|sanitary\s+pads?|cat\s+litter|dog\s+toy|pet\s+bed|collar|leash|alkaline\s+batter(?:y|ies)|aa\s+batteries|aaa\s+batteries|usb[- ]?c|charging\s+cable|light\s+bulbs?|candles?|air\s+freshener)\b/i;
+  /\b(?:\d{2,4}\s*w\b|watts?\b|quesadilla\s+maker|waffle\s+maker|coffee\s+maker|espresso\s+machine|air\s+fryer|slow\s+cooker|pressure\s+cooker|rice\s+cooker|toaster(?:\s+oven)?(?!\s+pastr(?:y|ies))|blender|food\s+processor|stand\s+mixer|hand\s+mixer|microwave|electric\s+kettle|griddle|skillet|frying\s+pan|saucepan|cookware|bakeware|spatula|tongs|cutting\s+board|3\s+claveles|claveles\s+prof|kitchen\s+shears?|poultry\s+shears?|scissors?|shears?|cutlery|chef'?s?\s+knif(?:e|es)|paring\s+knif(?:e|es)|steak\s+knif(?:e|es)|bread\s+knif(?:e|es)|utility\s+knif(?:e|es)|boning\s+knif(?:e|es)|fillet\s+knif(?:e|es)|knife\s+set|knife\s+sharpener|meat\s+cleaver|peeler|box\s+grater|cheese\s+grater|colander|strainer|can\s+opener|bottle\s+opener|corkscrew|meat\s+thermometer|kitchen\s+scale|measuring\s+cups?|measuring\s+spoons?|mixing\s+bowls?|baking\s+sheet|muffin\s+pan|loaf\s+pan|whisk|storage\s+containers?|food\s+wrap|aluminum\s+foil|parchment\s+paper|zip\s*top\s+bags?|freezer\s+bags?|trash\s+bags?|garbage\s+bags?|paper\s+towels?|toilet\s+paper|bath\s+tissue|facial\s+tissue|napkins|paper\s+plates|plastic\s+cups|laundry\s+detergent|fabric\s+softener|dryer\s+sheets?|dish\s+soap|dishwasher\s+pods?|bleach|disinfectant|surface\s+cleaner|glass\s+cleaner|sponges?|shampoo|conditioner|body\s+wash|face\s+wash|cleanser|moisturizer|lotion|sunscreen|spf\s*\d+|deodorant|antiperspirant|toothpaste|mouthwash|dental\s+floss|toothbrush|razors?|shaving\s+cream|diapers?|baby\s+wipes|tampons?|sanitary\s+pads?|cat\s+litter|dog\s+toy|pet\s+bed|collar|leash|alkaline\s+batter(?:y|ies)|aa\s+batteries|aaa\s+batteries|usb[- ]?c|charging\s+cable|light\s+bulbs?|candles?|air\s+freshener)\b/i;
 
 const FOOD_INGREDIENT_SIGNAL_RE =
   /\b(?:water|sugar|salt|flour|milk|cream|oil|butter|corn|wheat|rice|oats?|soy|cocoa|chocolate|cheese|egg|chicken|beef|pork|turkey|tomato|citric\s+acid|natural\s+flavors?|vinegar|spices?|yeast|honey|syrup|juice|tea|coffee|beans?|peanuts?|almonds?|cashews?)\b/i;
+
+export function isLikelyNonFoodOrAppliance(title?: string | null, ingredients?: string | null): boolean {
+  const cleanTitle = (title || "").trim();
+  if (!cleanTitle) return false;
+  const cleanIngredients = (ingredients || "").trim();
+  return NON_FOOD_OR_APPLIANCE_RE.test(cleanTitle) && !FOOD_INGREDIENT_SIGNAL_RE.test(cleanIngredients);
+}
 
 /**
  * Ordered high-specificity Open Food Facts `categories_tags` rules -> `/swaps/<studio-file>`.
@@ -123,10 +130,9 @@ const TITLE_TO_STUDIO_ART: ReadonlyArray<readonly [RegExp, string]> = [
   [/\b(?:mustard|dijon)\b/i, "/swaps/mustard.png"],
   [/\b(?:bbq\s+sauce|barbecue\s+sauce|steak\s+sauce|teriyaki\s+sauce|soy\s+sauce|tamari|worcestershire)\b/i, "/swaps/bbq.png"],
   [/\b(?:hot\s+sauce|sriracha|tabasco|cholula|frank'?s\s+redhot|buffalo\s+sauce|relish|pickles?|olives?\b|wasabi|sauerkraut|kimchi|horseradish|tartar\s+sauce|cocktail\s+sauce)\b/i, "/swaps/condiments.png"],
-  [/\b(?:olive\s+oil|avocado\s+oil|coconut\s+oil|canola\s+oil|vegetable\s+oil|sesame\s+oil|cooking\s+spray|apple\s+cider\s+vinegar|balsamic\s+vinegar|white\s+vinegar)\b/i, "/swaps/oil-vinegar.png"],
-  [/\b(?:seasoning|spice|cinnamon|paprika|turmeric|cumin|oregano|garlic\s+powder|onion\s+powder|black\s+pepper|sea\s+salt|pink\s+salt|taco\s+seasoning|vanilla\s+extract)\b/i, "/swaps/spices.png"],
   [/\b(?:jam\b|jelly\b|(?:fruit|strawberry|raspberry|blueberry|berry|apricot|grape|fig)\s+spread|preserves|marmalade|uncrustables?)\b/i, "/swaps/jam.png"],
   [/\b(?:maple\s+syrup|pancake\s+syrup|agave\s+nectar|\bhoney\b)\b/i, "/swaps/syrup.png"],
+  [/\b(?:ice\s+cream|gelato|sorbet|sherbet|frozen\s+dessert|popsicles?|ice\s+bars?)\b/i, "/swaps/icecream.png"],
   [/\b(?:popcorn|kettle\s+corn|skinny\s*pop|smartfood|boomchickapop)\b/i, "/swaps/popcorn.png"],
   [/\b(?:tortilla\s+chips?|potato\s+chips?|kettle\s+chips?|corn\s+chips?|veggie\s+straws?|pita\s+chips?|plantain\s+chips?|french\s+fries|crinkle\s+fries|golden\s+crinkles|tater\s+tots?|hash\s*browns?|doritos|fritos|cheetos|pringles|lay'?s|ruffles|tostitos|takis|siete.*chips?|\bchips\b)\b/i, "/swaps/chips.jpg"],
   [/\b(?:crackers?|rice\s+cakes?|goldfish|cheez[- ]?it|ritz|triscuit|wheat\s+thins|saltines|graham\s+crackers?|pretzels?)\b/i, "/swaps/crackers.jpg"],
@@ -144,12 +150,13 @@ const TITLE_TO_STUDIO_ART: ReadonlyArray<readonly [RegExp, string]> = [
   [/\b(?:croissants?|muffins?|cupcakes?|cakes?\b|snack\s+cakes?|donuts?|doughnuts?|bismarks?|danish|cinnamon\s+rolls?|pastr(?:y|ies)|pie\s+crust|pop[- ]?tarts?|toaster\s+pastr(?:y|ies))\b/i, "/swaps/bakery.png"],
   [/\b(?:bread|sourdough|english\s+muffins?|baguette|ciabatta|ezekiel)\b/i, "/swaps/bread.jpg"],
   [/\b(?:yogurt|yoghurt|greek\s+yogurt|sour\s+cream|skyr|kefir|chobani|yoplait|fage|siggi'?s|stonyfield)\b/i, "/swaps/yogurt.jpg"],
-  [/\b(?:ice\s+cream|gelato|sorbet|sherbet|frozen\s+dessert|popsicles?|ice\s+bars?)\b/i, "/swaps/icecream.png"],
   [/\b(?:butter|buttery\s+spread|margarine|ghee|kerrygold|country\s+crock|earth\s+balance)\b/i, "/swaps/butter.jpg"],
   [/\b(?:cheese|mozzarella|cheddar|parmesan|provolone|gouda|swiss\s+cheese|brie|feta|ricotta|cottage\s+cheese|cream\s+cheese|string\s+cheese|kraft\s+singles)\b/i, "/swaps/cheese.png"],
   [/\b(?:milk|oatmilk|oat\s+milk|oat\s+beverage|almondmilk|almond\s+milk|almond\s+beverage|soymilk|soy\s+milk|soy\s+beverage|coconutmilk|coconut\s+milk|coconut\s+beverage|eggnog|heavy\s+(?:whipping\s+)?cream|whipping\s+cream|lactaid|fairlife)\b/i, "/swaps/milk.png"],
   [/\b(?:eggs?|pasture[- ]?raised\s+eggs?|egg\s+whites?|liquid\s+egg)\b/i, "/swaps/eggs.png"],
   [/\b(?:pasta|spaghetti|penne|rotini|fusilli|fettuccine|linguine|macaroni|rigatoni|orzo|gnocchi|ramen|noodles?)\b/i, "/swaps/pasta.png"],
+  [/\b(?:olive\s+oil|avocado\s+oil|coconut\s+oil|canola\s+oil|vegetable\s+oil|sesame\s+oil|cooking\s+spray|apple\s+cider\s+vinegar|balsamic\s+vinegar|white\s+vinegar)\b/i, "/swaps/oil-vinegar.png"],
+  [/\b(?:seasoning|spice|cinnamon|paprika|turmeric|cumin|oregano|garlic\s+powder|onion\s+powder|black\s+pepper|sea\s+salt|pink\s+salt|taco\s+seasoning|vanilla\s+extract)\b/i, "/swaps/spices.png"],
   [/\b(?:black\s+beans?|pinto\s+beans?|kidney\s+beans?|garbanzo|chickpeas?|lentils?|refried\s+beans?|baked\s+beans?|quinoa|brown\s+rice|jasmine\s+rice|basmati\s+rice|white\s+rice|couscous|farro|barley|flour|cornmeal)\b/i, "/swaps/beans-grains.png"],
   [/\b(?:applesauce|fruit\s+crisps?|apples?|peaches?|pears?|plums?|pineapples?|mangos?|mangoes|bananas?|strawberries|blueberries|raspberries|blackberries|grapes?|oranges?|lemons?|limes?|avocados?|tomato(?:es)?|diced\s+tomatoes|corn\b|vegetables?|salad\s+kit|\bsalad\b|spinach|lettuce|romaine|kale|chard|arugula|broccoli|cauliflower|carrots?|potato(?:es)?|sweet\s+potato(?:es)?|onions?|garlic|peppers?|cucumbers?|celery|mushrooms?|berries|produce)\b/i, "/swaps/produce.png"],
 ];
@@ -189,7 +196,7 @@ export function resolveCategoryStudioArt(params: {
   const ingredients = (params.ingredients || "").trim();
 
   // Reject appliances, cookware, paper goods, personal care, and household items unless real food ingredients are present
-  if (NON_FOOD_OR_APPLIANCE_RE.test(title) && !FOOD_INGREDIENT_SIGNAL_RE.test(ingredients)) {
+  if (isLikelyNonFoodOrAppliance(title, ingredients)) {
     return null;
   }
 

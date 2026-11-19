@@ -57,6 +57,7 @@ import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import android.graphics.Rect
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -64,6 +65,10 @@ import java.net.URL
 import java.security.SecureRandom
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
+import java.util.concurrent.PriorityBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * 4-Tab HeyBroc Android App:
@@ -75,6 +80,24 @@ import java.util.concurrent.Executors
  */
 class MainActivity : Activity() {
 
+    private class PriorityImageTask(
+        val priority: Int,
+        val seq: Int,
+        private val block: () -> Unit
+    ) : Runnable, Comparable<PriorityImageTask> {
+        override fun run() = block()
+        override fun compareTo(other: PriorityImageTask): Int {
+            val cmp = priority.compareTo(other.priority)
+            return if (cmp != 0) cmp else seq.compareTo(other.seq)
+        }
+    }
+
+    private data class DeferredThumbLoader(
+        val view: View,
+        val epoch: Int,
+        val trigger: () -> Unit
+    )
+
     private lateinit var rootFrame: FrameLayout
     private lateinit var topBarContainer: LinearLayout
     private lateinit var contentScroll: ScrollView
@@ -85,10 +108,28 @@ class MainActivity : Activity() {
     private val io = Executors.newSingleThreadExecutor()
     private var activeAuthDialog: AlertDialog? = null
     private var activeFunnelDialog: AlertDialog? = null
-    private val imgExecutor = Executors.newFixedThreadPool(4)
+    private val imgExecutor = ThreadPoolExecutor(
+        6,
+        6,
+        30L,
+        TimeUnit.SECONDS,
+        PriorityBlockingQueue<Runnable>(32, Comparator<Runnable> { a, b ->
+            val pa = (a as? PriorityImageTask)?.priority ?: Int.MAX_VALUE
+            val pb = (b as? PriorityImageTask)?.priority ?: Int.MAX_VALUE
+            val cmp = pa.compareTo(pb)
+            if (cmp != 0) cmp
+            else ((a as? PriorityImageTask)?.seq ?: 0).compareTo((b as? PriorityImageTask)?.seq ?: 0)
+        })
+    ).apply { allowCoreThreadTimeOut(true) }
     private val suggestExecutor = Executors.newSingleThreadExecutor()
     private val bmpCache = SafeBitmapLoader.createBitmapLruCache(8 * 1024)
     private val mainHandler = Handler(Looper.getMainLooper())
+    @Volatile
+    private var imageRenderEpoch = 0
+    private val imageTaskSeq = AtomicInteger(0)
+    private val deferredThumbLoaders = ArrayList<DeferredThumbLoader>()
+    private val scrollVisibleRect = Rect()
+    private val thumbScreenLoc = IntArray(2)
 
     private var activeTab = 0 // 0 = Scans, 1 = Top Picks, 2 = Swaps, 3 = Search
     private var historyFavoritesOnly = false
@@ -154,6 +195,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        SafeBitmapLoader.init(applicationContext)
 
         rootFrame = FrameLayout(this).apply {
             setBackgroundColor(Color.WHITE)
@@ -193,6 +235,9 @@ class MainActivity : Activity() {
                 1f
             )
             addView(tabContentContainer)
+            setOnScrollChangeListener { _, _, _, _, _ ->
+                triggerVisibleDeferredThumbnails()
+            }
         }
         mainVertical.addView(contentScroll)
 
@@ -540,6 +585,8 @@ class MainActivity : Activity() {
     }
 
     private fun renderScreen() {
+        imageRenderEpoch++
+        deferredThumbLoaders.clear()
         renderTopBar()
         renderBottomNav()
         tabContentContainer.removeAllViews()
@@ -552,6 +599,7 @@ class MainActivity : Activity() {
             2 -> renderRecsTab()
             3 -> renderSearchAndPrefsTab()
         }
+        contentScroll.post { triggerVisibleDeferredThumbnails() }
     }
 
     private fun renderTopBar() {
@@ -1142,7 +1190,7 @@ class MainActivity : Activity() {
         }
 
         items.forEachIndexed { idx, item ->
-            tabContentContainer.addView(buildYukaHistoryRow(item))
+            tabContentContainer.addView(buildYukaHistoryRow(item, idx))
             if (idx < items.lastIndex) {
                 tabContentContainer.addView(View(this).apply {
                     setBackgroundColor(0xFFEEEEEE.toInt())
@@ -1153,11 +1201,13 @@ class MainActivity : Activity() {
     }
 
     /** Product row: Left product image, Right Title + Brand + ● Rating + 🕒 time ago, + ★ Star. */
-    private fun buildYukaHistoryRow(item: JSONObject): View {
+    private fun buildYukaHistoryRow(item: JSONObject, rowIndex: Int = 0): View {
         val prod = item.optJSONObject("product")
         val res = item.optJSONObject("result")
         val title = ScanHistoryStore.extractTitle(item)
         val brand = prod?.optString("brand").orEmpty().ifBlank { item.optString("brand") }
+        val category = prod?.optString("category").orEmpty().ifBlank { item.optString("category") }
+        val ingredients = prod?.optString("ingredients").orEmpty()
         val barcode = prod?.optString("barcode").orEmpty()
             .ifBlank { item.optJSONObject("lookup")?.optString("barcode").orEmpty() }
         val imgUrl = prod?.optString("imageUrl").orEmpty().ifBlank { item.optString("imageUrl") }
@@ -1178,7 +1228,22 @@ class MainActivity : Activity() {
         }
 
         // Left Product Bottle/Box Image (68dp x 82dp on clean white)
-        row.addView(buildProductImageBox(imgUrl, title, dp(68), dp(82), brand, barcode, storeImgUrl, catArtUrl).apply {
+        val imgPriority = if (rowIndex < 10) rowIndex else 20 + rowIndex
+        row.addView(buildProductImageBox(
+            imgUrl = imgUrl,
+            title = title,
+            wPx = dp(68),
+            hPx = dp(82),
+            brand = brand,
+            code = barcode,
+            storeImageUrl = storeImgUrl,
+            categoryArtUrl = catArtUrl,
+            category = category,
+            ingredients = ingredients,
+            priority = imgPriority,
+            deferUntilVisible = rowIndex >= 10,
+            cancelOnTabEpoch = true
+        ).apply {
             layoutParams = LinearLayout.LayoutParams(dp(68), dp(82)).apply { marginEnd = dp(16) }
         })
 
@@ -1262,9 +1327,9 @@ class MainActivity : Activity() {
             setPadding(dp(14), dp(8), dp(14), dp(16))
         }
 
-        allItems.forEach { badItem ->
-            val swapObj = badItem.optJSONObject("swap") ?: return@forEach
-            listWrap.addView(buildYukaSideBySideSwapRow(badItem, swapObj))
+        allItems.forEachIndexed { idx, badItem ->
+            val swapObj = badItem.optJSONObject("swap") ?: return@forEachIndexed
+            listWrap.addView(buildYukaSideBySideSwapRow(badItem, swapObj, idx))
         }
 
         tabContentContainer.addView(listWrap)
@@ -1295,11 +1360,13 @@ class MainActivity : Activity() {
         else -> "Walmart"
     }
 
-    private fun buildYukaSideBySideSwapRow(badItem: JSONObject, swapObj: JSONObject): View {
+    private fun buildYukaSideBySideSwapRow(badItem: JSONObject, swapObj: JSONObject, rowIndex: Int = 0): View {
         val prod = badItem.optJSONObject("product")
         val res = badItem.optJSONObject("result")
         val badTitle = ScanHistoryStore.extractTitle(badItem)
         val badBrand = prod?.optString("brand").orEmpty().ifBlank { badItem.optString("brand") }
+        val badCategory = prod?.optString("category").orEmpty().ifBlank { badItem.optString("category") }
+        val badIngredients = prod?.optString("ingredients").orEmpty()
         val badBarcode = prod?.optString("barcode").orEmpty()
         val badImg = prod?.optString("imageUrl").orEmpty().ifBlank { badItem.optString("imageUrl") }
         val badStoreImg = prod?.optString("storeImageUrl").orEmpty()
@@ -1312,11 +1379,14 @@ class MainActivity : Activity() {
 
         val swapTitle = swapObj.optString("title", "Clean Swap")
         val swapBrand = swapObj.optString("brand", "Clean Pick")
+        val swapIngredients = swapObj.optString("ingredients", "")
         val swapBarcode = swapObj.optString("barcode", "")
         val swapScore = swapObj.optInt("score", 0)
         val swapImg = swapObj.optString("imageUrl", "")
         val swapCatArt = swapObj.optString("categoryArtUrl", "")
         val swapRating = ratingForScore(swapScore)
+        val deferRow = rowIndex >= 8
+        val basePriority = if (rowIndex < 8) rowIndex * 2 else 20 + rowIndex * 2
 
         val outerFrame = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(
@@ -1352,7 +1422,21 @@ class MainActivity : Activity() {
         val leftTopBox = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(104))
         }
-        leftTopBox.addView(buildProductImageBox(badImg, badTitle, dp(76), dp(96), badBrand, badBarcode, badStoreImg, badCatArt).apply {
+        leftTopBox.addView(buildProductImageBox(
+            imgUrl = badImg,
+            title = badTitle,
+            wPx = dp(76),
+            hPx = dp(96),
+            brand = badBrand,
+            code = badBarcode,
+            storeImageUrl = badStoreImg,
+            categoryArtUrl = badCatArt,
+            category = badCategory,
+            ingredients = badIngredients,
+            priority = basePriority,
+            deferUntilVisible = deferRow,
+            cancelOnTabEpoch = true
+        ).apply {
             layoutParams = FrameLayout.LayoutParams(dp(76), dp(96), Gravity.CENTER)
         })
         // Red ✕ circle badge in top-left of image
@@ -1457,7 +1541,21 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(104))
         }
         if (swapUnlocked) {
-            rightTopBox.addView(buildProductImageBox(swapImg, swapTitle, dp(76), dp(96), swapBrand, swapBarcode, "", swapCatArt).apply {
+            rightTopBox.addView(buildProductImageBox(
+                imgUrl = swapImg,
+                title = swapTitle,
+                wPx = dp(76),
+                hPx = dp(96),
+                brand = swapBrand,
+                code = swapBarcode,
+                storeImageUrl = "",
+                categoryArtUrl = swapCatArt,
+                category = badCategory,
+                ingredients = swapIngredients,
+                priority = basePriority + 1,
+                deferUntilVisible = deferRow,
+                cancelOnTabEpoch = true
+            ).apply {
                 layoutParams = FrameLayout.LayoutParams(dp(76), dp(96), Gravity.CENTER)
             })
         } else {
@@ -1617,7 +1715,7 @@ class MainActivity : Activity() {
                 .sortedByDescending { it.optJSONObject("result")?.optInt("score") ?: 0 }
 
             catItems.forEachIndexed { i, item ->
-                tabContentContainer.addView(buildYukaHistoryRow(item))
+                tabContentContainer.addView(buildYukaHistoryRow(item, i))
                 if (i < catItems.lastIndex) {
                     tabContentContainer.addView(View(this).apply {
                         setBackgroundColor(0xFFEEEEEE.toInt())
@@ -6240,7 +6338,12 @@ class MainActivity : Activity() {
         brand: String = "",
         code: String = "",
         storeImageUrl: String = "",
-        categoryArtUrl: String = ""
+        categoryArtUrl: String = "",
+        category: String = "",
+        ingredients: String = "",
+        priority: Int = 0,
+        deferUntilVisible: Boolean = false,
+        cancelOnTabEpoch: Boolean = false
     ): FrameLayout {
         val box = FrameLayout(this)
         val initial = ScanHistoryStore.brandInitial(title, brand)
@@ -6275,18 +6378,40 @@ class MainActivity : Activity() {
         }
         box.addView(illustrationBadge)
 
-        val fallbackApiUrl = ScanHistoryStore.productImageApiFallbackUrl(title, brand, code)
         val primaryUrl = ScanHistoryStore.resolveBestImageUrl(title, imgUrl, brand, code)
+        val fallbackApiUrl = if (primaryUrl.contains("/api/product-image")) {
+            ""
+        } else {
+            ScanHistoryStore.productImageApiFallbackUrl(title, brand, code)
+        }
         val safeStoreImg = SafeBitmapLoader.sanitizeExternalImageUrl(storeImageUrl, rejectHeyBroc = true)
         val normalizedCatArt = ScanHistoryStore.normalizeCategoryArtUrl(categoryArtUrl)
+            .ifBlank { ScanHistoryStore.resolveCategoryStudioArt(title, category, ingredients) }
         val candidates = buildList {
             if (safeStoreImg.isNotEmpty()) add(safeStoreImg)
             if (primaryUrl.isNotEmpty()) add(primaryUrl)
             if (fallbackApiUrl.isNotEmpty()) add(fallbackApiUrl)
             if (normalizedCatArt.isNotEmpty()) add(normalizedCatArt)
         }.distinct()
+        if (candidates.isNotEmpty()) {
+            box.background = GradientDrawable().apply {
+                setColor(0xFFF3F4F6.toInt())
+                cornerRadius = dp(10).toFloat()
+            }
+            fallback.visibility = View.INVISIBLE
+        }
         val maxTargetPx = (maxOf(wPx, hPx) * 2).coerceIn(96, 360)
-        loadThumbnailCandidatesAsync(candidates, iv, fallback, illustrationBadge, maxTargetPx)
+        loadThumbnailCandidatesAsync(
+            candidates = candidates,
+            target = iv,
+            fallback = fallback,
+            illustrationBadge = illustrationBadge,
+            maxTargetPx = maxTargetPx,
+            hostBox = box,
+            priority = priority,
+            deferUntilVisible = deferUntilVisible,
+            cancelOnTabEpoch = cancelOnTabEpoch
+        )
         return box
     }
 
@@ -6500,38 +6625,100 @@ class MainActivity : Activity() {
         target: ImageView,
         fallback: View,
         illustrationBadge: View? = null,
-        maxTargetPx: Int = 240
+        maxTargetPx: Int = 240,
+        hostBox: View? = null,
+        priority: Int = 0,
+        deferUntilVisible: Boolean = false,
+        cancelOnTabEpoch: Boolean = false
     ) {
         if (candidates.isEmpty()) return
         for (url in candidates) {
-            bmpCache.get(url)?.let { cached ->
+            val cached = bmpCache.get(url) ?: SafeBitmapLoader.getCachedMemoryBitmap(url)
+            if (cached != null) {
+                bmpCache.put(url, cached)
                 target.setImageBitmap(cached)
                 fallback.visibility = View.GONE
+                hostBox?.background = null
                 illustrationBadge?.visibility =
                     if (ScanHistoryStore.isCategoryArtUrl(url)) View.VISIBLE else View.GONE
                 return
             }
         }
-        imgExecutor.execute {
-            var bmp: Bitmap? = null
-            var resolvedKey = ""
-            for (url in candidates) {
-                bmp = SafeBitmapLoader.fetchScaledBitmap(url, maxTargetPx)
-                if (bmp != null) {
-                    resolvedKey = url
-                    break
-                }
-            }
-            if (bmp != null && resolvedKey.isNotEmpty()) {
-                bmpCache.put(resolvedKey, bmp)
-                val isIllustration = ScanHistoryStore.isCategoryArtUrl(resolvedKey)
-                mainHandler.post {
-                    if (!isDestroyed && !isFinishing) {
-                        target.setImageBitmap(bmp)
-                        fallback.visibility = View.GONE
-                        illustrationBadge?.visibility = if (isIllustration) View.VISIBLE else View.GONE
+        val capturedEpoch = imageRenderEpoch
+        val enqueueFetch: () -> Unit = {
+            val seq = imageTaskSeq.incrementAndGet()
+            runCatching {
+                imgExecutor.execute(PriorityImageTask(priority, seq, task@{
+                    if (isDestroyed || isFinishing || (cancelOnTabEpoch && capturedEpoch != imageRenderEpoch)) {
+                        return@task
                     }
-                }
+                    var bmp: Bitmap? = null
+                    var resolvedKey = ""
+                    for (url in candidates) {
+                        if (isDestroyed || isFinishing || (cancelOnTabEpoch && capturedEpoch != imageRenderEpoch)) {
+                            return@task
+                        }
+                        bmp = SafeBitmapLoader.fetchScaledBitmap(url, maxTargetPx)
+                        if (bmp != null) {
+                            resolvedKey = url
+                            break
+                        }
+                    }
+                    if (isDestroyed || isFinishing || (cancelOnTabEpoch && capturedEpoch != imageRenderEpoch)) {
+                        return@task
+                    }
+                    if (bmp != null && resolvedKey.isNotEmpty()) {
+                        bmpCache.put(resolvedKey, bmp)
+                        val isIllustration = ScanHistoryStore.isCategoryArtUrl(resolvedKey)
+                        mainHandler.post {
+                            if (isDestroyed || isFinishing || (cancelOnTabEpoch && capturedEpoch != imageRenderEpoch)) {
+                                return@post
+                            }
+                            target.setImageBitmap(bmp)
+                            fallback.visibility = View.GONE
+                            hostBox?.background = null
+                            illustrationBadge?.visibility = if (isIllustration) View.VISIBLE else View.GONE
+                        }
+                    } else {
+                        mainHandler.post {
+                            if (isDestroyed || isFinishing || (cancelOnTabEpoch && capturedEpoch != imageRenderEpoch)) {
+                                return@post
+                            }
+                            hostBox?.background = null
+                            fallback.visibility = View.VISIBLE
+                        }
+                    }
+                }))
+            }
+        }
+
+        if (deferUntilVisible) {
+            deferredThumbLoaders.add(DeferredThumbLoader(hostBox ?: target, capturedEpoch, enqueueFetch))
+        } else {
+            enqueueFetch()
+        }
+    }
+
+    private fun triggerVisibleDeferredThumbnails() {
+        if (deferredThumbLoaders.isEmpty() || !::contentScroll.isInitialized) return
+        if (!contentScroll.getGlobalVisibleRect(scrollVisibleRect) || scrollVisibleRect.height() <= 0) return
+        val lookaheadPx = dp(650)
+        val minTop = scrollVisibleRect.top - lookaheadPx
+        val maxBottom = scrollVisibleRect.bottom + lookaheadPx
+        val iter = deferredThumbLoaders.iterator()
+        while (iter.hasNext()) {
+            val entry = iter.next()
+            if (entry.epoch != imageRenderEpoch) {
+                iter.remove()
+                continue
+            }
+            if (!entry.view.isAttachedToWindow || entry.view.height <= 0) continue
+            entry.view.getLocationOnScreen(thumbScreenLoc)
+            val viewTop = thumbScreenLoc[1]
+            val viewBottom = viewTop + entry.view.height
+            if (viewBottom >= minTop && viewTop <= maxBottom) {
+                iter.remove()
+                entry.trigger()
             }
         }
     }
@@ -6912,6 +7099,8 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        imageRenderEpoch++
+        deferredThumbLoaders.clear()
         runCatching { activeAuthDialog?.dismiss() }
         activeAuthDialog = null
         runCatching { activeFunnelDialog?.dismiss() }

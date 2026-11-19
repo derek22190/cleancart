@@ -370,7 +370,7 @@ class LiveStoreBrowserActivity : Activity() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val ioExecutor = Executors.newFixedThreadPool(2)
-    private val imageExecutor = Executors.newFixedThreadPool(2)
+    private val imageExecutor = Executors.newFixedThreadPool(4)
     private val sheetBitmapCache = SafeBitmapLoader.createBitmapLruCache(6 * 1024)
     private lateinit var activeStore: LiveStoreConfig
 
@@ -499,8 +499,13 @@ class LiveStoreBrowserActivity : Activity() {
     ): FrameLayout {
         val safeStoreImg = sanitizeDeviceStoreImageUrl(storeImageUrl)
         val normalizedCatArt = ScanHistoryStore.normalizeCategoryArtUrl(categoryArtUrl)
+            .ifBlank { ScanHistoryStore.resolveCategoryStudioArt(title) }
         val bestUrl = ScanHistoryStore.resolveBestImageUrl(title, rawImageUrl, brand, barcode)
-        val apiFallback = ScanHistoryStore.productImageApiFallbackUrl(title, brand, barcode)
+        val apiFallback = if (bestUrl.contains("/api/product-image")) {
+            ""
+        } else {
+            ScanHistoryStore.productImageApiFallbackUrl(title, brand, barcode)
+        }
         val candidates = buildList {
             if (safeStoreImg.isNotEmpty()) add(safeStoreImg)
             if (bestUrl.isNotEmpty()) add(bestUrl)
@@ -524,6 +529,7 @@ class LiveStoreBrowserActivity : Activity() {
         }
         val initialTv = label(ScanHistoryStore.brandInitial(title, brand), 15f, 0xFF334155.toInt(), bold = true).apply {
             gravity = Gravity.CENTER
+            visibility = if (candidates.isNotEmpty()) View.INVISIBLE else View.VISIBLE
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -558,7 +564,9 @@ class LiveStoreBrowserActivity : Activity() {
         box.addView(illustrationBadge)
 
         for (cand in candidates) {
-            sheetBitmapCache.get(cand)?.let { cached ->
+            val cached = sheetBitmapCache.get(cand) ?: SafeBitmapLoader.getCachedMemoryBitmap(cand)
+            if (cached != null) {
+                sheetBitmapCache.put(cand, cached)
                 initialTv.visibility = View.GONE
                 iv.setImageBitmap(cached)
                 illustrationBadge.visibility =
@@ -566,6 +574,8 @@ class LiveStoreBrowserActivity : Activity() {
                 return box
             }
         }
+
+        if (candidates.isEmpty()) return box
 
         val targetPx = dp(maxOf(widthDp, heightDp) * 2).coerceIn(96, 320)
         imageExecutor.execute {
@@ -589,6 +599,11 @@ class LiveStoreBrowserActivity : Activity() {
                     iv.setImageBitmap(resolvedBmp)
                     illustrationBadge.visibility = if (isIll) View.VISIBLE else View.GONE
                 }
+            } else {
+                mainHandler.post {
+                    if (isCleaningUp || isFinishing || isDestroyed) return@post
+                    initialTv.visibility = View.VISIBLE
+                }
             }
         }
         return box
@@ -608,6 +623,7 @@ class LiveStoreBrowserActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        SafeBitmapLoader.init(applicationContext)
         window.statusBarColor = Color.WHITE
         window.navigationBarColor = Color.WHITE
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {

@@ -219,7 +219,7 @@ class OverlayWindowService : Service() {
     private var pendingSwapCandidateIdx: Int = 0
     private var pendingSwapExplicitItem: TripCartItem? = null
     private val mainUiHandler = Handler(Looper.getMainLooper())
-    private val imageExecutor = Executors.newFixedThreadPool(2)
+    private val imageExecutor = Executors.newFixedThreadPool(4)
     private val swapBitmapCache = SafeBitmapLoader.createBitmapLruCache(6 * 1024)
     private val pillScreenLoc = IntArray(2)
 
@@ -237,6 +237,7 @@ class OverlayWindowService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        SafeBitmapLoader.init(applicationContext)
         activeInstance = this
         wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -2940,10 +2941,16 @@ PlayBillingCoordinator.openUpgradeFromContext(this@OverlayWindowService)
         val swapTitle = swap.optString("title", "Clean Alternative")
         val swapBrand = swap.optString("brand", "")
         val swapBarcode = swap.optString("barcode", "")
+        val swapIngredients = swap.optString("ingredients", "")
         val rawImage = swap.optString("image", "").ifBlank { swap.optString("imageUrl", "") }
         val categoryArtUrl = ScanHistoryStore.normalizeCategoryArtUrl(swap.optString("categoryArtUrl", ""))
+            .ifBlank { ScanHistoryStore.resolveCategoryStudioArt(swapTitle, "", swapIngredients) }
         val fullUrl = ScanHistoryStore.resolveBestImageUrl(swapTitle, rawImage, swapBrand, swapBarcode)
-        val fallbackApiUrl = ScanHistoryStore.productImageApiFallbackUrl(swapTitle, swapBrand, swapBarcode)
+        val fallbackApiUrl = if (fullUrl.contains("/api/product-image")) {
+            ""
+        } else {
+            ScanHistoryStore.productImageApiFallbackUrl(swapTitle, swapBrand, swapBarcode)
+        }
         val candidates = buildList {
             if (fullUrl.isNotEmpty()) add(fullUrl)
             if (fallbackApiUrl.isNotEmpty()) add(fallbackApiUrl)
@@ -2966,6 +2973,7 @@ PlayBillingCoordinator.openUpgradeFromContext(this@OverlayWindowService)
         val initialChar = ScanHistoryStore.brandInitial(swapTitle, swapBrand)
         val placeholderTv = text(initialChar, 15f, NEUTRAL_SLATE, bold = true).apply {
             gravity = Gravity.CENTER
+            visibility = if (candidates.isNotEmpty()) View.INVISIBLE else View.VISIBLE
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         }
         val iv = ImageView(this).apply {
@@ -2994,7 +3002,9 @@ PlayBillingCoordinator.openUpgradeFromContext(this@OverlayWindowService)
         box.addView(illustrationBadge)
 
         for (cand in candidates) {
-            swapBitmapCache.get(cand)?.let { cached ->
+            val cached = swapBitmapCache.get(cand) ?: SafeBitmapLoader.getCachedMemoryBitmap(cand)
+            if (cached != null) {
+                swapBitmapCache.put(cand, cached)
                 placeholderTv.visibility = View.GONE
                 iv.setImageBitmap(cached)
                 illustrationBadge.visibility =
@@ -3002,6 +3012,8 @@ PlayBillingCoordinator.openUpgradeFromContext(this@OverlayWindowService)
                 return box
             }
         }
+
+        if (candidates.isEmpty()) return box
 
         val targetMaxPx = (sizePx * 2).coerceIn(96, 320)
         imageExecutor.execute {
@@ -3022,6 +3034,10 @@ PlayBillingCoordinator.openUpgradeFromContext(this@OverlayWindowService)
                     iv.setPadding(dp(2), dp(2), dp(2), dp(2))
                     iv.setImageBitmap(bmp)
                     illustrationBadge.visibility = if (isIllustration) View.VISIBLE else View.GONE
+                }
+            } else {
+                mainUiHandler.post {
+                    placeholderTv.visibility = View.VISIBLE
                 }
             }
         }

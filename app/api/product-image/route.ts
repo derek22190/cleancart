@@ -8,6 +8,7 @@ import {
   hasConflictingBrand,
   normalizeBrandPhrase,
 } from "@/lib/brands";
+import { isLikelyNonFoodOrAppliance } from "@/lib/category-art";
 import { hasProductIdentityMatch, passesVariantGuard } from "@/lib/drinks-catalog";
 import { consumeSharedOffBudget, isUsMarketOffProduct, reportSharedOffRateLimited } from "@/lib/lookup";
 import { lookupOffPhotoIndex, offBarcodeFolderPath } from "@/lib/off-photo-index";
@@ -17,9 +18,16 @@ import { isPersistentKvConfigured, kvGet, kvSet } from "@/lib/storage";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+type ResolvedProductMedia =
+  | { kind: "local"; relPath: string }
+  | { kind: "remote"; bytes: ArrayBuffer; contentType: string; sourceUrl: string }
+  | { kind: "confirmed-miss" }
+  | { kind: "transient-miss" };
+
 const imageUrlCache = new Map<string, string>();
 const confirmedMissCache = new Map<string, number>();
 const imageBytesCache = new Map<string, { bytes: ArrayBuffer; contentType: string; sourceUrl: string }>();
+const inFlightMediaPromises = new Map<string, Promise<ResolvedProductMedia>>();
 let imageBytesCacheTotalBytes = 0;
 let trackedImgFetchRef: unknown = globalThis.fetch;
 
@@ -29,6 +37,21 @@ const OFF_IMAGE_SEARCH_DEADLINE_MS = 2500;
 const CONFIRMED_MISS_TTL_SECONDS = 24 * 60 * 60;
 const ALLOWED_IMAGE_HOST_SUFFIXES = [".openfoodfacts.org", ".openfoodfacts.net"];
 const PLACEHOLDER_SVG_REL_PATH = "public/product-photo-unavailable.svg";
+
+const NON_BRAND_PLACEHOLDER_RE =
+  /(?:category\s+estimate|representative(?:\s+category)?\s+formulation|verify\s+package\s+label)/i;
+
+const GENERIC_NON_BRAND_EXACT_RE =
+  /^(?:usda|fresh\s+produce|fresh\s+meat|fresh\s+fruit|fresh\s+vegetables?|produce|whole\s+nuts|category\s+estimate|scanned\s+product|generic|conventional|grocery|unbranded|unknown|n\/a|none)$/i;
+
+function sanitizeExplicitBrand(rawBrand: string): string {
+  const trimmed = rawBrand.trim();
+  if (!trimmed) return "";
+  if (NON_BRAND_PLACEHOLDER_RE.test(trimmed) || GENERIC_NON_BRAND_EXACT_RE.test(trimmed)) {
+    return "";
+  }
+  return trimmed;
+}
 
 const FOREIGN_NON_NA_OFF_FRONT_IMAGE_RE =
   /\/front_(?:de|it|nl|pl|pt|ru|ja|zh|ar|ro|hu|cs|sv|da|fi|el|tr|he|ko|th|vi)\./i;
@@ -153,7 +176,7 @@ const VERIFIED_PRODUCT_IMAGES: CuratedPhotoEntry[] = [
   { pattern: /\buncle\s+matt'?s\b(?!.*\b(?:calcium|pulp\s+with)\b).*\borange\s+juice\b/i, url: "https://images.openfoodfacts.org/images/products/069/706/852/0139/front_en.12.400.jpg", canonicalBrand: "Uncle Matt's Organic", canonicalTitle: "Organic Pulp Free Orange Juice" },
   { pattern: /\bharmless\s+harvest\b(?!.*\b(?:yogurt|smoothie|sparkling|mango|watermelon)\b).*\bcoconut\s+water\b/i, url: "https://images.openfoodfacts.org/images/products/85902800/front_en.3.400.jpg", canonicalBrand: "Harmless Harvest", canonicalTitle: "Organic Coconut Water" },
   { pattern: /\bsunny\s*d\b.*\btangy\s+original\b/i, url: "https://images.openfoodfacts.org/images/products/005/020/012/1005/front_en.3.400.jpg", canonicalBrand: "SunnyD", canonicalTitle: "Tangy Original Citrus Punch" },
-  { pattern: /\bstarbucks\b.*\bmocha\b.*\bfrappuccino\b/i, url: "https://images.openfoodfacts.org/images/products/001/200/000/4520/front_en.4.400.jpg", canonicalBrand: "Starbucks", canonicalTitle: "Bottled Mocha Frappuccino Coffee Drink" },
+  { pattern: /\bstarbucks\b.*(?:\bmocha\b.*\bfrappuccino\b|\bfrappuccino\b.*\bmocha\b)/i, url: "https://images.openfoodfacts.org/images/products/001/200/000/4520/front_en.4.400.jpg", canonicalBrand: "Starbucks", canonicalTitle: "Bottled Mocha Frappuccino Coffee Drink" },
   { pattern: /\bstok\b.*\bunsweetened\b.*\bcold\s+brew\b/i, url: "https://images.openfoodfacts.org/images/products/003/663/207/2634/front_en.3.400.jpg", canonicalBrand: "SToK", canonicalTitle: "Unsweetened Black Cold Brew Coffee" },
   { pattern: /\bfairlife\b(?!.*\b(?:chocolate|strawberry|skim|fat\s*free|whole)\b).*\b2%\b.*\bmilk\b/i, url: "https://images.openfoodfacts.org/images/products/081/162/002/0169/front_en.83.400.jpg", canonicalBrand: "Fairlife", canonicalTitle: "2% Reduced Fat Ultra-Filtered Milk" },
   { pattern: /\bmalk\b(?!.*\b(?:vanilla|chocolate)\b).*\bunsweetened\b.*\boat\b/i, url: "https://images.openfoodfacts.org/images/products/076/574/644/4432/front_en.3.400.jpg", canonicalBrand: "MALK", canonicalTitle: "Organic Unsweetened Oat Milk" },
@@ -167,6 +190,7 @@ const VERIFIED_PRODUCT_IMAGES: CuratedPhotoEntry[] = [
   { pattern: /\bbig\s+k\b(?!.*\b(?:zero|diet|cherry|root\s+beer|dr\s+k|citrus)\b).*\bcola\b/i, url: "https://images.openfoodfacts.org/images/products/001/111/049/1053/front_en.3.400.jpg", canonicalBrand: "Big K", canonicalTitle: "Cola Soda" },
   { pattern: /\bprivate\s+selection\b(?!.*\b(?:roast\s+beef|deli|sliced|jerky|steaks?|hot\s*dogs?|franks?|meatballs?|chili|soup|seasoning)\b).*\bangus\b.*\b(?:patt(?:y|ies)|burgers?)\b/i, url: "https://images.openfoodfacts.org/images/products/001/111/022/0691/front_en.3.400.jpg", canonicalBrand: "Private Selection", canonicalTitle: "Angus Beef Patties" },
   { pattern: /\bfavorite\s+day\b.*\bnon[- ]?dairy\b.*\bvanilla\b/i, url: "https://images.openfoodfacts.org/images/products/008/523/914/1694/front_en.8.400.jpg", canonicalBrand: "Favorite Day", canonicalTitle: "Non-Dairy Vanilla Bean Frozen Dessert" },
+  { pattern: /\bfavorite\s+day\b.*\bcookies\s*(?:&|and)\s*cream\b/i, url: "https://images.openfoodfacts.org/images/products/008/523/915/7756/front_en.3.400.jpg", canonicalBrand: "Favorite Day", canonicalTitle: "Cookies & Cream Ice Cream" },
   { pattern: /\bbutterball\b(?!.*\b(?:bacon|ground|burgers?|patt(?:y|ies)|sausages?|meatballs?|deli|sliced|lunch\s*meat|franks?|hot\s*dogs?|jerky|sticks?|strips?|tenderloins?|cutlets?|roast\s+breast|boneless\s+breast|smoked\s+sausage|kielbasa|chorizo)\b).*\b(?:whole|young|frozen\s+whole|all\s+natural\s+whole)\b.*\bturkey\b/i, url: "https://images.openfoodfacts.org/images/products/023/007/223/1082/front_en.3.400.jpg", canonicalBrand: "Butterball", canonicalTitle: "Whole Young Turkey" },
   { pattern: /\bapplegate\b(?!.*\borganics?\b).*\broast\s+beef\b/i, url: "https://images.openfoodfacts.org/images/products/002/531/715/6745/front_en.12.400.jpg", canonicalBrand: "Applegate", canonicalTitle: "Natural Medium Rare Roast Beef" },
   { pattern: /\bapplegate\b(?!.*\borganics?\b).*\b(?:hot\s*dogs?|franks?)\b/i, url: "https://images.openfoodfacts.org/images/products/002/531/753/2006/front.3.400.jpg", canonicalBrand: "Applegate", canonicalTitle: "Natural Uncured Beef Hot Dog" },
@@ -217,7 +241,10 @@ const VERIFIED_PRODUCT_IMAGES: CuratedPhotoEntry[] = [
 
 const STOP_TOKENS = new Set([
   "the", "and", "with", "for", "oz", "fl", "lb", "lbs", "ct", "count", "pack", "pk",
-  "flavored", "flavor",
+  "flavored", "flavor", "bulk", "style", "multipack", "variety", "value", "bonus",
+  "club", "case", "twin", "jumbo", "mega", "refill", "individually", "wrapped",
+  "resealable", "pouches", "tub", "jug", "canister", "homestyle", "traditional",
+  "authentic", "premium", "select", "quality",
   "grade", "category", "estimate", "verify", "package", "label", "rating", "ratings",
   "sweeteners", "sweetener", "creamery", "fresh", "each", "average", "price", "priced", "per", "pound",
   "snack", "size", "family", "party", "share", "fun", "giant", "king", "bag", "box",
@@ -317,6 +344,7 @@ function ensureImageCachesFreshForFetch(): void {
     imageUrlCache.clear();
     confirmedMissCache.clear();
     deadOffUrlSet.clear();
+    inFlightMediaPromises.clear();
     trackedImgFetchRef = globalThis.fetch;
   }
 }
@@ -342,7 +370,7 @@ function passesCuratedPhotoGuard(
   entry: { canonicalBrand: string; canonicalTitle: string; wholeProduceOnly?: boolean },
 ): boolean {
   const qTrim = rawQuery.trim();
-  const bTrim = rawBrand.trim();
+  const bTrim = sanitizeExplicitBrand(rawBrand);
   if (!qTrim) return false;
 
   if (entry.wholeProduceOnly) {
@@ -366,10 +394,7 @@ function passesCuratedPhotoGuard(
   if (hasConflictingBrand(qTrim, candidateText)) {
     return false;
   }
-  if (
-    bTrim &&
-    !/^(?:usda|fresh\s+produce|fresh\s+meat|whole\s+nuts|category\s+estimate|scanned\s+product)$/i.test(bTrim)
-  ) {
+  if (bTrim) {
     if (hasConflictingBrand(bTrim, candidateText)) {
       return false;
     }
@@ -618,14 +643,16 @@ function pickCandidateImageUrls(p: OffImageProductRecord): string[] {
 async function fetchAndVerifyImageBytes(
   candidateUrl: string,
   onTransientError?: () => void,
+  maxTimeoutMs = 3200,
 ): Promise<{ bytes: ArrayBuffer; contentType: string; sourceUrl: string } | null> {
   if (!candidateUrl || deadOffUrlSet.has(candidateUrl) || !isAllowedImageUrl(candidateUrl, true)) {
     return null;
   }
+  const timeoutMs = Math.max(500, Math.min(4200, maxTimeoutMs));
   try {
     const imgRes = await fetch(candidateUrl, {
       headers: { "User-Agent": "HeyBroc/2.1 (https://www.heybroc.com)" },
-      signal: AbortSignal.timeout(4200),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!imgRes.ok) {
       if (imgRes.status === 404 || imgRes.status === 410) {
@@ -670,6 +697,32 @@ const CONFLICTING_PRODUCT_FORM_WORDS = [
   "salad", "wings", "wing", "nuggets", "nugget", "tenders", "bites", "shredded", "pulled", "turkey",
   "dog", "cat", "puppy", "kitten", "shampoo", "conditioner", "lotion", "candle",
 ];
+
+const PARENT_CPG_BRANDS = new Set([
+  "general mills", "kellogg", "kelloggs", "wk kellogg", "kellanova",
+  "kraft", "kraft heinz", "heinz", "oscar mayer",
+  "frito lay", "pepsico", "quaker",
+  "mondelez", "nabisco",
+  "nestle", "unilever", "conagra", "conagra brands",
+  "mars", "ferrero", "hershey", "hersheys",
+  "campbell", "campbells", "pepperidge farm",
+  "hormel", "tyson", "post", "post consumer brands",
+  "danone", "dannon", "lactalis", "bel",
+  "smucker", "smuckers", "jm smucker", "mccormick",
+  "bimbo", "grupo bimbo", "flowers foods", "keebler",
+  "coca cola", "the coca cola company", "dr pepper", "keurig dr pepper",
+  "procter gamble", "pinnacle foods", "treehouse", "del monte",
+]);
+
+const GENERIC_NON_BRAND_FIRST_TOKENS = new Set([
+  "organic", "fresh", "whole", "natural", "plain", "pure", "classic", "original",
+  "raw", "wild", "free", "real", "low", "fat", "nonfat", "unsweetened", "sweetened",
+  "lightly", "extra", "italian", "homestyle", "creamy", "crunchy", "crispy",
+  "sliced", "shredded", "diced", "chopped", "ground", "smoked", "roasted",
+  "salted", "unsalted", "spicy", "mild", "hot", "sweet", "sour", "zero", "diet",
+  "sugar", "gluten", "dairy", "plant", "vegan", "keto", "high", "protein",
+  "grade", "usda", "certified", "select", "choice", "prime", "premium",
+]);
 
 function brandTokensOf(s: string): string[] {
   return s
@@ -719,11 +772,8 @@ function matchesPackagePhotoCandidate(
   const queryAllToks = brandTokensOf(cleanQuery || rawQuery);
   if (queryAllToks.length === 0) return false;
 
-  const usableExplicitBrand =
-    rawBrand &&
-    !/^(usda|fresh\s+produce|fresh\s+meat|whole\s+nuts|category\s+estimate|scanned\s+product)/i.test(rawBrand)
-      ? brandTokensOf(rawBrand)
-      : [];
+  const cleanExplicitBrand = sanitizeExplicitBrand(rawBrand);
+  const usableExplicitBrand = cleanExplicitBrand ? brandTokensOf(cleanExplicitBrand) : [];
 
   const requiredBrandToks =
     usableExplicitBrand.length > 0 ? usableExplicitBrand.slice(0, 2) : queryAllToks.slice(0, 1);
@@ -734,8 +784,26 @@ function matchesPackagePhotoCandidate(
 
   if (candBrandToks.length > 0) {
     const qBrandUnion = new Set([...queryAllToks, ...usableExplicitBrand]);
-    if (!qBrandUnion.has(candBrandToks[0])) {
-      return false;
+    const brandSegments = candidateBrands
+      .split(/[,&;/]+/)
+      .map((seg) => brandTokensOf(seg))
+      .filter((toks) => toks.length > 0);
+    const anySegmentMatchesQuery = brandSegments.some((segToks) => qBrandUnion.has(segToks[0]));
+    if (!anySegmentMatchesQuery) {
+      const normalizedCandBrandPhrase = candBrandToks.join(" ");
+      const isParentCpg =
+        PARENT_CPG_BRANDS.has(normalizedCandBrandPhrase) ||
+        brandSegments.some((segToks) => PARENT_CPG_BRANDS.has(segToks.join(" ")));
+      const leadTok = requiredBrandToks[0];
+      const leadIsDistinctiveSubBrand =
+        usableExplicitBrand.length === 0 &&
+        Boolean(leadTok) &&
+        !GENERIC_PACK_CATEGORY_WORDS.has(leadTok) &&
+        !GENERIC_NON_BRAND_FIRST_TOKENS.has(leadTok) &&
+        brandTokensOf(candidateProductName).includes(leadTok);
+      if (!(isParentCpg && leadIsDistinctiveSubBrand)) {
+        return false;
+      }
     }
   }
 
@@ -805,14 +873,28 @@ async function fetchVerifiedImageByBarcodes(
   return null;
 }
 
-type ResolvedProductMedia =
-  | { kind: "local"; relPath: string }
-  | { kind: "remote"; bytes: ArrayBuffer; contentType: string; sourceUrl: string }
-  | { kind: "confirmed-miss" }
-  | { kind: "transient-miss" };
-
 function shouldPersistImageKv(): boolean {
   return isPersistentKvConfigured() || process.env.HEYBROC_TEST_IMAGE_KV === "1";
+}
+
+function cleanProductImageQuery(rawQuery: string): string {
+  return rawQuery
+    .replace(/\(category\s+estimate[^)]*\)/gi, " ")
+    .replace(/\(representative\s+formulation[^)]*\)/gi, " ")
+    .replace(/\([^)]*$/g, " ")
+    .replace(/\b(natural\s+sweeteners|creamery\s+butter|conventional\s+grocery)\b/gi, " ")
+    .replace(/\s*,\s*ratings?\b/gi, " ")
+    .replace(/\b\d+\s*[/x×]\s*\d+(?:\.\d+)?\s*(?:oz|fl\s*oz|lb|lbs|ct|count|pack|pk|g|kg|ml|l|cup|bag|box|can|jar|bottle)s?\b/gi, " ")
+    .replace(/\b(\d+(\.\d+)?\s*(oz|fl\s*oz|lb|lbs|ct|count|pack|pk|g|kg|ml|l|cup|bag|box|can|jar|bottle|as|assorted)s?)\b/gi, " ")
+    .replace(/\bpack\s+of\s+\d+\b/gi, " ")
+    .replace(/\b(bulk\s+bag|bulk\s+box|bulk\s+pack|value\s+pack|variety\s+pack|club\s+pack|club\s+size|bonus\s+size|snack\s+size|family\s+size|party\s+size|share\s+size|fun\s+size|candy\s+bag|candy\s+bars?|gourmet\s+gift\s+box)\b/gi, " ")
+    .replace(/\b(?:italian|restaurant|deli|bakery|pub|country|old[- ]fashioned)\s+style\b/gi, " ")
+    .replace(/\btruffl\.*/gi, "Truffles")
+    .replace(/\bchocolat\.*/gi, "Chocolate")
+    .replace(/\bappl\.*/gi, "Apples")
+    .replace(/[.,•|\-–—…/]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 async function resolveVerifiedProductMedia(
@@ -821,15 +903,47 @@ async function resolveVerifiedProductMedia(
   rawBrand: string,
 ): Promise<ResolvedProductMedia> {
   ensureImageCachesFreshForFetch();
-  const cacheKey = `${rawQuery.toLowerCase()}|${rawCode}|${rawBrand.toLowerCase()}`;
-  const cachedBytes = imageBytesCache.get(cacheKey);
+  const effectiveBrand = sanitizeExplicitBrand(rawBrand);
+  const clean = cleanProductImageQuery(rawQuery);
+  const urlCacheKey = `${(clean || rawQuery).toLowerCase()}|${rawCode}|${effectiveBrand.toLowerCase()}`;
+
+  const cachedBytes = imageBytesCache.get(urlCacheKey);
   if (cachedBytes) {
     // Refresh LRU recency
-    imageBytesCache.delete(cacheKey);
-    imageBytesCache.set(cacheKey, cachedBytes);
+    imageBytesCache.delete(urlCacheKey);
+    imageBytesCache.set(urlCacheKey, cachedBytes);
     return { kind: "remote", ...cachedBytes };
   }
 
+  // Never burn Open Food Facts search quota on kitchen appliances, cutlery, or household non-food items
+  if (rawQuery && !rawCode && isLikelyNonFoodOrAppliance(rawQuery)) {
+    return { kind: "confirmed-miss" };
+  }
+
+  // Coalesce concurrent requests for the exact same product so bursty mobile list loads only hit OFF once
+  const existingFlight = inFlightMediaPromises.get(urlCacheKey);
+  if (existingFlight) {
+    return existingFlight;
+  }
+
+  const flight = resolveVerifiedProductMediaUncached(rawQuery, clean, rawCode, effectiveBrand, urlCacheKey).finally(
+    () => {
+      if (inFlightMediaPromises.get(urlCacheKey) === flight) {
+        inFlightMediaPromises.delete(urlCacheKey);
+      }
+    },
+  );
+  inFlightMediaPromises.set(urlCacheKey, flight);
+  return flight;
+}
+
+async function resolveVerifiedProductMediaUncached(
+  rawQuery: string,
+  clean: string,
+  rawCode: string,
+  effectiveBrand: string,
+  urlCacheKey: string,
+): Promise<ResolvedProductMedia> {
   let hadOperationalFailure = false;
   const markFailure = () => {
     hadOperationalFailure = true;
@@ -838,10 +952,10 @@ async function resolveVerifiedProductMedia(
   const storeInBytesCache = (entry: { bytes: ArrayBuffer; contentType: string; sourceUrl: string }) => {
     const entrySize = entry.bytes.byteLength;
     if (entrySize > MAX_IMAGE_BYTES_CACHE_TOTAL) return;
-    const prev = imageBytesCache.get(cacheKey);
+    const prev = imageBytesCache.get(urlCacheKey);
     if (prev) {
       imageBytesCacheTotalBytes = Math.max(0, imageBytesCacheTotalBytes - prev.bytes.byteLength);
-      imageBytesCache.delete(cacheKey);
+      imageBytesCache.delete(urlCacheKey);
     }
     while (
       imageBytesCache.size >= 350 ||
@@ -855,14 +969,14 @@ async function resolveVerifiedProductMedia(
       }
       imageBytesCache.delete(oldestKey);
     }
-    imageBytesCache.set(cacheKey, entry);
+    imageBytesCache.set(urlCacheKey, entry);
     imageBytesCacheTotalBytes += entrySize;
   };
 
   // 1. Curated verified matches (instant local swap studio photos or self-healing Open Food Facts URLs)
   if (rawQuery) {
     for (const entry of VERIFIED_PRODUCT_IMAGES) {
-      if (entry.pattern.test(rawQuery) && passesCuratedPhotoGuard(rawQuery, rawBrand, entry)) {
+      if (entry.pattern.test(rawQuery) && passesCuratedPhotoGuard(rawQuery, effectiveBrand, entry)) {
         const verifiedUrl = entry.url;
         if (verifiedUrl.startsWith("local:")) {
           return { kind: "local", relPath: verifiedUrl.slice("local:".length) };
@@ -879,7 +993,7 @@ async function resolveVerifiedProductMedia(
         const embeddedCode = extractOffCodeFromImageUrl(verifiedUrl);
         if (embeddedCode) recoveryCodes.push(embeddedCode);
         for (const upcEntry of KNOWN_CURATED_FALLBACK_UPCS) {
-          if (upcEntry.pattern.test(rawQuery) && passesCuratedPhotoGuard(rawQuery, rawBrand, upcEntry)) {
+          if (upcEntry.pattern.test(rawQuery) && passesCuratedPhotoGuard(rawQuery, effectiveBrand, upcEntry)) {
             recoveryCodes.push(...upcEntry.upcs);
           }
         }
@@ -895,23 +1009,6 @@ async function resolveVerifiedProductMedia(
     }
   }
 
-  const clean = rawQuery
-    .replace(/\(category\s+estimate[^)]*\)/gi, " ")
-    .replace(/\(representative\s+formulation[^)]*\)/gi, " ")
-    .replace(/\([^)]*$/g, " ")
-    .replace(/\b(natural\s+sweeteners|creamery\s+butter|conventional\s+grocery)\b/gi, " ")
-    .replace(/\s*,\s*ratings?\b/gi, " ")
-    .replace(/\b(\d+(\.\d+)?\s*(oz|fl\s*oz|lb|lbs|ct|count|pack|pk|g|kg|ml|l|cup|bag|box|can|jar|bottle|as|assorted)s?)\b/gi, " ")
-    .replace(/\bpack\s+of\s+\d+\b/gi, " ")
-    .replace(/\b(snack\s+size|family\s+size|party\s+size|share\s+size|fun\s+size|candy\s+bag|candy\s+bars?|gourmet\s+gift\s+box)\b/gi, " ")
-    .replace(/\btruffl\.*/gi, "Truffles")
-    .replace(/\bchocolat\.*/gi, "Chocolate")
-    .replace(/\bappl\.*/gi, "Apples")
-    .replace(/[.,•|\-–—…]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  const urlCacheKey = `${clean.toLowerCase()}|${rawCode}|${rawBrand.toLowerCase()}`;
   const kvImgKey = `heybroc:img_url:v2:${urlCacheKey}`;
   const kvMissKey = `heybroc:img_miss:v2:${urlCacheKey}`;
 
@@ -953,7 +1050,7 @@ async function resolveVerifiedProductMedia(
   const indexHit = await lookupOffPhotoIndex({
     barcode: rawCode,
     title: rawQuery || clean,
-    brand: rawBrand,
+    brand: effectiveBrand,
   });
   if (indexHit?.imageUrl && !BLOCKED_ROTATED_OFF_IMAGE_RE.test(indexHit.imageUrl)) {
     const indexBytes = await fetchAndVerifyImageBytes(indexHit.imageUrl, markFailure);
@@ -974,7 +1071,7 @@ async function resolveVerifiedProductMedia(
   }
   if (rawQuery) {
     for (const upcEntry of KNOWN_CURATED_FALLBACK_UPCS) {
-      if (upcEntry.pattern.test(rawQuery) && passesCuratedPhotoGuard(rawQuery, rawBrand, upcEntry)) {
+      if (upcEntry.pattern.test(rawQuery) && passesCuratedPhotoGuard(rawQuery, effectiveBrand, upcEntry)) {
         barcodeQueue.push(...upcEntry.upcs);
       }
     }
@@ -1015,8 +1112,14 @@ async function resolveVerifiedProductMedia(
     return recordConfirmedOrTransientMiss();
   }
 
-  const conciseQuery = tokens.slice(0, 4).join(" ");
-  const coreWithoutGenericCategory = tokens.filter((t, idx) => idx === 0 || !GENERIC_PACK_CATEGORY_WORDS.has(t)).slice(0, 4).join(" ");
+  const nonGenericTokens = tokens.filter((t, idx) => idx === 0 || !GENERIC_PACK_CATEGORY_WORDS.has(t));
+  const conciseQuery =
+    tokens.length <= 4
+      ? tokens.join(" ")
+      : nonGenericTokens.length >= 2 && nonGenericTokens.length <= 4
+        ? nonGenericTokens.join(" ")
+        : Array.from(new Set([...tokens.slice(0, 2), ...nonGenericTokens.slice(-2)])).slice(0, 4).join(" ");
+  const coreWithoutGenericCategory = nonGenericTokens.slice(0, 4).join(" ");
   const queriesToTry: string[] = [];
   const pushQuery = (qStr: string) => {
     const trimmed = qStr.trim();
@@ -1046,16 +1149,22 @@ async function resolveVerifiedProductMedia(
 
   const verifyMatchingHits = async (hits: OffImageProductRecord[]) => {
     const sorted = sortUsFirst(hits);
+    const verifyDeadline = Date.now() + 2600;
+    let inspectedMatches = 0;
     for (const p of sorted) {
+      if (inspectedMatches >= 4 || Date.now() >= verifyDeadline - 250) break;
       const urls = pickCandidateImageUrls(p);
       if (urls.length === 0) continue;
       const brandsStr = Array.isArray(p.brands) ? p.brands.join(" ") : p.brands || "";
       const prodName = p.product_name_en || p.product_name || "";
-      if (!matchesPackagePhotoCandidate(rawQuery, clean, conciseQuery, rawBrand, brandsStr, prodName)) {
+      if (!matchesPackagePhotoCandidate(rawQuery, clean, conciseQuery, effectiveBrand, brandsStr, prodName)) {
         continue;
       }
-      for (const candidateUrl of urls) {
-        const verified = await fetchAndVerifyImageBytes(candidateUrl, markFailure);
+      inspectedMatches += 1;
+      for (const candidateUrl of urls.slice(0, 2)) {
+        const remaining = verifyDeadline - Date.now();
+        if (remaining < 250) break;
+        const verified = await fetchAndVerifyImageBytes(candidateUrl, markFailure, Math.min(2200, remaining));
         if (verified) {
           if (imageUrlCache.size >= 1000) {
             const oldest = imageUrlCache.keys().next().value;
@@ -1149,6 +1258,7 @@ function offAttributionHeaders(contentType: string, sourceUrl: string): Record<s
   return {
     "Content-Type": contentType,
     "Cache-Control": "public, max-age=604800, immutable",
+    "CDN-Cache-Control": "public, s-maxage=604800, stale-while-revalidate=86400",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Expose-Headers": "X-Image-Source, X-Image-License, X-Image-Attribution, X-Image-Kind, X-Image-Retry",
     "X-Image-Source": `Open Food Facts (${sourceUrl})`,

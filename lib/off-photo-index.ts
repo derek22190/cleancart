@@ -112,21 +112,37 @@ const GENERIC_BRAND_FILLER_TOKENS = new Set([
   "family", "natural", "naturals", "homemade",
 ]);
 
+const NON_BRAND_PLACEHOLDER_RE =
+  /(?:category\s+estimate|representative(?:\s+category)?\s+formulation|verify\s+package\s+label)/i;
+
+const GENERIC_NON_BRAND_EXACT_RE =
+  /^(?:|usda|fresh(?:\s+produce|\s+meat|\s+fruit|\s+vegetables?)?|produce|whole\s+nuts|organic|unbranded|generic|conventional|grocery|scanned\s+product|unknown|n\/a|none)$/i;
+
+function sanitizeLookupBrand(rawBrand: string): string {
+  const trimmed = rawBrand.trim();
+  if (!trimmed) return "";
+  if (NON_BRAND_PLACEHOLDER_RE.test(trimmed) || GENERIC_NON_BRAND_EXACT_RE.test(trimmed)) {
+    return "";
+  }
+  return trimmed;
+}
+
 function passesIndexCandidateGuard(query: string, rawBrand: string, candBrand: string, candTitle: string): boolean {
   const fullCand = `${candBrand} ${candTitle}`.trim();
   if (!fullCand) return false;
+  const effectiveBrand = sanitizeLookupBrand(rawBrand);
 
   if (!candBrand) {
     // Unbranded whole produce entry: reject processed foods or branded packaged items
-    if (WHOLE_PRODUCE_DISQUALIFIER_RE.test(query) || WHOLE_PRODUCE_DISQUALIFIER_RE.test(rawBrand)) {
+    if (WHOLE_PRODUCE_DISQUALIFIER_RE.test(query) || WHOLE_PRODUCE_DISQUALIFIER_RE.test(effectiveBrand)) {
       return false;
     }
-    if (rawBrand && !/^(?:|usda|fresh(?:\s+produce|\s+meat)?|produce|organic|unbranded)$/i.test(rawBrand.trim())) {
+    if (effectiveBrand) {
       return false;
     }
   } else {
     const normCandBrand = normalizeBrandPhrase(candBrand);
-    const normQueryAll = normalizeBrandPhrase(`${rawBrand} ${query}`);
+    const normQueryAll = normalizeBrandPhrase(`${effectiveBrand} ${query}`);
     const candTokens = normCandBrand.split(" ").filter((t) => t.length >= 2);
     const distinctiveBrandTokens = candTokens.filter((t) => !GENERIC_BRAND_FILLER_TOKENS.has(t));
     const requiredTokens = distinctiveBrandTokens.length > 0 ? distinctiveBrandTokens : candTokens.slice(0, 1);
@@ -139,7 +155,7 @@ function passesIndexCandidateGuard(query: string, rawBrand: string, candBrand: s
 
   if (!passesVariantGuard(query, fullCand)) return false;
   if (hasConflictingBrand(query, fullCand)) return false;
-  if (rawBrand && hasConflictingBrand(rawBrand, fullCand)) return false;
+  if (effectiveBrand && hasConflictingBrand(effectiveBrand, fullCand)) return false;
 
   const qLower = query.toLowerCase();
   const cLower = fullCand.toLowerCase();
@@ -161,7 +177,7 @@ export function lookupOffPhotoIndexSync(params: {
   brand?: string | null;
 }): { imageUrl: string; barcode?: string } | null {
   const rawTitle = (params.title || "").trim();
-  const rawBrand = (params.brand || "").trim();
+  const rawBrand = sanitizeLookupBrand(params.brand || "");
   const cleanCode = (params.barcode || "").replace(/\D/g, "");
   if (cleanCode.length >= 8) {
     const hit = byBarcode.get(cleanCode);
@@ -211,7 +227,7 @@ export async function lookupOffPhotoIndex(params: {
 
   try {
     const rawTitle = (params.title || "").trim();
-    const rawBrand = (params.brand || "").trim();
+    const rawBrand = sanitizeLookupBrand(params.brand || "");
     const cleanCode = (params.barcode || "").replace(/\D/g, "");
     if (cleanCode.length >= 8) {
       const kvCodeHit = await kvGet<{ u: string; b?: string; t?: string }>(`heybroc:offidx:bc:${cleanCode}`);
