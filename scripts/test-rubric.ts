@@ -10738,6 +10738,109 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const {
+      normalizeOffDisplayTitle: normTitleP214,
+      sanitizeIngredientDisplay: normIngP214,
+      lookupIngredients: lookupP214,
+    } = await import("../lib/lookup");
+    const { runScan: runScanP214 } = await import("../lib/scan");
+    const { matchDrinkCatalog: matchDrinkP214 } = await import("../lib/drinks-catalog");
+    const { SEO_PRODUCTS: seoP214 } = await import("../lib/seo-catalog");
+
+    const titleEggs = normTitleP214("GREAT VALUE GRADE A LARGE WHITE EGGS");
+    const titleMilk = normTitleP214("Organic Grade a Whole Milk with Vitamin a & D");
+    const titleEggsAA = normTitleP214("VITAL FARMS GRADE AA PASTURE-RAISED EGGS");
+    const ingUpper = normIngP214("CULTURED GRADE A WHOLE MILK, VITAMIN A PALMITATE, VITAMIN D3.");
+    const ingMixed = normIngP214("Pasteurized Grade a Reduced Fat Milk, Vitamin a Palmitate.");
+
+    const bareWaterScan = await runScanP214({ productTitle: "Water", store: "walmart", skipAnalytics: true });
+    const purifiedWaterBareScan = await runScanP214({
+      productTitle: "Purified water",
+      store: "walmart",
+      skipAnalytics: true,
+    });
+    const plainWaterScan = await runScanP214({ productTitle: "Plain water", store: "walmart", skipAnalytics: true });
+    const brandedMineralWaterScan = await runScanP214({
+      productTitle: "Great Value Purified Drinking Water, 16.9 fl oz, 40 Count",
+      store: "walmart",
+      skipAnalytics: true,
+    });
+
+    const gatoradeDrink = matchDrinkP214("Gatorade Fruit Punch");
+    const gatoradeSeo = seoP214.find((p) => p.slug === "gatorade-fruit-punch");
+    const pedialyteUnflav = matchDrinkP214("Pedialyte Classic Unflavored");
+    const pedialyteStraw = matchDrinkP214("Pedialyte Classic Strawberry");
+    const frootLoopsLookup = await lookupP214({ productTitle: "Kellogg's Froot Loops" });
+    const frootLoopsSeo = seoP214.find((p) => p.slug === "kelloggs-froot-loops-cereal");
+
+    check(
+      "P2-14 Catalog & title polish: Grade A/AA & Vitamin A preserve uppercase letters, bare Water & Purified water score 100/100 without touching rubric math, and Gatorade/Pedialyte/Froot Loops match verified 2026-11-18 US labels",
+      titleEggs.includes("Grade A") &&
+        !titleEggs.includes("Grade a") &&
+        titleMilk.includes("Grade A") &&
+        titleMilk.includes("Vitamin A") &&
+        !titleMilk.includes("Grade a") &&
+        !titleMilk.includes("Vitamin a") &&
+        titleEggsAA.includes("Grade AA") &&
+        ingUpper.includes("Grade A") &&
+        ingUpper.includes("Vitamin A") &&
+        !ingUpper.includes("Grade a") &&
+        ingMixed.includes("Grade A") &&
+        ingMixed.includes("Vitamin A") &&
+        bareWaterScan.ok &&
+        bareWaterScan.result.score === 100 &&
+        bareWaterScan.result.flagged.length === 0 &&
+        purifiedWaterBareScan.ok &&
+        purifiedWaterBareScan.result.score === 100 &&
+        purifiedWaterBareScan.result.flagged.length === 0 &&
+        plainWaterScan.ok &&
+        plainWaterScan.result.score === 100 &&
+        brandedMineralWaterScan.ok &&
+        brandedMineralWaterScan.result.score === 90 &&
+        Boolean(
+          gatoradeDrink &&
+            gatoradeDrink.verifiedAt === "2026-11-18" &&
+            gatoradeDrink.sourceUrl === "https://www.gatorade.com/sports-drinks/gatorade-thirst-quencher/fruit-punch" &&
+            /Modified Food Starch/i.test(gatoradeDrink.ingredients) &&
+            /Caramel Color/i.test(gatoradeDrink.ingredients) &&
+            /Red 40/i.test(gatoradeDrink.ingredients),
+        ) &&
+        Boolean(
+          gatoradeSeo &&
+            gatoradeSeo.verifiedAt === "2026-11-18" &&
+            gatoradeSeo.ingredients === gatoradeDrink?.ingredients,
+        ) &&
+        Boolean(
+          pedialyteUnflav &&
+            pedialyteUnflav.id === "pedialyte-unflavored" &&
+            pedialyteUnflav.verifiedAt === "2026-11-18" &&
+            pedialyteUnflav.sourceUrl === "https://www.pedialyte.com/products/classic/unflavored" &&
+            !/\b(red\s*40|blue\s*1|sucralose|acesulfame)\b/i.test(pedialyteUnflav.ingredients),
+        ) &&
+        Boolean(
+          pedialyteStraw &&
+            pedialyteStraw.id === "pedialyte-classic-strawberry" &&
+            pedialyteStraw.verifiedAt === "2026-11-18" &&
+            pedialyteStraw.sourceUrl === "https://www.pedialyte.com/products/classic/strawberry" &&
+            /Red 40/i.test(pedialyteStraw.ingredients) &&
+            /Blue 1/i.test(pedialyteStraw.ingredients),
+        ) &&
+        Boolean(
+          frootLoopsLookup &&
+            frootLoopsLookup.sourceUpdatedAt === "2026-11-18" &&
+            frootLoopsLookup.sourceUrl === "https://www.wkkellogg.com/products/froot-loops-cereal" &&
+            /BHT Added to Packaging for Freshness/i.test(frootLoopsLookup.ingredients) &&
+            /Red 40/i.test(frootLoopsLookup.ingredients),
+        ) &&
+        Boolean(
+          frootLoopsSeo &&
+            frootLoopsSeo.verifiedAt === "2026-11-18" &&
+            frootLoopsSeo.ingredients === frootLoopsLookup?.ingredients,
+        ),
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

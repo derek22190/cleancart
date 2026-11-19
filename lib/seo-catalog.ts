@@ -110,10 +110,10 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     category: "Sports Drinks",
     searchVolumeTag: "#1 Red 40 Sports Drink Check",
     ingredients:
-      "Water, Sugar, Dextrose, Citric Acid, Salt, Sodium Citrate, Monopotassium Phosphate, Gum Arabic, Natural Flavor, Sucrose Acetate Isobutyrate, Glycerol Ester of Rosin, Red 40.",
+      "Water, Sugar, Dextrose, Citric Acid, Salt, Sodium Citrate, Monopotassium Phosphate, Modified Food Starch, Natural Flavor, Glycerol Ester of Rosin, Red 40, Caramel Color.",
     nutrition: { caloriesKcal100g: 22.5, sugarsG100g: 6.0, saturatedFatG100g: 0, sodiumMg100g: 45, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
-    sourceUrl: "https://www.gatorade.com/powders-and-liquids/gatorade-thirst-quencher/liquid/fruit-punch",
-    verifiedAt: "2026-11-08",
+    sourceUrl: "https://www.gatorade.com/sports-drinks/gatorade-thirst-quencher/fruit-punch",
+    verifiedAt: "2026-11-18",
   },
   {
     slug: "kelloggs-froot-loops-cereal",
@@ -122,10 +122,10 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     category: "Kids Cereal",
     searchVolumeTag: "#1 Kids Cereal Dye Check",
     ingredients:
-      "Corn Flour Blend (Whole Grain Yellow Corn Flour, Degerminated Yellow Corn Flour), Sugar, Wheat Flour, Whole Grain Oat Flour, Modified Food Starch, Contains 2% or Less of Vegetable Oil (Hydrogenated Coconut, Soybean or Cottonseed), Oat Fiber, Maltodextrin, Salt, Soluble Corn Fiber, Natural Flavor, Red 40, Yellow 5, Blue 1, Yellow 6.",
+      "Corn Flour Blend (Whole Grain Yellow Corn Flour, Degerminated Yellow Corn Flour), Sugar, Wheat Flour, Whole Grain Oat Flour, Modified Food Starch, Contains 2% or Less of Vegetable Oil (Hydrogenated Coconut, Soybean and/or Cottonseed), Oat Fiber, Maltodextrin, Salt, Soluble Corn Fiber, Natural Flavor, Red 40, Yellow 5, Blue 1, Yellow 6. Vitamins and Minerals: Vitamin C (Ascorbic Acid), Reduced Iron, Niacinamide, Vitamin B6 (Pyridoxine Hydrochloride), Vitamin B2 (Riboflavin), Vitamin B1 (Thiamin Hydrochloride), Folic Acid, Vitamin D3, Vitamin B12. BHT Added to Packaging for Freshness.",
     nutrition: { caloriesKcal100g: 385, sugarsG100g: 30.8, saturatedFatG100g: 1.3, sodiumMg100g: 538, fiberG100g: 5.1, proteinG100g: 5.1, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
-    sourceUrl: "https://www.wkkellogg.com/en-us/brands/froot-loops/froot-loops-cereal.html",
-    verifiedAt: "2026-11-08",
+    sourceUrl: "https://www.wkkellogg.com/products/froot-loops-cereal",
+    verifiedAt: "2026-11-18",
   },
   {
     slug: "cinnamon-toast-crunch",

@@ -1042,6 +1042,10 @@ const INGREDIENT_PRESERVED_ACRONYMS = new Set([
   "D2", "D3", "B1", "B2", "B3", "B5", "B6", "B12", "K1", "K2", "II", "III",
 ]);
 
+const LETTER_DESIGNATOR_PRECEDING_WORDS = new Set([
+  "grade", "vitamin", "class", "type", "size", "group", "part", "level", "tier", "section", "formula",
+]);
+
 export function sanitizeIngredientDisplay(raw: string): string {
   let s = (raw || "").replace(/_/g, "").replace(/\s+/g, " ").trim();
   if (!s) return "";
@@ -1054,26 +1058,45 @@ export function sanitizeIngredientDisplay(raw: string): string {
     const upperCount = letters.replace(/[^A-Z]/g, "").length;
     if (upperCount / letters.length > 0.78) {
       let isListStart = true;
+      let prevWordLower = "";
       s = s.replace(/[A-Za-z0-9&'’-]+|[.,;:()[\]]/g, (tok) => {
         if (/^[.,;:([\]]$/.test(tok)) {
           if (tok === "." || tok === ":" || tok === ";") isListStart = true;
+          prevWordLower = "";
           return tok;
         }
-        if (tok === ")") return tok;
+        if (tok === ")") {
+          prevWordLower = "";
+          return tok;
+        }
         const upper = tok.toUpperCase();
         if (INGREDIENT_PRESERVED_ACRONYMS.has(upper)) {
           isListStart = false;
+          prevWordLower = tok.toLowerCase();
           return upper;
         }
         const lower = tok.toLowerCase();
+        if (lower === "a" && LETTER_DESIGNATOR_PRECEDING_WORDS.has(prevWordLower)) {
+          isListStart = false;
+          prevWordLower = lower;
+          return "A";
+        }
+        if (lower === "aa" && prevWordLower === "grade") {
+          isListStart = false;
+          prevWordLower = lower;
+          return "AA";
+        }
         if (!isListStart && (LOWERCASE_TITLE_MINOR_WORDS.has(lower) || LOWERCASE_UNIT_TOKENS.has(lower))) {
+          prevWordLower = lower;
           return lower;
         }
         isListStart = false;
+        prevWordLower = lower;
         return lower.replace(/(^|[-'’])[a-z]/g, (m) => m.toUpperCase());
       });
     }
   }
+  s = s.replace(/\b(Grade|Vitamin|Class)\s+a\b/g, "$1 A").replace(/\b(Grade)\s+aa\b/gi, "$1 AA");
   return s;
 }
 
@@ -1386,13 +1409,21 @@ const CANONICAL_MIXED_CASE_TOKENS: Record<string, string> = {
   ph: "pH",
 };
 
-function normalizeSingleTitleSubtoken(sub: string, isFirstWord: boolean, isLastWord: boolean, prevWasNumeric: boolean): string {
+function normalizeSingleTitleSubtoken(
+  sub: string,
+  isFirstWord: boolean,
+  isLastWord: boolean,
+  prevWasNumeric: boolean,
+  prevWordLower = "",
+): string {
   const lower = sub.toLowerCase().replace(/’/g, "'");
   if (!lower || !/[a-z]/i.test(sub)) return sub;
   const canonical = CANONICAL_MIXED_CASE_TOKENS[lower];
   if (canonical) return canonical;
   const upper = sub.toUpperCase();
   if (TITLE_PRESERVED_ACRONYMS.has(upper)) return upper;
+  if (lower === "a" && LETTER_DESIGNATOR_PRECEDING_WORDS.has(prevWordLower)) return "A";
+  if (lower === "aa" && prevWordLower === "grade") return "AA";
   if (/^[A-Z]{2,}s$/.test(sub)) return sub;
   if (LOWERCASE_UNIT_TOKENS.has(lower) && (prevWasNumeric || (!isFirstWord && lower !== "l"))) {
     return lower;
@@ -1437,6 +1468,7 @@ export function normalizeOffDisplayTitle(raw: string): string {
   const totalWords = wordParts.length;
   let wordIdx = 0;
   let prevWasNumeric = false;
+  let prevWordLower = "";
 
   return parts
     .map((part) => {
@@ -1445,23 +1477,33 @@ export function normalizeOffDisplayTitle(raw: string): string {
       const m = part.match(/^([^A-Za-z0-9]*)([A-Za-z0-9'’-]+)([^A-Za-z0-9]*)$/);
       if (!m) {
         prevWasNumeric = /\d/.test(part);
+        prevWordLower = "";
         return part;
       }
       const [, lead, core, trail] = m;
+      const effectivePrevWord = lead ? "" : prevWordLower;
       const lowerCore = core.toLowerCase().replace(/’/g, "'");
       if (CANONICAL_MIXED_CASE_TOKENS[lowerCore]) {
         prevWasNumeric = false;
+        prevWordLower = trail ? "" : lowerCore;
         return `${lead}${CANONICAL_MIXED_CASE_TOKENS[lowerCore]}${trail}`;
       }
       const normalizedCore = core.includes("-")
         ? core
             .split("-")
-            .map((seg, segIdx) =>
-              normalizeSingleTitleSubtoken(seg, idx === 0 && segIdx === 0, idx === totalWords - 1, prevWasNumeric),
+            .map((seg, segIdx, segs) =>
+              normalizeSingleTitleSubtoken(
+                seg,
+                idx === 0 && segIdx === 0,
+                idx === totalWords - 1 && segIdx === segs.length - 1,
+                prevWasNumeric,
+                segIdx === 0 ? effectivePrevWord : (segs[segIdx - 1] || "").toLowerCase(),
+              ),
             )
             .join("-")
-        : normalizeSingleTitleSubtoken(core, idx === 0, idx === totalWords - 1, prevWasNumeric);
+        : normalizeSingleTitleSubtoken(core, idx === 0, idx === totalWords - 1, prevWasNumeric, effectivePrevWord);
       prevWasNumeric = /^\d+(?:\.\d+)?$/.test(core);
+      prevWordLower = trail ? "" : lowerCore;
       return `${lead}${normalizedCore}${trail}`;
     })
     .join("");
@@ -2818,10 +2860,10 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     match: /\b(froot loops|fruit loops)\b/i,
     brand: "Kellogg's",
     title: "Froot Loops Sweetened Multigrain Cereal",
-    ingredients: "Corn Flour Blend, Sugar, Wheat Flour, Whole Grain Oat Flour, Modified Food Starch, Contains 2% or Less of Vegetable Oil (Hydrogenated Coconut, Soybean and/or Cottonseed), Oat Fiber, Maltodextrin, Salt, Soluble Corn Fiber, Natural Flavor, Red 40, Yellow 5, Blue 1, Yellow 6.",
+    ingredients: "Corn Flour Blend (Whole Grain Yellow Corn Flour, Degerminated Yellow Corn Flour), Sugar, Wheat Flour, Whole Grain Oat Flour, Modified Food Starch, Contains 2% or Less of Vegetable Oil (Hydrogenated Coconut, Soybean and/or Cottonseed), Oat Fiber, Maltodextrin, Salt, Soluble Corn Fiber, Natural Flavor, Red 40, Yellow 5, Blue 1, Yellow 6. Vitamins and Minerals: Vitamin C (Ascorbic Acid), Reduced Iron, Niacinamide, Vitamin B6 (Pyridoxine Hydrochloride), Vitamin B2 (Riboflavin), Vitamin B1 (Thiamin Hydrochloride), Folic Acid, Vitamin D3, Vitamin B12. BHT Added to Packaging for Freshness.",
     nutrition: { caloriesKcal100g: 385, sugarsG100g: 30.8, saturatedFatG100g: 1.3, sodiumMg100g: 538, fiberG100g: 5.1, proteinG100g: 5.1, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
-    sourceUrl: "https://www.wkkellogg.com/en_US/products/kellogg-s-froot-loops-cereal-product.html",
-    verifiedAt: "2026-11-08",
+    sourceUrl: "https://www.wkkellogg.com/products/froot-loops-cereal",
+    verifiedAt: "2026-11-18",
   },
   {
     match: /\b(lucky charms)\b/i,
@@ -3286,10 +3328,10 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     match: /\b(gatorade)\b/i,
     brand: "Gatorade",
     title: "Thirst Quencher Fruit Punch Sports Drink",
-    ingredients: "Water, Sugar, Dextrose, Citric Acid, Salt, Sodium Citrate, Monopotassium Phosphate, Gum Arabic, Natural Flavor, Sucrose Acetate Isobutyrate, Glycerol Ester of Rosin, Red 40.",
+    ingredients: "Water, Sugar, Dextrose, Citric Acid, Salt, Sodium Citrate, Monopotassium Phosphate, Modified Food Starch, Natural Flavor, Glycerol Ester of Rosin, Red 40, Caramel Color.",
     nutrition: { caloriesKcal100g: 24, sugarsG100g: 6.0, saturatedFatG100g: 0, sodiumMg100g: 45, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
-    sourceUrl: "https://www.gatorade.com/powders-and-liquids/gatorade-thirst-quencher/fruit-punch",
-    verifiedAt: "2026-11-08",
+    sourceUrl: "https://www.gatorade.com/sports-drinks/gatorade-thirst-quencher/fruit-punch",
+    verifiedAt: "2026-11-18",
   },
   {
     match: /\b(capri\s*sun)\b/i,
@@ -5096,6 +5138,9 @@ export function hasWholeFoodHeadNoun(
 const NON_BRAND_CATEGORY_LABELS =
   /^(?:Representative\b|Fresh Produce$|Canned Vegetables$|100% Fruit Juice$|Grade A Dairy$|Baked Crackers$|Rotisserie Deli$|Grilled Poultry$|Breaded Poultry$|Cured Pork Bacon$|Natural Uncured$|Sweetened Dried Fruit$|Freeze-Dried$|Mediterranean Olives$|Extra Virgin Olive Oil$|USDA Organic Grass-Fed Beef$)/i;
 
+const BARE_PURE_WATER_QUERY_RE =
+  /^(?:(?:100%\s+)?(?:plain|pure|fresh|bottled|tap|filtered|purified|drinking|distilled)\s+){0,2}water$/i;
+
 function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
   const cleanTitle = normalizeOffDisplayTitle(
     query
@@ -5106,6 +5151,43 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       .replace(/,\s*(now|was)$/i, "")
       .replace(/\s*[.,•|\-]+\s*$/, ""),
   );
+
+  // Resolve bare unbranded pure water queries ("Water", "Purified water", "Plain water", "Drinking water", "Distilled water")
+  // cleanly so they never fall through to unrelated branded/sparkling OFF matches and score 100/100 without altering rubric math.
+  const bareWaterCandidate = cleanSearchQuery(cleanTitle) || cleanTitle;
+  if (BARE_PURE_WATER_QUERY_RE.test(bareWaterCandidate.trim())) {
+    const pureWaterIngredients = /\bdistilled\b/i.test(bareWaterCandidate)
+      ? "Distilled Water."
+      : /\bpurified\b/i.test(bareWaterCandidate)
+        ? "Purified Water."
+        : /\bfiltered\b/i.test(bareWaterCandidate)
+          ? "Filtered Water."
+          : "Drinking Water.";
+    return {
+      sourceUrl: "https://fdc.nal.usda.gov/food-details/173647/nutrients",
+      productTitle: cleanTitle || "Water",
+      brand: "Pure Water",
+      category: "Waters & Seltzers",
+      description:
+        "Pure unflavored water with 0 calories, 0 sugar, 0 sodium, and 0 synthetic additives (USDA FoodData Central).",
+      ingredients: pureWaterIngredients,
+      imageUrl: undefined,
+      nutrition: {
+        caloriesKcal100g: 0,
+        sugarsG100g: 0,
+        saturatedFatG100g: 0,
+        sodiumMg100g: 0,
+        fiberG100g: 0,
+        proteinG100g: 0,
+        fruitsVegNutsPct: 0,
+        nutriScoreGrade: "a",
+        isOrganic: false,
+        isWholeFood: false,
+      },
+      source: "catalog",
+      sourceUpdatedAt: "2026-11-18",
+    };
+  }
 
   // Check Just Bare before generic breaded poultry
   if (/\bjust\s+bare\b/i.test(query)) {
@@ -5496,7 +5578,15 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
       title,
     );
 
-  if (!normBarcode && title && (DIRECT_CATALOG_PRIORITY.test(title) || isPlainProduceDirectPriority)) {
+  const isBarePureWaterDirectPriority = BARE_PURE_WATER_QUERY_RE.test(
+    (cleanedCatalogTitle || title).trim(),
+  );
+
+  if (
+    !normBarcode &&
+    title &&
+    (DIRECT_CATALOG_PRIORITY.test(title) || isPlainProduceDirectPriority || isBarePureWaterDirectPriority)
+  ) {
     const directCat =
       catalogFallback(title) ??
       (rawTitle && rawTitle !== title ? catalogFallback(rawTitle) : null) ??
