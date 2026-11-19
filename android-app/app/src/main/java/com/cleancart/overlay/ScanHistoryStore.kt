@@ -636,12 +636,27 @@ object ScanHistoryStore {
         return trimmed
     }
 
+    // Appliance/tool words that routinely appear in real food titles ("Banquet Skillet Meals",
+    // "Pork Collar", "Air Fryer Fries", "Toaster Strudel", "Microwave Popcorn"). Mirrors lib/category-art.ts.
+    private val AMBIGUOUS_NON_FOOD_RE = Regex(
+        "\\b(?:skillet|griddle|collar|strainer|colander|whisk|tongs|spatula|air\\s+fryer|toaster(?!\\s+oven)|microwave|sponges?|blender)\\b",
+        RegexOption.IGNORE_CASE
+    )
+
+    private val FOOD_TITLE_SIGNAL_RE = Regex(
+        "\\b(?:meals?|dinners?|entrees?|bowls?|chicken|beef|pork|turkey|sausages?|cheese|sauce|pasta|noodles?|soup|rice|potato(?:es)?|fries|wings|tots|nuggets|eggs?|pancakes?|cakes?|waffles?|strudel|pastr(?:y|ies)|bread|cereal|snacks?|chips|popcorn|candy|chocolate|cookies?|cream|coffee|tea|milk|juice|yogurt|butter|fruit|vegetables?|salad|pizza|burgers?|fish|shrimp|seasoning|spices?|flour|sugar|oil|steak|ham|bacon|breakfast|burritos?|sandwich(?:es)?|hash\\s*browns?)\\b",
+        RegexOption.IGNORE_CASE
+    )
+
     fun isLikelyNonFoodOrAppliance(title: String, ingredients: String = ""): Boolean {
         val cleanTitle = title.trim()
         if (cleanTitle.isEmpty()) return false
         val cleanIng = ingredients.trim()
-        return NON_FOOD_OR_APPLIANCE_RE.containsMatchIn(cleanTitle) &&
-            !FOOD_INGREDIENT_SIGNAL_RE.containsMatchIn(cleanIng)
+        if (FOOD_INGREDIENT_SIGNAL_RE.containsMatchIn(cleanIng)) return false
+        val hardHit = NON_FOOD_OR_APPLIANCE_RE.containsMatchIn(AMBIGUOUS_NON_FOOD_RE.replace(cleanTitle, " "))
+        if (hardHit) return true
+        return AMBIGUOUS_NON_FOOD_RE.containsMatchIn(cleanTitle) &&
+            !FOOD_TITLE_SIGNAL_RE.containsMatchIn(cleanTitle)
     }
 
     fun resolveCategoryStudioArt(title: String, category: String = "", ingredients: String = ""): String {

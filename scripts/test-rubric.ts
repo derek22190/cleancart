@@ -11104,6 +11104,28 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           iosShortcutsSwift.includes("isLikelyNonFoodQuery") &&
           iosBrowserSwift.includes("alreadyHasProductImageEndpoint"),
       );
+
+      check(
+        "Photo audit follow-ups: ambiguous cookware/appliance words in real food titles (Skillet Meals, Pork Collar, Air Fryer Fries, Toaster Strudel, Microwave Popcorn) no longer block photo lookups; true appliances stay non-food; deferred thumbnails re-check after layout in window coords; shared RAM cache hits are size-aware",
+        catArtFastMod.isLikelyNonFoodOrAppliance("Bertolli Skillet Meals Chicken Alfredo") === false &&
+          catArtFastMod.isLikelyNonFoodOrAppliance("Pork Collar Steak") === false &&
+          catArtFastMod.isLikelyNonFoodOrAppliance("Ore-Ida Golden Crinkles Air Fryer French Fries") === false &&
+          catArtFastMod.isLikelyNonFoodOrAppliance("Pillsbury Toaster Strudel Strawberry") === false &&
+          catArtFastMod.isLikelyNonFoodOrAppliance("Pop Secret Microwave Popcorn Butter") === false &&
+          catArtFastMod.isLikelyNonFoodOrAppliance("Lodge Cast Iron Skillet 10.25 Inch") === true &&
+          catArtFastMod.isLikelyNonFoodOrAppliance("Ninja Air Fryer AF101") === true &&
+          catArtFastMod.isLikelyNonFoodOrAppliance("Black+Decker 4-Slice Toaster Oven") === true &&
+          catArtFastMod.isLikelyNonFoodOrAppliance("Mymini 550W Quesadilla Maker") === true &&
+          catArtFastMod.isLikelyNonFoodOrAppliance("3 Claveles Prof Professional Shears") === true &&
+          scanStoreKt.includes("AMBIGUOUS_NON_FOOD_RE") &&
+          scanStoreKt.includes("FOOD_TITLE_SIGNAL_RE") &&
+          !iosShortcutsSwift.includes('"air fryer"') &&
+          mainActKt.includes("viewTreeObserver.addOnGlobalLayoutListener") &&
+          mainActKt.includes("entry.view.getLocationInWindow(thumbScreenLoc)") &&
+          !mainActKt.includes("entry.view.getLocationOnScreen(thumbScreenLoc)") &&
+          safeBmpKt.includes("memoryHitForSize") &&
+          mainActKt.includes("getCachedMemoryBitmap(url, maxTargetPx)"),
+      );
     }
   }
 

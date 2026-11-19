@@ -19,11 +19,29 @@ const NON_FOOD_OR_APPLIANCE_RE =
 const FOOD_INGREDIENT_SIGNAL_RE =
   /\b(?:water|sugar|salt|flour|milk|cream|oil|butter|corn|wheat|rice|oats?|soy|cocoa|chocolate|cheese|egg|chicken|beef|pork|turkey|tomato|citric\s+acid|natural\s+flavors?|vinegar|spices?|yeast|honey|syrup|juice|tea|coffee|beans?|peanuts?|almonds?|cashews?)\b/i;
 
+/**
+ * Terms that are appliances/tools on their own but routinely appear in real food titles
+ * ("Banquet Skillet Meals", "Pork Collar", "Ore-Ida Air Fryer Fries", "Pillsbury Toaster Strudel",
+ * "Pop Secret Microwave Popcorn", "Sponge Cake"). These only mark a title as non-food when no
+ * food-title signal is present.
+ */
+const AMBIGUOUS_NON_FOOD_RE =
+  /\b(?:skillet|griddle|collar|strainer|colander|whisk|tongs|spatula|air\s+fryer|toaster(?!\s+oven)|microwave|sponges?|blender)\b/gi;
+
+const FOOD_TITLE_SIGNAL_RE =
+  /\b(?:meals?|dinners?|entrees?|bowls?|chicken|beef|pork|turkey|sausages?|cheese|sauce|pasta|noodles?|soup|rice|potato(?:es)?|fries|wings|tots|nuggets|eggs?|pancakes?|cakes?|waffles?|strudel|pastr(?:y|ies)|bread|cereal|snacks?|chips|popcorn|candy|chocolate|cookies?|cream|coffee|tea|milk|juice|yogurt|butter|fruit|vegetables?|salad|pizza|burgers?|fish|shrimp|seasoning|spices?|flour|sugar|oil|steak|ham|bacon|breakfast|burritos?|sandwich(?:es)?|hash\s*browns?)\b/i;
+
 export function isLikelyNonFoodOrAppliance(title?: string | null, ingredients?: string | null): boolean {
   const cleanTitle = (title || "").trim();
   if (!cleanTitle) return false;
   const cleanIngredients = (ingredients || "").trim();
-  return NON_FOOD_OR_APPLIANCE_RE.test(cleanTitle) && !FOOD_INGREDIENT_SIGNAL_RE.test(cleanIngredients);
+  if (FOOD_INGREDIENT_SIGNAL_RE.test(cleanIngredients)) return false;
+  const hardHit = NON_FOOD_OR_APPLIANCE_RE.test(cleanTitle.replace(AMBIGUOUS_NON_FOOD_RE, " "));
+  AMBIGUOUS_NON_FOOD_RE.lastIndex = 0;
+  if (hardHit) return true;
+  const ambiguousHit = AMBIGUOUS_NON_FOOD_RE.test(cleanTitle);
+  AMBIGUOUS_NON_FOOD_RE.lastIndex = 0;
+  return ambiguousHit && !FOOD_TITLE_SIGNAL_RE.test(cleanTitle);
 }
 
 /**

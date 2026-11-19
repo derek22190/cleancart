@@ -238,6 +238,11 @@ class MainActivity : Activity() {
             setOnScrollChangeListener { _, _, _, _, _ ->
                 triggerVisibleDeferredThumbnails()
             }
+            // post{} in renderScreen can run before rows are measured (height 0 → skipped), so also
+            // re-check after every layout pass; returns immediately when no thumbnails are pending.
+            viewTreeObserver.addOnGlobalLayoutListener {
+                triggerVisibleDeferredThumbnails()
+            }
         }
         mainVertical.addView(contentScroll)
 
@@ -6633,7 +6638,7 @@ class MainActivity : Activity() {
     ) {
         if (candidates.isEmpty()) return
         for (url in candidates) {
-            val cached = bmpCache.get(url) ?: SafeBitmapLoader.getCachedMemoryBitmap(url)
+            val cached = bmpCache.get(url) ?: SafeBitmapLoader.getCachedMemoryBitmap(url, maxTargetPx)
             if (cached != null) {
                 bmpCache.put(url, cached)
                 target.setImageBitmap(cached)
@@ -6713,7 +6718,7 @@ class MainActivity : Activity() {
                 continue
             }
             if (!entry.view.isAttachedToWindow || entry.view.height <= 0) continue
-            entry.view.getLocationOnScreen(thumbScreenLoc)
+            entry.view.getLocationInWindow(thumbScreenLoc)
             val viewTop = thumbScreenLoc[1]
             val viewBottom = viewTop + entry.view.height
             if (viewBottom >= minTop && viewTop <= maxBottom) {

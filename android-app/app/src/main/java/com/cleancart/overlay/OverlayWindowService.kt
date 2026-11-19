@@ -3002,7 +3002,8 @@ PlayBillingCoordinator.openUpgradeFromContext(this@OverlayWindowService)
         box.addView(illustrationBadge)
 
         for (cand in candidates) {
-            val cached = swapBitmapCache.get(cand) ?: SafeBitmapLoader.getCachedMemoryBitmap(cand)
+            val cached = swapBitmapCache.get(cand)
+                ?: SafeBitmapLoader.getCachedMemoryBitmap(cand, (sizePx * 2).coerceIn(96, 320))
             if (cached != null) {
                 swapBitmapCache.put(cand, cached)
                 placeholderTv.visibility = View.GONE

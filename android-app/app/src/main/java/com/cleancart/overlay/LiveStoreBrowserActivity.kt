@@ -564,7 +564,8 @@ class LiveStoreBrowserActivity : Activity() {
         box.addView(illustrationBadge)
 
         for (cand in candidates) {
-            val cached = sheetBitmapCache.get(cand) ?: SafeBitmapLoader.getCachedMemoryBitmap(cand)
+            val cached = sheetBitmapCache.get(cand)
+                ?: SafeBitmapLoader.getCachedMemoryBitmap(cand, dp(maxOf(widthDp, heightDp) * 2).coerceIn(96, 320))
             if (cached != null) {
                 sheetBitmapCache.put(cand, cached)
                 initialTv.visibility = View.GONE

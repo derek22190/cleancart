@@ -433,7 +433,7 @@ enum HeyBrocNativeScannerAPI {
         let lower = title.lowercased()
         let nonFoodKeywords = [
             "kitchen shears", "professional shears", "poultry shears", "3 claveles", "claveles prof",
-            "scissors", "quesadilla maker", "waffle maker", "toaster oven", "air fryer",
+            "scissors", "quesadilla maker", "waffle maker", "toaster oven",
             "coffee maker", "food processor", "stand mixer", "electric kettle", "rice cooker",
             "pressure cooker", "slow cooker", "cookware", "bakeware", "knife set", "cutting board",
             "can opener", "paper towels", "toilet paper", "trash bags", "laundry detergent",

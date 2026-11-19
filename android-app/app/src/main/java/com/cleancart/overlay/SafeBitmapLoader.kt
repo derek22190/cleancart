@@ -58,10 +58,22 @@ object SafeBitmapLoader {
         }
     }
 
-    fun getCachedMemoryBitmap(rawUrl: String): Bitmap? {
+    fun getCachedMemoryBitmap(rawUrl: String, minDimPx: Int = 0): Bitmap? {
         val clean = sanitizeExternalImageUrl(rawUrl, rejectHeyBroc = false)
         if (clean.isEmpty()) return null
-        return sharedMemCache.get(clean)
+        return memoryHitForSize(clean, minDimPx)
+    }
+
+    /**
+     * The shared RAM cache is keyed by URL only, so a bitmap decoded for a small list thumbnail
+     * must not be reused (and visibly upscaled/blurry) by a larger view. Accept a hit only when its
+     * longest side covers at least ~75% of the requested size; otherwise re-decode from disk cache.
+     */
+    private fun memoryHitForSize(cleanUrl: String, minDimPx: Int): Bitmap? {
+        val bmp = sharedMemCache.get(cleanUrl) ?: return null
+        if (minDimPx <= 0) return bmp
+        val wanted = minDimPx.coerceIn(64, 512)
+        return if (maxOf(bmp.width, bmp.height) * 4 >= wanted * 3) bmp else null
     }
 
     fun createBitmapLruCache(maxKilobytes: Int): LruCache<String, Bitmap> {
@@ -353,7 +365,7 @@ object SafeBitmapLoader {
         val startUrl = sanitizeExternalImageUrl(rawUrl, rejectHeyBroc = false)
         if (startUrl.isEmpty()) return null
 
-        sharedMemCache.get(startUrl)?.let { return it }
+        memoryHitForSize(startUrl, maxDimPx)?.let { return it }
 
         val targetMax = maxDimPx.coerceIn(64, 512)
         readDiskCacheBytes(startUrl)?.let { cachedBytes ->
@@ -364,13 +376,15 @@ object SafeBitmapLoader {
             }
             diskFileForUrl(startUrl)?.delete()
         }
+        // Disk cache couldn't supply a larger decode — a smaller RAM bitmap beats a re-download.
+        sharedMemCache.get(startUrl)?.let { return it }
 
         if (isNegativelyCached(startUrl)) return null
 
         val lock = inFlightLocks.computeIfAbsent(startUrl) { Any() }
         try {
             synchronized(lock) {
-                sharedMemCache.get(startUrl)?.let { return it }
+                memoryHitForSize(startUrl, maxDimPx)?.let { return it }
                 readDiskCacheBytes(startUrl)?.let { cachedBytes ->
                     val fromDisk = decodeScaledBytes(cachedBytes, targetMax)
                     if (fromDisk != null) {
@@ -379,6 +393,7 @@ object SafeBitmapLoader {
                     }
                     diskFileForUrl(startUrl)?.delete()
                 }
+                sharedMemCache.get(startUrl)?.let { return it }
                 if (isNegativelyCached(startUrl)) return null
 
                 var currentUrlStr = startUrl
