@@ -458,13 +458,13 @@ object ScanApi {
                 if (res.startsWith("{")) {
                     val json = JSONObject(res)
                     if (json.optBoolean("active", false)) {
+                        // Keys must match saveEntitlementSnapshot (isProActive / proUntil); the old
+                        // isPro / expiresAtMs keys were silently ignored, so Pro wasn't persisted locally.
                         val entObj = JSONObject().apply {
-                            put("isPro", true)
-                            put("plan", json.optString("plan", "annual"))
-                            put("expiresAtMs", json.optLong("expiresAtMs", 0L))
+                            put("isProActive", true)
+                            put("proUntil", json.optLong("expiresAtMs", 0L))
                         }
                         saveEntitlementSnapshot(ctx, entObj)
-                        syncEntitlementAsync(ctx)
                     }
                     return json
                 }

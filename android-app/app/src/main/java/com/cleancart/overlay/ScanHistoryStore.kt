@@ -387,7 +387,8 @@ object ScanHistoryStore {
 
     private val VERIFIED_OFF_IMAGES: List<Pair<Regex, String>> = listOf(
         Regex("^(?!.*\\b(?:packets?|mix|seasoning|plant|vegan|dairy[- ]?free|dip|spicy|bacon|pickle|avocado|fat[- ]?free)\\b).*\\bhidden\\s+valley\\b.*\\branch\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/007/110/000/3116/front_en.7.400.jpg",
-        Regex("\\bprimal\\s+kitchen\\b.*\\branch\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/086/369/900/0146/front_en.4.400.jpg",
+        // Provenance: OFF 0863699000146 "Ranch Dressing & Marinade" (Primal Kitchen, US) — front photo visually verified 2026-11-19.
+        Regex("^(?!.*\\b(?:spicy|greek|vegan|plant|dip|buffalo|jalape(?:n|ñ)o|chipotle|cilantro|garlic|truffle|bbq|caesar|sauce|seasoning|mix|packets?|pickle|cauliflower|chips)\\b).*\\bprimal\\s+kitchen\\b.*\\branch\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/086/369/900/0146/front_en.4.400.jpg",
         Regex("\\bprimal\\s+kitchen\\b.*\\b(?:mayo|mayonnaise)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/066/369/002/4048/front_en.3.400.jpg",
         Regex("\\bprimal\\s+kitchen\\b.*\\bketchup\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/827/574/200/7125/front_en.8.400.jpg",
         Regex("\\bmarketside\\b(?!.*\\b(?:romaine|dip|artichoke|organic)\\b).*\\bbaby\\s+spinach\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/068/113/132/8982/front_en.3.400.jpg",
@@ -409,7 +410,8 @@ object ScanHistoryStore {
         Regex("\\borganic\\s+valley\\b.*\\bsharp\\s+cheddar\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/009/396/600/5431/front_en.5.400.jpg",
         Regex("\\borganic\\s+valley\\b(?!.*\\b(?:chocolate|2%|1%|skim|fat\\s*free|lowfat|eggnog|creamer|butter|cheese)\\b).*\\b(?:grassmilk|whole\\s+milk)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/64715087/front_en.3.400.jpg",
         Regex("\\blactaid\\b(?!.*\\b(?:chocolate|2%|1%|skim|fat[- ]?free|low[- ]?fat|ice\\s+cream|cottage|sour\\s+cream|eggnog)\\b).*\\bwhole\\b.*\\bmilk\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/004/410/012/2392/front_en.3.400.jpg",
-        Regex("\\bboulder\\s+canyon\\b.*\\bmalt\\s+vinegar\\b.*\\bchips\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/39369635/front_en.3.400.jpg",
+        // Provenance: OFF 39369635 (US) — front photo visually verified 2026-11-19 as Boulder Canyon Malt Vinegar & Sea Salt Kettle Style (classic, NOT avocado-oil).
+        Regex("^(?!.*\\b(?:avocado|olive|canyon\\s+cut|rice|veggie|puffs?)\\b).*\\bboulder\\s+canyon\\b.*\\bmalt\\s+vinegar\\b.*\\bchips\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/39369635/front_en.3.400.jpg",
         Regex("\\bdave'?s\\s+killer\\s+bread\\b(?!.*\\b(?:thin[- ]?sliced|bagels?|english\\s+muffins?|rolls?|buns?|bars?)\\b).*\\b21\\s+whole\\s+grains\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/376/400/5043/front_en.3.400.jpg",
         Regex("\\bwonder\\b.*\\b(?:classic\\s+)?white\\s+bread\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/007/225/001/1372/front_en.17.400.jpg",
         Regex("\\byoplait\\b.*\\boriginal\\b.*\\bstrawberry\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/007/047/000/4303/front_en.24.400.jpg",
@@ -425,7 +427,8 @@ object ScanHistoryStore {
         Regex("\\boreo\\b.*\\bchocolate\\s+sandwich\\s+cookies?\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/004/400/004/7009/front_en.20.400.jpg",
         Regex("\\beggo\\b.*\\bhomestyle\\b.*\\bwaffles?\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/003/800/040/2609/front_en.21.400.jpg",
         Regex("\\bkraft\\b.*\\bmacaroni\\s*(?:&|and)\\s*cheese\\b.*\\boriginal\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/100/003/3720/front_en.15.400.jpg",
-        Regex("\\brao'?s\\b.*\\bmarinara\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/074/747/900/0017/front_en.12.400.jpg",
+        // Provenance: OFF 0747479000017 "Marinara" (Rao's Homemade, US) — rev 12 front visually verified 2026-11-19 (current rev 49 is a nutrition panel, so rev 12 stays pinned).
+        Regex("^(?!.*\\b(?:organic|sensitive|roasted|garlic|vodka|arrabbiata|tomato\\s+basil|mushroom|puttanesca|spicy|pizza|soup|pasta|ravioli|frozen|entree|meal|bowl|lasagna)\\b).*\\brao'?s\\b.*\\bmarinara\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/074/747/900/0017/front_en.12.400.jpg",
         Regex("\\bannie'?s\\b.*\\byellow\\s+mustard\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/009/232/522/2243/front_en.5.400.jpg",
         Regex("\\bcoombs\\s+family\\s+farms\\b.*\\bmaple\\s+syrup\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/071/028/232/9644/front_en.3.400.jpg",
         Regex("\\bbob'?s\\s+red\\s+mill\\b.*\\brolled\\s+oats\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/003/997/803/3758/front_en.43.400.jpg",

@@ -11126,6 +11126,45 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           safeBmpKt.includes("memoryHitForSize") &&
           mainActKt.includes("getCachedMemoryBitmap(url, maxTargetPx)"),
       );
+
+      const ktRegexFor = (needle: string): RegExp | null => {
+        const line = verifiedOffBlock.split("\n").find((l) => l.includes(needle));
+        const m = line?.match(/Regex\("((?:[^"\\]|\\.)*)"/);
+        return m ? new RegExp(m[1].replace(/\\\\/g, "\\"), "i") : null;
+      };
+      const pkRe = ktRegexFor("086/369/900/0146");
+      const bcRe = ktRegexFor("39369635/front_en.3");
+      const raoRe = ktRegexFor("074/747/900/0017");
+      check(
+        "Photo audit round 2: ref-counted in-flight image locks, positive DNS verdicts cached only for trusted hosts (no rebinding window), and variant guards + provenance comments on Primal Kitchen Ranch / Boulder Canyon Malt Vinegar / Rao's Marinara photos",
+        safeBmpKt.includes("class InFlightLock") &&
+          safeBmpKt.includes("existing.holders--") &&
+          !safeBmpKt.includes("inFlightLocks.remove(startUrl, lock)") &&
+          safeBmpKt.includes("isTrustedDnsCacheHost(normalized)") &&
+          verifiedOffBlock.includes("Provenance: OFF 0863699000146") &&
+          verifiedOffBlock.includes("Provenance: OFF 39369635") &&
+          verifiedOffBlock.includes("Provenance: OFF 0747479000017") &&
+          Boolean(pkRe && bcRe && raoRe) &&
+          pkRe!.test("Primal Kitchen Ranch Dressing & Marinade Made with Avocado Oil") &&
+          !pkRe!.test("Primal Kitchen Spicy Ranch Dressing") &&
+          !pkRe!.test("Primal Kitchen Greek Ranch Dressing") &&
+          bcRe!.test("Boulder Canyon Malt Vinegar & Sea Salt Kettle Chips") &&
+          !bcRe!.test("Boulder Canyon Avocado Oil Malt Vinegar & Sea Salt Kettle Chips") &&
+          raoRe!.test("Rao's Homemade Marinara Sauce 24 oz") &&
+          !raoRe!.test("Rao's Homemade Organic Marinara Sauce") &&
+          !raoRe!.test("Rao's Sensitive Marinara Sauce"),
+      );
+
+      const scanApiKt = fsPhoto.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/ScanApi.kt", "utf8");
+      const gradleWrapperProps = fsPhoto.readFileSync("android-app/gradle/wrapper/gradle-wrapper.properties", "utf8");
+      check(
+        "Android build unblocked: no call to undefined syncEntitlementAsync, Google Play verify persists Pro via isProActive/proUntil keys, and Gradle 8.11.1 wrapper checksum matches the official services.gradle.org SHA-256",
+        !scanApiKt.includes("syncEntitlementAsync") &&
+          scanApiKt.includes('put("isProActive", true)') &&
+          scanApiKt.includes('put("proUntil", json.optLong("expiresAtMs", 0L))') &&
+          gradleWrapperProps.includes("gradle-8.11.1-bin.zip") &&
+          gradleWrapperProps.includes("distributionSha256Sum=f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6"),
+      );
     }
   }
 

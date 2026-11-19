@@ -19,7 +19,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * bounded stream buffering (2.5 MB), two-pass BitmapFactory bounds decoding,
  * aspect-ratio-preserving downsampling, negative caching, shared RAM cache,
  * bounded persistent disk cache (OFF & HeyBroc assets only), per-URL in-flight
- * deduplication, and 60s DNS verification caching.
+ * deduplication (ref-counted), and 60s DNS verification caching (trusted hosts only for
+ * positive verdicts, to avoid widening any DNS-rebinding window).
  */
 object SafeBitmapLoader {
     private const val MAX_IMAGE_BYTES = 2_621_440 // 2.5 MB
@@ -38,7 +39,11 @@ object SafeBitmapLoader {
 
     private val negativeUrlCache = ConcurrentHashMap<String, Long>()
     private val verifiedHostCache = ConcurrentHashMap<String, Pair<Boolean, Long>>()
-    private val inFlightLocks = ConcurrentHashMap<String, Any>()
+    /** Ref-counted per-URL lock; [holders] is only mutated inside ConcurrentHashMap.compute (atomic per key). */
+    private class InFlightLock {
+        var holders = 0
+    }
+    private val inFlightLocks = ConcurrentHashMap<String, InFlightLock>()
     private val sharedMemCache = createBitmapLruCache(12 * 1024)
     private val diskWriteCounter = AtomicInteger(0)
 
@@ -287,12 +292,28 @@ object SafeBitmapLoader {
         val addrs = runCatching { InetAddress.getAllByName(normalized) }.getOrNull() ?: return false
         if (addrs.isEmpty()) return false
         val ok = addrs.all { isPublicRoutableAddress(it) }
-        if (verifiedHostCache.size >= MAX_DNS_CACHE_ENTRIES) {
-            verifiedHostCache.clear()
+        // DNS-rebinding guard: HttpURLConnection re-resolves the host itself, so a cached "safe" verdict
+        // for an arbitrary (possibly attacker-controlled) host would let it flip to a private IP inside
+        // the TTL. Only cache positive verdicts for trusted first-party/OFF hosts; every other host is
+        // re-resolved (cheap — served from the OS resolver cache) and re-checked on every fetch.
+        // Negative verdicts can only block, so they are cached for all hosts.
+        if (!ok || isTrustedDnsCacheHost(normalized)) {
+            if (verifiedHostCache.size >= MAX_DNS_CACHE_ENTRIES) {
+                verifiedHostCache.clear()
+            }
+            verifiedHostCache[normalized] = Pair(ok, now + DNS_CACHE_TTL_MS)
         }
-        verifiedHostCache[normalized] = Pair(ok, now + DNS_CACHE_TTL_MS)
         return ok
     }
+
+    private fun isTrustedDnsCacheHost(host: String): Boolean =
+        host == "www.heybroc.com" ||
+            host == "heybroc.com" ||
+            host == "cleancart-teal.vercel.app" ||
+            host == "openfoodfacts.org" ||
+            host == "openfoodfacts.net" ||
+            host.endsWith(".openfoodfacts.org") ||
+            host.endsWith(".openfoodfacts.net")
 
     private fun isNegativelyCached(url: String): Boolean {
         val exp = negativeUrlCache[url] ?: return false
@@ -381,7 +402,12 @@ object SafeBitmapLoader {
 
         if (isNegativelyCached(startUrl)) return null
 
-        val lock = inFlightLocks.computeIfAbsent(startUrl) { Any() }
+        // Ref-counted so the map entry is only dropped once the LAST waiter leaves; a plain
+        // computeIfAbsent + remove let a third thread mint a fresh lock while a waiter still held the
+        // old one, causing duplicate downloads of the same image.
+        val lock = inFlightLocks.compute(startUrl) { _, existing ->
+            (existing ?: InFlightLock()).also { it.holders++ }
+        }!!
         try {
             synchronized(lock) {
                 memoryHitForSize(startUrl, maxDimPx)?.let { return it }
@@ -494,7 +520,14 @@ object SafeBitmapLoader {
                 return null
             }
         } finally {
-            inFlightLocks.remove(startUrl, lock)
+            inFlightLocks.compute(startUrl) { _, existing ->
+                if (existing == null) {
+                    null
+                } else {
+                    existing.holders--
+                    if (existing.holders <= 0) null else existing
+                }
+            }
         }
     }
 }
