@@ -108,5 +108,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: heybroc-play-release.aab
-          path: android-app/app/build/outputs/bundle/play/release/app-play-release.aab
+          path: android-app/app/build/outputs/bundle/playRelease/app-play-release.aab
           if-no-files-found: error

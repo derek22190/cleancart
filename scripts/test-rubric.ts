@@ -11880,6 +11880,39 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         simulatorSrc.includes("computePesticidePenalty") &&
         scanTsSrc.includes("usda fooddata central"),
     );
+
+    const usdaCommaWings = scoreYukaReg(
+      "Whole Food: Chicken, wing, meat and skin, raw",
+      {},
+      [],
+      { productTitle: "Chicken, Wing, Meat and Skin, Raw", caloriesKcal100g: 168, sodiumMg100g: 84.1, proteinG100g: 18.4, isWholeFood: true, isOrganic: false },
+    );
+    const buildApkYmlSrc = fsNode.readFileSync(".github/workflows/build-apk.yml", "utf8");
+    const mainActivitySrc = fsNode.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/MainActivity.kt", "utf8");
+    const overlaySvcSrc = fsNode.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/OverlayWindowService.kt", "utf8");
+    const iosShortcutsSrc = fsNode.readFileSync("ios-app/App/HeyBrocShortcuts.swift", "utf8");
+
+    check(
+      "Audit hardening: comma-separated USDA Chicken Wings drop from 90->75 with 0g fiber, Buffalo Chicken Wings never matches Buffalo Chicken Pizza, Sam's Club hides invisible logo/cart siblings on search focus, keyboard/SPA resets prevent stuck hidden bubble, offline organicScore guards ScanApi, all native sheets display pesticideDeduction, and build-apk.yml uses playRelease AAB path",
+      usdaCommaWings.score <= 75 &&
+        !passesVariantGuardReg(
+          "Member's Mark Buffalo Chicken Wings, Frozen",
+          "Member's Mark Italian Style Street Pizza, Buffalo Style Chicken",
+        ) &&
+        buildApkYmlSrc.includes("outputs/bundle/playRelease/app-play-release.aab") &&
+        androidBrowserSrc.includes("hb-sams-searching") &&
+        androidBrowserSrc.includes("if (wasImeVisible && !imeVisibleNow)") &&
+        androidBrowserSrc.includes('breakdown?.optInt("pesticideDeduction", 0)') &&
+        androidDetectorSrc.includes("setSamsSearchingHeader") &&
+        androidDetectorSrc.includes("document.addEventListener('submit'") &&
+        androidScanApiSrc.includes('((yuka?.optInt("organicScore", 0) ?: 0) > 0)') &&
+        mainActivitySrc.includes('yb?.optInt("pesticideDeduction", 0)') &&
+        overlaySvcSrc.includes('yb.optInt("pesticideDeduction", 0)') &&
+        iosShortcutsSrc.includes('let pesticideDeduction: Int?') &&
+        iosBrowserSrc.includes("hb-sams-searching") &&
+        iosBrowserSrc.includes("keyboardWillHideNotification") &&
+        iosBrowserSrc.includes("summary.pesticideDeduction"),
+    );
   }
 
   console.log("Checks executed:", checks);

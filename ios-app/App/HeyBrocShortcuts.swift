@@ -305,6 +305,7 @@ struct HeyBrocNativeScanSummary {
     let nutritionScore: Int?
     let additiveScore: Int?
     let organicScore: Int?
+    let pesticideDeduction: Int?
     let nutriScoreGrade: String?
     let sourceLabel: String?
     let sourceUrl: String?
@@ -559,6 +560,7 @@ enum HeyBrocNativeScannerAPI {
         let nutritionScore = (yuka?["nutritionScore"] as? Int) ?? (yuka?["nutritionScore"] as? Double).map { Int($0.rounded()) }
         let additiveScore = (yuka?["additiveScore"] as? Int) ?? (yuka?["additiveScore"] as? Double).map { Int($0.rounded()) }
         let organicScore = (yuka?["organicScore"] as? Int) ?? (yuka?["organicScore"] as? Double).map { Int($0.rounded()) }
+        let pesticideDeduction = (yuka?["pesticideDeduction"] as? Int) ?? (yuka?["pesticideDeduction"] as? Double).map { Int($0.rounded()) }
         let nutriScoreGrade = yuka?["nutriScoreGrade"] as? String
 
         let lookupObj = obj["lookup"] as? [String: Any]
@@ -650,6 +652,7 @@ enum HeyBrocNativeScannerAPI {
                 nutritionScore: nutritionScore,
                 additiveScore: additiveScore,
                 organicScore: organicScore,
+                pesticideDeduction: pesticideDeduction,
                 nutriScoreGrade: nutriScoreGrade,
                 sourceLabel: sourceLabel,
                 sourceUrl: sourceUrl,

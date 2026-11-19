@@ -5736,6 +5736,7 @@ class MainActivity : Activity() {
         val nutGrade = yb?.optString("nutriScoreGrade", "B") ?: "B"
         val addScore = yb?.optInt("additiveScore", if (flagCount == 0) 30 else 0) ?: 0
         val orgScore = yb?.optInt("organicScore", 0) ?: 0
+        val pestDed = yb?.optInt("pesticideDeduction", 0) ?: 0
 
         val hasHighGlycemicIng = Regex("\\b(high fructose corn syrup|corn syrup|maltodextrin|dextrose|glucose syrup|cane sugar|sucrose)\\b", RegexOption.IGNORE_CASE).containsMatchIn(ingredients)
         val hasStarchBase = Regex("\\b(enriched.*flour|corn\\s*starch|tapioca\\s*starch|potato\\s*starch|cassava\\s*flour|rice\\s*flour)\\b", RegexOption.IGNORE_CASE).containsMatchIn(ingredients)
@@ -5791,6 +5792,11 @@ class MainActivity : Activity() {
             addView(label("🧪 Clean-Label Additives: $addScore/30   ·   🌱 Organic Bonus: $orgScore/10", 12.5f, 0xFF4B5563.toInt()).apply {
                 setPadding(0, dp(2), 0, 0)
             })
+            if (pestDed > 0) {
+                addView(label("🌱 Pesticide Watch Deduction: -$pestDed pts", 12.5f, 0xFFB45309.toInt(), bold = true).apply {
+                    setPadding(0, dp(3), 0, 0)
+                })
+            }
             addView(View(context).apply {
                 setBackgroundColor(0xFFE5E7EB.toInt())
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply {

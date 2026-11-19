@@ -368,7 +368,7 @@ class LiveStoreBrowserActivity : Activity() {
               if (/(?:^|\.)samsclub\.com$/i.test(location.hostname || '') && !document.getElementById('hb-sams-search-fix')) {
                 var sf = document.createElement('style');
                 sf.id = 'hb-sams-search-fix';
-                sf.textContent = 'header form[data-testid="search-form"], header form[role="search"] { flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; max-width: 100% !important; } header form[data-testid="search-form"] > div, header form[role="search"] > div { flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; position: relative !important; } input[data-automation-id="header-input-search"], input.search-bar-redesigned-v2, header form[data-testid="search-form"] input[type="search"], header form[role="search"] input[type="search"] { width: 100% !important; min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important; background-color: #ffffff !important; color: #0f172a !important; -webkit-text-fill-color: #0f172a !important; caret-color: #0f172a !important; opacity: 1 !important; font-size: 16px !important; line-height: 1.35 !important; padding-left: 14px !important; padding-right: 76px !important; border-radius: 9999px !important; text-indent: 0 !important; } input[data-automation-id="header-input-search"]::placeholder, input.search-bar-redesigned-v2::placeholder, header form[data-testid="search-form"] input[type="search"]::placeholder { color: #64748b !important; -webkit-text-fill-color: #64748b !important; opacity: 1 !important; } header form[data-testid="search-form"] button[aria-label*="Clear" i], header form[role="search"] button[aria-label*="Clear" i] { right: 40px !important; left: auto !important; } header form[data-testid="search-form"] button.search-icon-redesigned-v2, header form[role="search"] button.search-icon-redesigned-v2 { right: 6px !important; left: auto !important; }';
+                sf.textContent = 'header.sams-redesigned-main-header.hb-sams-searching > div, header.sams-redesigned-main-header.hb-sams-searching > a, header.sams-redesigned-main-header.hb-sams-searching > section, header.sams-redesigned-main-header.hb-sams-searching > nav, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > div, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > a, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > section, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > nav { display: none !important; } header.sams-redesigned-main-header.hb-sams-searching form[data-testid="search-form"], header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) form[data-testid="search-form"] { margin-left: 0 !important; margin-right: 0 !important; padding-left: 0 !important; padding-right: 0 !important; gap: 6px !important; } form[data-testid="search-form"], form[role="search"] { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; max-width: 100% !important; justify-content: flex-start !important; } form[data-testid="search-form"] > div, form[role="search"] > div { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; position: relative !important; overflow: hidden !important; border-radius: 9999px !important; } input[data-automation-id="header-input-search"], input.search-bar-redesigned-v2, form[data-testid="search-form"] input[type="search"], form[role="search"] input[type="search"] { display: block !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important; background-color: #ffffff !important; color: #0f172a !important; -webkit-text-fill-color: #0f172a !important; caret-color: #0f172a !important; opacity: 1 !important; font-size: 16px !important; line-height: 1.35 !important; padding-left: 14px !important; padding-right: 76px !important; border-radius: 9999px !important; text-indent: 0 !important; margin: 0 !important; } input[data-automation-id="header-input-search"]::placeholder, input.search-bar-redesigned-v2::placeholder, form[data-testid="search-form"] input[type="search"]::placeholder { color: #64748b !important; -webkit-text-fill-color: #64748b !important; opacity: 1 !important; } form[data-testid="search-form"] button[aria-label*="Clear" i], form[role="search"] button[aria-label*="Clear" i] { position: absolute !important; right: 38px !important; left: auto !important; top: 50% !important; transform: translateY(-50%) !important; z-index: 2 !important; color: #0f172a !important; } form[data-testid="search-form"] button.search-icon-redesigned-v2, form[role="search"] button.search-icon-redesigned-v2 { position: absolute !important; right: 6px !important; left: auto !important; top: 50% !important; transform: translateY(-50%) !important; z-index: 2 !important; color: #0f172a !important; } form[data-testid="search-form"] button[aria-label="Cancel"], form[role="search"] button[aria-label="Cancel"] { flex: 0 0 auto !important; white-space: nowrap !important; }';
                 head.appendChild(sf);
               }
             })();
@@ -723,7 +723,11 @@ class LiveStoreBrowserActivity : Activity() {
             headerBarView.setPadding(leftInset, topInset, rightInset, 0)
             mainColumn.setPadding(0, 0, 0, bottomInset)
             if (isImeVisible != imeVisibleNow) {
+                val wasImeVisible = isImeVisible
                 isImeVisible = imeVisibleNow
+                if (wasImeVisible && !imeVisibleNow) {
+                    isWebInputFocused = false
+                }
                 updateFloatingBubbleVisibility()
             }
             if (!userDraggedBubble) {
@@ -1427,6 +1431,10 @@ class LiveStoreBrowserActivity : Activity() {
                             lastDetectedStoreImageUrl = ""
                             lastScannedKey = ""
                             latestScanJson = null
+                            if (isWebInputFocused) {
+                                isWebInputFocused = false
+                                updateFloatingBubbleVisibility()
+                            }
                             setBubbleIdleState()
                         }
                     }
@@ -2267,6 +2275,7 @@ class LiveStoreBrowserActivity : Activity() {
         val nutScore = breakdown?.optInt("nutritionScore", -1) ?: -1
         val addScore = breakdown?.optInt("additiveScore", -1) ?: -1
         val orgScore = breakdown?.optInt("organicScore", -1) ?: -1
+        val pestDed = breakdown?.optInt("pesticideDeduction", 0) ?: 0
         val alerts = ScanApi.evaluateDietaryAlerts(this, prod, res, scanJson)
         val flagged = res.optJSONArray("flagged") ?: JSONArray()
         val swapObj = scanJson.optJSONObject("swap")?.let { JSONObject(it.toString()) }
@@ -2402,6 +2411,21 @@ class LiveStoreBrowserActivity : Activity() {
                 })
             }
             stack.addView(pillarRow)
+            if (pestDed > 0) {
+                stack.addView(label("🌱 Pesticide Watch Deduction: -$pestDed pts", 12f, 0xFFB45309.toInt(), bold = true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(10), dp(7), dp(10), dp(7))
+                    background = GradientDrawable().apply {
+                        setColor(0xFFFFFBEB.toInt())
+                        setStroke(dp(1), 0xFFF59E0B.toInt())
+                        cornerRadius = dp(10).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { topMargin = dp(8) }
+                })
+            }
         }
 
         // Clean Swap Card (strictly respecting server lock & weekly free swap quota)

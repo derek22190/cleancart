@@ -2344,7 +2344,9 @@ PlayBillingCoordinator.openUpgradeFromContext(this@OverlayWindowService)
                 val nutGrade = yb.optString("nutriScoreGrade", "C")
                 val addScore = yb.optInt("additiveScore", 0)
                 val orgScore = yb.optInt("organicScore", 0)
-                val summaryText = "Nutrition $nutScore/60 ($nutGrade) · Additives $addScore/30 · Organic $orgScore/10"
+                val pestDed = yb.optInt("pesticideDeduction", 0)
+                val pestBit = if (pestDed > 0) " · Pesticide -$pestDed" else ""
+                val summaryText = "Nutrition $nutScore/60 ($nutGrade) · Additives $addScore/30 · Organic $orgScore/10$pestBit"
                 addView(text(summaryText, 10.5f, INK_2, bold = true).apply {
                     setPadding(dp(2), dp(5), dp(2), 0)
                 })

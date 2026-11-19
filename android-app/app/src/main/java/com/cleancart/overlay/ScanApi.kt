@@ -1016,7 +1016,8 @@ object ScanApi {
         }
 
         if ("pesticide_risk" in selected) {
-            val pestMatch = detectPesticideRisk(title, ing, nutrition, productJson)
+            val yukaObj = resultJson?.optJSONObject("yukaBreakdown")
+            val pestMatch = detectPesticideRisk(title, ing, nutrition, productJson, yukaObj)
             if (pestMatch != null) {
                 val reasonText = if (pestMatch.kind == "high_residue_produce") {
                     "Conventional ${pestMatch.matchedCrop} (-${pestMatch.points} pts) — high-residue produce category in USDA Pesticide Data Program (Dirty Dozen); choose USDA Organic (7 CFR § 205.105)"
@@ -1060,7 +1061,8 @@ object ScanApi {
         title: String,
         ing: String,
         nutrition: JSONObject?,
-        productJson: JSONObject?
+        productJson: JSONObject?,
+        yuka: JSONObject? = null
     ): PesticidePenaltyMatch? {
         val hasIngredients = ing.length >= 3
         val cleanTitleForAlerts = title
@@ -1074,6 +1076,7 @@ object ScanApi {
             .replace(Regex("\\b(?:made\\s+)?with\\s+organic\\s+[a-z]+(?:\\s+[a-z]+){0,2}\\b", RegexOption.IGNORE_CASE), " ")
         val isCertifiedProductOrganic = (nutrition?.optBoolean("isOrganic", false) == true) ||
             (productJson?.optBoolean("isOrganic", false) == true) ||
+            ((yuka?.optInt("organicScore", 0) ?: 0) > 0) ||
             Regex(
                 "\\b(usda\\s+organic|certified\\s+organic|biodynamic|glyphosate[\\s-]*residue[\\s-]*free|pesticide[\\s-]*free|herbicide[\\s-]*free)\\b",
                 RegexOption.IGNORE_CASE
@@ -1395,7 +1398,7 @@ object ScanApi {
             val titleForPest = prod?.optString("title").orEmpty()
             val ingForPest = prod?.optString("ingredients").orEmpty()
             val nutriForPest = prod?.optJSONObject("nutrition") ?: data.optJSONObject("nutrition")
-            val pestPenalty = detectPesticideRisk(titleForPest, ingForPest, nutriForPest, prod)
+            val pestPenalty = detectPesticideRisk(titleForPest, ingForPest, nutriForPest, prod, yuka)
             if (pestPenalty != null) {
                 val adjusted = (nextScore - pestPenalty.points).coerceAtMost(pestPenalty.maxScoreCap).coerceIn(0, 100)
                 val applied = (nextScore - adjusted).coerceAtLeast(0)

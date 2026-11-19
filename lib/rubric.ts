@@ -1190,9 +1190,9 @@ export function estimateNutritionFromProduct(productTitle = "", rawIngredients =
     }
     return { caloriesKcal100g: 265, sugarsG100g: 2.5, saturatedFatG100g: 4.8, sodiumMg100g: 620, fiberG100g: 1.5, proteinG100g: 13.0, fruitsVegNutsPct: 0 };
   }
-  // 8b. Chicken Wings (skin-on high-fat cut — 0g dietary fiber, never inherit plant-staple 3g fiber)
+  // 8b. Chicken Wings (skin-on high-fat cut — 0g dietary fiber, never inherit plant-staple 3g fiber; handles USDA comma-separated "Chicken, Wing, Meat and Skin, Raw")
   if (
-    /\b(chicken\s+wings?|wing\s+sections?|drumettes?)\b/.test(combined) &&
+    /\b(?:chicken\s+wings?|chicken\s*,\s*(?:broilers\s+or\s+fryers\s*,\s*)?wings?|wing\s+sections?|drumettes?)\b/.test(combined) &&
     !/\b(soup|chowder|bisque|stew|chili|salad|pasta|noodle|rice)\b/.test(combined)
   ) {
     return { caloriesKcal100g: 240, sugarsG100g: 0, saturatedFatG100g: 4.8, sodiumMg100g: 240, fiberG100g: 0, proteinG100g: 17.5, fruitsVegNutsPct: 0 };
@@ -1461,17 +1461,15 @@ export function scoreProductYuka(
     /\b(turkey|chicken|ham|beef|pork)\b/i.test(productTitleText) &&
     /\b(salt|broth|stock|potato\s+starch|carrageenan|phosphate|dextrose|sugar|natural\s+flavou?rs?)\b/i.test(rawIngredients);
 
-  const isMeasuredHighFatChickenWings =
-    hasMeasuredCalories &&
-    hasMeasuredSatFat &&
-    nutrition.caloriesKcal100g! >= 200 &&
-    nutrition.saturatedFatG100g! >= 3.8 &&
-    /\b(?:chicken\s+wings?|wing\s+sections?|drumettes?)\b/i.test(titleAndIng);
+  const isSkinOnChickenWings =
+    /\b(?:chicken\s+wings?|chicken\s*,\s*(?:broilers\s+or\s+fryers\s*,\s*)?wings?|wing\s+sections?|drumettes?)\b/i.test(titleAndIng) &&
+    !/\bskinless\b/i.test(titleAndIng) &&
+    !/\b(soup|chowder|bisque|stew|chili|salad|pasta|noodle|rice)\b/i.test(titleAndIng);
 
   const isWholeFood =
     nutrition.isWholeFood !== false &&
     !isSaltedMultiIngredientMeat &&
-    !isMeasuredHighFatChickenWings &&
+    !isSkinOnChickenWings &&
     (isWholeProduceIngredient || isPureCleanCulinaryOil || isSingleIngredientBeefPatty || !NON_WHOLE_FOOD.test(titleAndIng)) &&
     !isBeverage &&
     !hasTop3AddedSugar &&

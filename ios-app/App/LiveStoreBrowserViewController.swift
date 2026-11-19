@@ -400,15 +400,26 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             wv.uiDelegate = nil
             wv.configuration.userContentController.removeScriptMessageHandler(forName: "heybrocStoreBridge")
         }
+        NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillHideNotification, object: nil)
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle {
         return .darkContent
     }
 
+    @objc private func handleKeyboardWillHide() {
+        floatingBubble.isHidden = false
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor(red: 0.973, green: 0.980, blue: 0.988, alpha: 1.0)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleKeyboardWillHide),
+            name: UIResponder.keyboardWillHideNotification,
+            object: nil
+        )
 
         let header = buildHeaderBar()
         setupStoreWebView(below: header)
@@ -695,12 +706,15 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               var sf = document.createElement('style');
               sf.id = 'hb-sams-search-fix';
               sf.textContent =
-                'header form[data-testid="search-form"], header form[role="search"] { flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; max-width: 100% !important; }' +
-                'header form[data-testid="search-form"] > div, header form[role="search"] > div { flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; position: relative !important; }' +
-                'input[data-automation-id="header-input-search"], input.search-bar-redesigned-v2, header form[data-testid="search-form"] input[type="search"], header form[role="search"] input[type="search"] { width: 100% !important; min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important; background-color: #ffffff !important; color: #0f172a !important; -webkit-text-fill-color: #0f172a !important; caret-color: #0f172a !important; opacity: 1 !important; font-size: 16px !important; line-height: 1.35 !important; padding-left: 14px !important; padding-right: 76px !important; border-radius: 9999px !important; text-indent: 0 !important; }' +
-                'input[data-automation-id="header-input-search"]::placeholder, input.search-bar-redesigned-v2::placeholder, header form[data-testid="search-form"] input[type="search"]::placeholder { color: #64748b !important; -webkit-text-fill-color: #64748b !important; opacity: 1 !important; }' +
-                'header form[data-testid="search-form"] button[aria-label*="Clear" i], header form[role="search"] button[aria-label*="Clear" i] { right: 40px !important; left: auto !important; }' +
-                'header form[data-testid="search-form"] button.search-icon-redesigned-v2, header form[role="search"] button.search-icon-redesigned-v2 { right: 6px !important; left: auto !important; }';
+                'header.sams-redesigned-main-header.hb-sams-searching > div, header.sams-redesigned-main-header.hb-sams-searching > a, header.sams-redesigned-main-header.hb-sams-searching > section, header.sams-redesigned-main-header.hb-sams-searching > nav, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > div, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > a, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > section, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > nav { display: none !important; }' +
+                'header.sams-redesigned-main-header.hb-sams-searching form[data-testid="search-form"], header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) form[data-testid="search-form"] { margin-left: 0 !important; margin-right: 0 !important; padding-left: 0 !important; padding-right: 0 !important; gap: 6px !important; }' +
+                'form[data-testid="search-form"], form[role="search"] { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; max-width: 100% !important; justify-content: flex-start !important; }' +
+                'form[data-testid="search-form"] > div, form[role="search"] > div { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; position: relative !important; overflow: hidden !important; border-radius: 9999px !important; }' +
+                'input[data-automation-id="header-input-search"], input.search-bar-redesigned-v2, form[data-testid="search-form"] input[type="search"], form[role="search"] input[type="search"] { display: block !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important; background-color: #ffffff !important; color: #0f172a !important; -webkit-text-fill-color: #0f172a !important; caret-color: #0f172a !important; opacity: 1 !important; font-size: 16px !important; line-height: 1.35 !important; padding-left: 14px !important; padding-right: 76px !important; border-radius: 9999px !important; text-indent: 0 !important; margin: 0 !important; }' +
+                'input[data-automation-id="header-input-search"]::placeholder, input.search-bar-redesigned-v2::placeholder, form[data-testid="search-form"] input[type="search"]::placeholder { color: #64748b !important; -webkit-text-fill-color: #64748b !important; opacity: 1 !important; }' +
+                'form[data-testid="search-form"] button[aria-label*="Clear" i], form[role="search"] button[aria-label*="Clear" i] { position: absolute !important; right: 38px !important; left: auto !important; top: 50% !important; transform: translateY(-50%) !important; z-index: 2 !important; color: #0f172a !important; }' +
+                'form[data-testid="search-form"] button.search-icon-redesigned-v2, form[role="search"] button.search-icon-redesigned-v2 { position: absolute !important; right: 6px !important; left: auto !important; top: 50% !important; transform: translateY(-50%) !important; z-index: 2 !important; color: #0f172a !important; }' +
+                'form[data-testid="search-form"] button[aria-label="Cancel"], form[role="search"] button[aria-label="Cancel"] { flex: 0 0 auto !important; white-space: nowrap !important; }';
               head.appendChild(sf);
             }
           }
@@ -2870,6 +2884,13 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             }
             return Boolean(el.isContentEditable);
           }
+          function setSamsSearchingHeader(active) {
+            if (!/(?:^|\\.)samsclub\\.com$/i.test(location.hostname || '')) return;
+            var hdr = document.querySelector('header.sams-redesigned-main-header');
+            if (hdr && hdr.classList) {
+              hdr.classList.toggle('hb-sams-searching', Boolean(active));
+            }
+          }
           function postInputFocus(focused) {
             try {
               if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.heybrocStoreBridge) {
@@ -2878,8 +2899,12 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             } catch (e) {}
           }
           document.addEventListener('focusin', function(e) {
-            if (!isEditableTarget(e && e.target)) return;
+            var t = e && e.target;
+            if (!isEditableTarget(t)) return;
             if (hbInputBlurTimer) { clearTimeout(hbInputBlurTimer); hbInputBlurTimer = null; }
+            if (t && t.closest && t.closest('form[data-testid="search-form"], form[role="search"]')) {
+              setSamsSearchingHeader(true);
+            }
             postInputFocus(true);
           }, true);
           document.addEventListener('focusout', function(e) {
@@ -2888,9 +2913,15 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             hbInputBlurTimer = setTimeout(function() {
               hbInputBlurTimer = null;
               if (!isEditableTarget(document.activeElement)) {
+                setSamsSearchingHeader(false);
                 postInputFocus(false);
               }
             }, 140);
+          }, true);
+          document.addEventListener('submit', function() {
+            if (hbInputBlurTimer) { clearTimeout(hbInputBlurTimer); hbInputBlurTimer = null; }
+            setSamsSearchingHeader(false);
+            postInputFocus(false);
           }, true);
           dismissRetailerAppBanners();
           scheduleCheck(true);
@@ -2910,7 +2941,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           if (/(?:^|\\.)samsclub\\.com$/i.test(location.hostname || '') && !document.getElementById('hb-sams-search-fix')) {
             var sf = document.createElement('style');
             sf.id = 'hb-sams-search-fix';
-            sf.textContent = 'header form[data-testid="search-form"], header form[role="search"] { flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; max-width: 100% !important; } header form[data-testid="search-form"] > div, header form[role="search"] > div { flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; position: relative !important; } input[data-automation-id="header-input-search"], input.search-bar-redesigned-v2, header form[data-testid="search-form"] input[type="search"], header form[role="search"] input[type="search"] { width: 100% !important; min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important; background-color: #ffffff !important; color: #0f172a !important; -webkit-text-fill-color: #0f172a !important; caret-color: #0f172a !important; opacity: 1 !important; font-size: 16px !important; line-height: 1.35 !important; padding-left: 14px !important; padding-right: 76px !important; border-radius: 9999px !important; text-indent: 0 !important; } input[data-automation-id="header-input-search"]::placeholder, input.search-bar-redesigned-v2::placeholder, header form[data-testid="search-form"] input[type="search"]::placeholder { color: #64748b !important; -webkit-text-fill-color: #64748b !important; opacity: 1 !important; } header form[data-testid="search-form"] button[aria-label*="Clear" i], header form[role="search"] button[aria-label*="Clear" i] { right: 40px !important; left: auto !important; } header form[data-testid="search-form"] button.search-icon-redesigned-v2, header form[role="search"] button.search-icon-redesigned-v2 { right: 6px !important; left: auto !important; }';
+            sf.textContent = 'header.sams-redesigned-main-header.hb-sams-searching > div, header.sams-redesigned-main-header.hb-sams-searching > a, header.sams-redesigned-main-header.hb-sams-searching > section, header.sams-redesigned-main-header.hb-sams-searching > nav, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > div, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > a, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > section, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > nav { display: none !important; } header.sams-redesigned-main-header.hb-sams-searching form[data-testid="search-form"], header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) form[data-testid="search-form"] { margin-left: 0 !important; margin-right: 0 !important; padding-left: 0 !important; padding-right: 0 !important; gap: 6px !important; } form[data-testid="search-form"], form[role="search"] { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; max-width: 100% !important; justify-content: flex-start !important; } form[data-testid="search-form"] > div, form[role="search"] > div { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; position: relative !important; overflow: hidden !important; border-radius: 9999px !important; } input[data-automation-id="header-input-search"], input.search-bar-redesigned-v2, form[data-testid="search-form"] input[type="search"], form[role="search"] input[type="search"] { display: block !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important; background-color: #ffffff !important; color: #0f172a !important; -webkit-text-fill-color: #0f172a !important; caret-color: #0f172a !important; opacity: 1 !important; font-size: 16px !important; line-height: 1.35 !important; padding-left: 14px !important; padding-right: 76px !important; border-radius: 9999px !important; text-indent: 0 !important; margin: 0 !important; } input[data-automation-id="header-input-search"]::placeholder, input.search-bar-redesigned-v2::placeholder, form[data-testid="search-form"] input[type="search"]::placeholder { color: #64748b !important; -webkit-text-fill-color: #64748b !important; opacity: 1 !important; } form[data-testid="search-form"] button[aria-label*="Clear" i], form[role="search"] button[aria-label*="Clear" i] { position: absolute !important; right: 38px !important; left: auto !important; top: 50% !important; transform: translateY(-50%) !important; z-index: 2 !important; color: #0f172a !important; } form[data-testid="search-form"] button.search-icon-redesigned-v2, form[role="search"] button.search-icon-redesigned-v2 { position: absolute !important; right: 6px !important; left: auto !important; top: 50% !important; transform: translateY(-50%) !important; z-index: 2 !important; color: #0f172a !important; } form[data-testid="search-form"] button[aria-label="Cancel"], form[role="search"] button[aria-label="Cancel"] { flex: 0 0 auto !important; white-space: nowrap !important; }';
             head.appendChild(sf);
           }
         })();
@@ -4211,8 +4242,9 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
            let aScore = summary.additiveScore,
            let oScore = summary.organicScore {
             let gradeBit = summary.nutriScoreGrade.map { " • Nutri-Score \($0)" } ?? ""
+            let pestBit = (summary.pesticideDeduction ?? 0) > 0 ? " • Pesticide -\(summary.pesticideDeduction!)" : ""
             let subLbl = UILabel()
-            subLbl.text = "Nutrition \(nScore)/60 • Additives \(aScore)/30 • Organic \(oScore)/10\(gradeBit)"
+            subLbl.text = "Nutrition \(nScore)/60 • Additives \(aScore)/30 • Organic \(oScore)/10\(pestBit)\(gradeBit)"
             subLbl.font = UIFont.systemFont(ofSize: 11.5, weight: .semibold)
             subLbl.textColor = UIColor(red: 0.392, green: 0.455, blue: 0.545, alpha: 1.0)
             subLbl.numberOfLines = 2

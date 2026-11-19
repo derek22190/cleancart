@@ -5886,6 +5886,7 @@ export function passesVariantGuard(query: string, candidateTitle: string, option
     [/\bmesquite\b/, /\bmesquite\b/],
     [/\bscampi\b/, /\bscampi\b/],
     [/\bparmesan\b/, /\bparmesan\b/],
+    [/\bwings?\b/, /\bwings?\b|\bdrumettes?\b/],
   ];
   for (const [qRe, tRe] of variantTokens) {
     if (qRe.test(q) && !tRe.test(t)) return false;
