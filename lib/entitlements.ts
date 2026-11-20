@@ -141,6 +141,41 @@ export function normalizeRealDeviceId(raw?: string | null): string {
   return clean;
 }
 
+export const LIFETIME_PRO_EMAILS: ReadonlySet<string> = new Set([
+  "derekvymislicky@gmail.com",
+  "coll.yats@gmail.com",
+  "rahsh16@gmail.com",
+]);
+
+export const LIFETIME_PRO_UNTIL_MS = Date.UTC(2099, 11, 31, 23, 59, 59);
+
+export function isLifetimeProEmail(rawEmail?: string | null): boolean {
+  const clean = (rawEmail || "").trim().toLowerCase();
+  return Boolean(clean && LIFETIME_PRO_EMAILS.has(clean));
+}
+
+export function buildLifetimeProEntitlement(
+  email: string,
+  opts?: { deviceId?: string; userId?: string }
+): EntitlementRecord {
+  const cleanEmail = email.trim().toLowerCase();
+  const safeId = cleanEmail.replace(/[^a-z0-9]/g, "_");
+  return {
+    sessionId: `lifetime_vip_${safeId}`,
+    subscriptionId: `lifetime_vip_${safeId}`,
+    customerEmail: cleanEmail,
+    deviceId: normalizeRealDeviceId(opts?.deviceId) || undefined,
+    userId: opts?.userId,
+    plan: "annual",
+    status: "active",
+    active: true,
+    expiresAtMs: LIFETIME_PRO_UNTIL_MS,
+    paidPassExpiresAtMs: LIFETIME_PRO_UNTIL_MS,
+    lastChargeSucceeded: true,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 /**
  * Returns true when `subId` represents a managed recurring subscription (`sub_...` on Stripe, `rc_...` on RevenueCat, or `apple_...` on StoreKit 2).
  */
@@ -761,6 +796,20 @@ export async function getEmailEntitlement(
   const cleanEmail = (email || "").trim().toLowerCase();
   if (!cleanEmail) return null;
   const rec = await kvGet<EntitlementRecord>(`${EMAIL_KEY_PREFIX}${cleanEmail}`);
+  if (isLifetimeProEmail(cleanEmail)) {
+    const lifetime = buildLifetimeProEntitlement(cleanEmail, {
+      deviceId: rec?.deviceId,
+      userId: rec?.userId,
+    });
+    return rec
+      ? {
+          ...rec,
+          ...lifetime,
+          deviceId: rec.deviceId || lifetime.deviceId,
+          userId: rec.userId || lifetime.userId,
+        }
+      : lifetime;
+  }
   if (!rec) return null;
   if (isManagedSubscriptionId(rec.subscriptionId)) {
     const latestSub = await getSubscriptionEntitlement(rec.subscriptionId!);

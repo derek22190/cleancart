@@ -13,6 +13,7 @@ export interface AuthenticatedUser {
   referralCode: string;
   proUntil: number;
   isProActive: boolean;
+  isLifetimePro?: boolean;
   proDaysRemaining: number;
   entitlementStatus?: "active" | "trialing" | "free";
   watchlist?: Record<string, boolean>;
@@ -291,10 +292,11 @@ export default function AuthModal({
             (window as unknown as { webkit?: { messageHandlers?: unknown } }).webkit
               ?.messageHandlers || /HeyBrocIOS/i.test(navigator.userAgent || "")
           );
-        setError(
+        setShowEmailForm(true);
+        setInfoMessage(
           isIosWv
-            ? "Sign in with Apple is temporarily unavailable. Update HeyBroc from the App Store or continue with Google or Email right below."
-            : "Sign in with Apple on Web is temporarily unavailable right now. Please continue with Google or Email right below."
+            ? "Sign in with Apple is temporarily unavailable. Continue with your email below to sign in or create your account."
+            : "Sign in with Apple on Web is temporarily unavailable — continue with your email below."
         );
         return;
       }
@@ -557,8 +559,9 @@ export default function AuthModal({
     }
 
     if (!resolvedClientId) {
-      setError(
-        "Google Account Picker is almost ready — add GOOGLE_CLIENT_ID in Vercel Settings (Authorized redirect URI: https://www.heybroc.com/auth/google-callback), or continue with your email below."
+      setShowEmailForm(true);
+      setInfoMessage(
+        "Google Sign-In is temporarily unavailable — sign in or create your account with email below."
       );
       return;
     }
@@ -1029,9 +1032,11 @@ export default function AuthModal({
                 <span>Membership Status</span>
                 <strong style={{ color: user.isProActive ? "#0f7a4a" : "#52525b" }}>
                   {user.isProActive
-                    ? user.entitlementStatus === "trialing"
-                      ? `★ Free Trial Active (${user.proDaysRemaining}d left)`
-                      : `★ Family Pro Active (${user.proDaysRemaining}d)`
+                    ? user.isLifetimePro || user.proDaysRemaining >= 10000
+                      ? "★ Lifetime Family Pro Active"
+                      : user.entitlementStatus === "trialing"
+                        ? `★ Free Trial Active (${user.proDaysRemaining}d left)`
+                        : `★ Family Pro Active (${user.proDaysRemaining}d)`
                     : "Free Tier (Scores Always Free)"}
                 </strong>
               </div>
@@ -1118,15 +1123,17 @@ export default function AuthModal({
               <span className="gococo-submit-icon" aria-hidden="true">→</span>
             </button>
 
-            <button
-              id="account-manage-subscription"
-              type="button"
-              className="gococo-forgot-pill"
-              disabled={busy}
-              onClick={() => setCancelRetentionOpen(true)}
-            >
-              <span>Manage / Cancel subscription</span>
-            </button>
+            {!(user.isLifetimePro || user.proDaysRemaining >= 10000) && (
+              <button
+                id="account-manage-subscription"
+                type="button"
+                className="gococo-forgot-pill"
+                disabled={busy}
+                onClick={() => setCancelRetentionOpen(true)}
+              >
+                <span>Manage / Cancel subscription</span>
+              </button>
+            )}
 
             <button
               type="button"

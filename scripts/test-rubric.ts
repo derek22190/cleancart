@@ -11913,6 +11913,64 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         iosBrowserSrc.includes("keyboardWillHideNotification") &&
         iosBrowserSrc.includes("summary.pesticideDeduction"),
     );
+
+    // 11. Lifetime VIP Pro Allowlist + Clean OAuth Fallback UX
+    const {
+      isLifetimeProEmail: isVipEmail,
+      LIFETIME_PRO_UNTIL_MS: vipUntilMs,
+      toPublicProfile: toProfileVip,
+    } = await import("../lib/auth");
+    const { getDevicePaidEntitlement: getDevPaidVip } = await import("../lib/entitlements");
+    const authModalSrc = fsNode.readFileSync("components/AuthModal.tsx", "utf8");
+    const vipDevId = `vip_device_${Date.now()}`;
+    const mkTestUser = (email: string, emailVerified: boolean) => ({
+      userId: `usr_vip_${email.slice(0, 6)}`,
+      email,
+      displayName: "VIP Tester",
+      provider: "google" as const,
+      emailVerified,
+      referralCode: "BROC-VIP1",
+      proUntil: 0,
+      isStripePro: false,
+      linkedDevices: [vipDevId],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    const derekProfile = await toProfileVip(mkTestUser("derekvymislicky@gmail.com", true), vipDevId, {
+      skipUserSave: true,
+    });
+    const collProfile = await toProfileVip(mkTestUser("coll.yats@gmail.com", true), undefined, {
+      skipUserSave: true,
+    });
+    const rahshProfile = await toProfileVip(mkTestUser("rahsh16@gmail.com", true), undefined, {
+      skipUserSave: true,
+    });
+    const unverifiedDerek = await toProfileVip(mkTestUser("derekvymislicky@gmail.com", false), undefined, {
+      skipUserSave: true,
+    });
+    const normalProfile = await toProfileVip(mkTestUser("random.shopper@example.com", true), undefined, {
+      skipUserSave: true,
+    });
+    const boundVipDevEnt = await getDevPaidVip(vipDevId);
+    check(
+      "Lifetime Pro Allowlist: verified derekvymislicky@gmail.com, coll.yats@gmail.com, and rahsh16@gmail.com receive Lifetime Family Pro + bound device entitlement while unverified/other emails do not, and AuthModal hides internal Vercel setup copy",
+      isVipEmail("DerekVymislicky@gmail.com") &&
+        isVipEmail("coll.yats@gmail.com") &&
+        isVipEmail("rahsh16@gmail.com") &&
+        !isVipEmail("random.shopper@example.com") &&
+        derekProfile.isProActive === true &&
+        derekProfile.isLifetimePro === true &&
+        derekProfile.proUntil >= vipUntilMs &&
+        collProfile.isProActive === true &&
+        collProfile.isLifetimePro === true &&
+        rahshProfile.isProActive === true &&
+        rahshProfile.isLifetimePro === true &&
+        unverifiedDerek.isProActive === false &&
+        normalProfile.isProActive === false &&
+        Boolean(boundVipDevEnt?.active && boundVipDevEnt.expiresAtMs === vipUntilMs) &&
+        !authModalSrc.includes("add GOOGLE_CLIENT_ID in Vercel Settings") &&
+        authModalSrc.includes("Lifetime Family Pro Active"),
+    );
   }
 
   console.log("Checks executed:", checks);

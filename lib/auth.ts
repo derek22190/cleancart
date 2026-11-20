@@ -2,13 +2,18 @@ import "server-only";
 import crypto from "node:crypto";
 import { kvDel, kvGet, kvGetDel, kvSet, kvSetNx } from "./storage";
 import {
+  LIFETIME_PRO_EMAILS,
+  LIFETIME_PRO_UNTIL_MS,
+  buildLifetimeProEntitlement,
   getDevicePaidEntitlement,
   getEmailEntitlement,
+  isLifetimeProEmail,
   normalizeRealDeviceId,
   redactEntitlementEmail,
   saveEntitlement,
   type EntitlementStatus,
 } from "./entitlements";
+export { LIFETIME_PRO_EMAILS, LIFETIME_PRO_UNTIL_MS, isLifetimeProEmail };
 import { PRICING } from "./pricing";
 import {
   MAX_BANKED_PRO_DAYS,
@@ -65,6 +70,7 @@ export interface PublicUserProfile {
   referralCode: string;
   proUntil: number;
   isProActive: boolean;
+  isLifetimePro?: boolean;
   proDaysRemaining: number;
   entitlementStatus?: EntitlementStatus;
   watchlist?: Record<string, boolean>;
@@ -438,6 +444,7 @@ export async function toPublicProfile(
   );
   let isStripePro = false;
   const isVerified = Boolean(user.emailVerified);
+  const isLifetimePro = isVerified && isLifetimeProEmail(user.email);
 
   // Only read or rebind Stripe email entitlements when the account's email is verified (H02),
   // and ONLY merge `deviceId` pass/entitlement status when normalizedDeviceId is non-empty AND linked to user!
@@ -452,7 +459,27 @@ export async function toPublicProfile(
     (stripeEmailEnt?.active ? stripeEmailEnt : null) ??
     (stripeDeviceEnt?.active ? stripeDeviceEnt : null);
 
-  if (activeStripeEnt) {
+  if (isLifetimePro) {
+    isStripePro = true;
+    const targetDeviceId =
+      (isLinkedCallerDevice ? normalizedDeviceId : undefined) ||
+      normalizeRealDeviceId(activeStripeEnt?.deviceId) ||
+      primaryLinkedDevId ||
+      undefined;
+    const needsBind =
+      !activeStripeEnt ||
+      activeStripeEnt.customerEmail?.toLowerCase() !== user.email ||
+      (targetDeviceId && activeStripeEnt.deviceId !== targetDeviceId) ||
+      activeStripeEnt.userId !== user.userId;
+    if (needsBind) {
+      await saveEntitlement(
+        buildLifetimeProEntitlement(user.email, {
+          deviceId: targetDeviceId,
+          userId: user.userId,
+        })
+      ).catch(() => {});
+    }
+  } else if (activeStripeEnt) {
     const ownedByDifferentEmail =
       Boolean(activeStripeEnt.customerEmail) &&
       activeStripeEnt.customerEmail!.toLowerCase() !== user.email;
@@ -486,33 +513,37 @@ export async function toPublicProfile(
     }
   }
 
-  const isProActive = isStripePro || proUntil > now;
+  const isProActive = isLifetimePro || isStripePro || proUntil > now;
   const stripeFallbackDays =
     activeStripeEnt?.status === "trialing"
       ? PRICING.trialDays
       : activeStripeEnt?.plan === "monthly"
         ? 31
         : 365;
-  const explicitStripeExpiryMs = activeStripeEnt
-    ? Math.max(
-        typeof activeStripeEnt.expiresAtMs === "number" &&
-          Number.isFinite(activeStripeEnt.expiresAtMs)
-          ? activeStripeEnt.expiresAtMs
-          : 0,
-        typeof activeStripeEnt.paidPassExpiresAtMs === "number" &&
-          Number.isFinite(activeStripeEnt.paidPassExpiresAtMs)
-          ? activeStripeEnt.paidPassExpiresAtMs
-          : 0
-      )
-    : 0;
+  const explicitStripeExpiryMs = isLifetimePro
+    ? LIFETIME_PRO_UNTIL_MS
+    : activeStripeEnt
+      ? Math.max(
+          typeof activeStripeEnt.expiresAtMs === "number" &&
+            Number.isFinite(activeStripeEnt.expiresAtMs)
+            ? activeStripeEnt.expiresAtMs
+            : 0,
+          typeof activeStripeEnt.paidPassExpiresAtMs === "number" &&
+            Number.isFinite(activeStripeEnt.paidPassExpiresAtMs)
+            ? activeStripeEnt.paidPassExpiresAtMs
+            : 0
+        )
+      : 0;
   const stripeRemainingDays =
     isStripePro && explicitStripeExpiryMs > now
       ? Math.max(1, Math.ceil((explicitStripeExpiryMs - now) / DAY_MS))
       : stripeFallbackDays;
   const effectiveProUntil =
-    isStripePro && explicitStripeExpiryMs > now
-      ? Math.max(proUntil, explicitStripeExpiryMs)
-      : proUntil;
+    isLifetimePro
+      ? Math.max(proUntil, LIFETIME_PRO_UNTIL_MS)
+      : isStripePro && explicitStripeExpiryMs > now
+        ? Math.max(proUntil, explicitStripeExpiryMs)
+        : proUntil;
   const referralRemainingDays = Math.max(0, Math.ceil((proUntil - now) / DAY_MS));
   const proDaysRemaining = isStripePro
     ? Math.max(stripeRemainingDays, referralRemainingDays)
@@ -527,12 +558,15 @@ export async function toPublicProfile(
     referralCode: user.referralCode,
     proUntil: effectiveProUntil,
     isProActive,
+    ...(isLifetimePro ? { isLifetimePro: true } : {}),
     proDaysRemaining,
-    entitlementStatus: isStripePro
-      ? activeStripeEnt?.status
-      : proUntil > now
-        ? "active"
-        : undefined,
+    entitlementStatus: isLifetimePro
+      ? "active"
+      : isStripePro
+        ? activeStripeEnt?.status
+        : proUntil > now
+          ? "active"
+          : undefined,
     watchlist: user.watchlist,
     createdAt: user.createdAt,
   };
