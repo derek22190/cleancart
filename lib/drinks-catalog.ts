@@ -5858,7 +5858,6 @@ export function passesVariantGuard(query: string, candidateTitle: string, option
       /\bmountain\s+water\b|\bstill\b|\bspring\s+water\b|\bartesian\s+water\b|\bpurified\s+water\b/,
     ],
     [/\bcaffeine[\s-]*free\b|\bdecaf\b/, /\bcaffeine[\s-]*free\b|\bdecaf\b/],
-    [/\bgluten[\s-]*free\b/, /\bgluten[\s-]*free\b|\bgrain[\s-]*free\b/],
     [
       /\blactose[\s-]*free\b/,
       /\blactose[\s-]*free\b|\bdairy[\s-]*free\b|\bsoy\s*milk\b|\boat\s*milk\b|\balmond\s*milk\b|\bcoconut\s*milk\b|\bplant[\s-]*based\b|\bfairlife\b|\blactaid\b/,
@@ -5886,10 +5885,25 @@ export function passesVariantGuard(query: string, candidateTitle: string, option
     [/\bmesquite\b/, /\bmesquite\b/],
     [/\bscampi\b/, /\bscampi\b/],
     [/\bparmesan\b/, /\bparmesan\b/],
-    [/\bwings?\b/, /\bwings?\b|\bdrumettes?\b/],
   ];
   for (const [qRe, tRe] of variantTokens) {
     if (qRe.test(q) && !tRe.test(t)) return false;
+  }
+  // Enforce title-level gluten-free match except on naturally gluten-free broth/stock (where isDietaryOrVariantMismatch still checks actual ingredients for wheat/barley/rye/gluten).
+  if (
+    /\bgluten[\s-]*free\b/.test(q) &&
+    !/\bgluten[\s-]*free\b|\bgrain[\s-]*free\b/.test(t) &&
+    !(/\b(?:chicken|beef|bone|vegetable|turkey)\s+(?:broth|stock)\b/.test(q) && /\b(?:broth|stock)\b/.test(t))
+  ) {
+    return false;
+  }
+  // Enforce wings/drumettes match for meat queries, without falsely rejecting wing sauces/seasonings.
+  if (
+    /\bwings?\b/.test(q) &&
+    !/\b(?:sauce|seasoning|marinade|rub|glaze|dip|mix)\b/.test(q) &&
+    !/\bwings?\b|\bdrumettes?\b/.test(t)
+  ) {
+    return false;
   }
   if (/\bcrunchy\b/.test(q) && /\b(?:creamy|smooth)\b/.test(t) && !/\b(?:crunchy|chunky)\b/.test(t)) return false;
   if (/\bcreamy\b/.test(q) && /\b(?:crunchy|chunky)\b/.test(t) && !/\bcreamy\b/.test(t)) return false;

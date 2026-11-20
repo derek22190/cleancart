@@ -11971,6 +11971,48 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         !authModalSrc.includes("add GOOGLE_CLIENT_ID in Vercel Settings") &&
         authModalSrc.includes("Lifetime Family Pro Active"),
     );
+
+    // 12. Live Shop v2.6.2 Regression Coverage
+    const { cleanSearchQuery: cleanSearchQueryReg, matchesRequestedBrand: matchesBrandReg } = await import("../lib/lookup");
+    const { detectPesticideRisk: detectPestReg } = await import("../lib/dietary");
+    const toolsClientSrc = fsNode.readFileSync("app/tools/ToolsClient.tsx", "utf8");
+    const wingSauceRes = scoreYukaReg(
+      "Aged Cayenne Red Peppers, Distilled Vinegar, Water, Salt, Garlic Powder.",
+      {},
+      [],
+      { productTitle: "Chicken Wing Sauce" },
+    );
+
+    check(
+      "Live Shop v2.6.2 regression coverage: leading (12 pack) preserved, Baked Fresh In-Store cleaned, Land O'Lakes brand apostrophe matches, naturally GF Chicken Broth passes variant guard (GF bread still strict), Doritos bell pepper powder & uncured celery powder do not trigger Dirty Dozen fresh-produce alert, Chicken Wing Sauce avoids raw wing meat nutrition, Sam's Club search wrapper drops overflow:hidden, iOS SPA history clears input focus, 2D pill X+Y aiming & badge pinning, /cart & Saved for Later scoring, horizontal carousel prefetch, Instacart cart drawer & OAuth fixes, and iOS omits Android APK setup card",
+      cleanSearchQueryReg("(12 pack) Great Value Brown Gravy Mix, 0.87 oz Packet") === "Great Value Brown Gravy Mix" &&
+        cleanSearchQueryReg("Freshness Guaranteed French Bakery Bread Loaf, Baked Fresh In-Store").toLowerCase() === "freshness guaranteed french bread" &&
+        matchesBrandReg("Land O Lakes Butter with Canola Oil, Spreadable, 8 oz Tub", "Land O'Lakes", "Land O' Lakes Spreadable Butter with Canola Oil") &&
+        passesVariantGuardReg("Great Value Gluten-Free Chicken Broth, 32 oz Carton", "Great Value Chicken Broth") &&
+        !passesVariantGuardReg("Gluten-Free Sandwich Bread", "White Sandwich Bread") &&
+        passesVariantGuardReg("Buffalo Wild Wings Garlic Parmesan Sauce", "Buffalo Wild Wings Parmesan Garlic Sauce") &&
+        detectPestReg("Doritos Nacho Cheese Flavored Tortilla Chips", "Corn, Vegetable Oil, Maltodextrin, Salt, Red and Green Bell Pepper Powder, Disodium Inosinate") === null &&
+        detectPestReg("Applegate Uncured Bacon", "Pork, Water, Sea Salt, Celery Powder") === null &&
+        detectPestReg("Fresh Red Bell Pepper", "100% Fresh Whole Produce")?.crop.includes("bell pepper") === true &&
+        wingSauceRes.score >= 85 &&
+        !androidDetectorSrc.includes('form[data-testid="search-form"] > div, form[role="search"] > div { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; position: relative !important; overflow: hidden !important;') &&
+        !androidBrowserSrc.includes('form[data-testid="search-form"] > div, form[role="search"] > div { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; position: relative !important; overflow: hidden !important;') &&
+        !iosBrowserSrc.includes('form[data-testid="search-form"] > div, form[role="search"] > div { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; position: relative !important; overflow: hidden !important;') &&
+        iosBrowserSrc.includes("function clearInputFocusIfUnfocused()") &&
+        androidDetectorSrc.includes("window.__heybrocBubbleCenterX") &&
+        androidDetectorSrc.includes("hbPinnedCardId") &&
+        androidDetectorSrc.includes("function isCheckoutUrl()") &&
+        androidDetectorSrc.includes("220px 340px") &&
+        androidBrowserSrc.includes("window.__heybrocBubbleCenterX =") &&
+        androidBrowserSrc.includes("Use Email / Phone Here") &&
+        androidBrowserSrc.includes("Uri.parse(safeStoreUrl)") &&
+        iosBrowserSrc.includes("window.__heybrocBubbleCenterX =") &&
+        iosBrowserSrc.includes("hbPinnedCardId") &&
+        iosBrowserSrc.includes("function isCheckoutUrl()") &&
+        iosBrowserSrc.includes("220px 340px") &&
+        iosBrowserSrc.includes("Use Email / Phone Here") &&
+        toolsClientSrc.includes("{!isIosClient && ("),
+    );
   }
 
   console.log("Checks executed:", checks);

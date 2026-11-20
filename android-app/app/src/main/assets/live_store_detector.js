@@ -63,7 +63,7 @@
         'header.sams-redesigned-main-header.hb-sams-searching > div, header.sams-redesigned-main-header.hb-sams-searching > a, header.sams-redesigned-main-header.hb-sams-searching > section, header.sams-redesigned-main-header.hb-sams-searching > nav, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > div, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > a, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > section, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > nav { display: none !important; }' +
         'header.sams-redesigned-main-header.hb-sams-searching form[data-testid="search-form"], header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) form[data-testid="search-form"] { margin-left: 0 !important; margin-right: 0 !important; padding-left: 0 !important; padding-right: 0 !important; gap: 6px !important; }' +
         'form[data-testid="search-form"], form[role="search"] { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; max-width: 100% !important; justify-content: flex-start !important; }' +
-        'form[data-testid="search-form"] > div, form[role="search"] > div { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; position: relative !important; overflow: hidden !important; border-radius: 9999px !important; }' +
+        'form[data-testid="search-form"] > div, form[role="search"] > div { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; position: relative !important; border-radius: 9999px !important; }' +
         'input[data-automation-id="header-input-search"], input.search-bar-redesigned-v2, form[data-testid="search-form"] input[type="search"], form[role="search"] input[type="search"] { display: block !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important; background-color: #ffffff !important; color: #0f172a !important; -webkit-text-fill-color: #0f172a !important; caret-color: #0f172a !important; opacity: 1 !important; font-size: 16px !important; line-height: 1.35 !important; padding-left: 14px !important; padding-right: 76px !important; border-radius: 9999px !important; text-indent: 0 !important; margin: 0 !important; }' +
         'input[data-automation-id="header-input-search"]::placeholder, input.search-bar-redesigned-v2::placeholder, form[data-testid="search-form"] input[type="search"]::placeholder { color: #64748b !important; -webkit-text-fill-color: #64748b !important; opacity: 1 !important; }' +
         'form[data-testid="search-form"] button[aria-label*="Clear" i], form[role="search"] button[aria-label*="Clear" i] { position: absolute !important; right: 38px !important; left: auto !important; top: 50% !important; transform: translateY(-50%) !important; z-index: 2 !important; color: #0f172a !important; }' +
@@ -163,6 +163,10 @@
     return /\/(?:cart|bag|basket|checkout|gp\/cart|store\/cart|shop\/cart)(?:\/|$)|\/checkoutcart(?:display)?view(?:\/|$|\.)/i.test(location.pathname);
   }
 
+  function isCheckoutUrl() {
+    return /\/(?:checkout|payment|placeorder|billing|signin|login)(?:\/|$)/i.test(location.pathname);
+  }
+
   function looksLikeProductUrl(url) {
     if (isCartUrl()) return false;
     var host = (location.hostname || '').toLowerCase();
@@ -186,7 +190,13 @@
     if (/\b(cart[-_ ]?(?:drawer|modal|panel|flyout|sidebar)|shopping[-_ ]?cart|mini[-_ ]?cart|bag[-_ ]?drawer)\b/i.test(meta)) return true;
     var h = el.querySelector('h1, h2, h3, [role="heading"]');
     var ht = clean(h ? h.textContent : '');
+    if (ht && ht.length <= 80 && /\b(?:cart|bag|basket)(?:\s*\(\d+.*\))?$/i.test(ht)) return true;
     if (/^(?:your\s+)?(?:shopping\s+)?(?:cart|bag|basket|order)(?:\s*\(\d+.*\))?$/i.test(ht)) return true;
+    var ctas = el.querySelectorAll('a, button, [role="button"]');
+    for (var i = 0; i < ctas.length && i < 40; i++) {
+      var bt = clean(ctas[i].textContent || '');
+      if (/^(?:go\s+to\s+checkout|proceed\s+to\s+checkout|continue\s+to\s+checkout|checkout(?:\s+now)?|place\s+order)\b/i.test(bt)) return true;
+    }
     return false;
   }
 
@@ -863,8 +873,45 @@
     'a[href*="/detail/ps/p/"]', 'a[href*="/product/"]'
   ];
 
+  var hbPinnedCardId = '';
+  var hbPinnedScrollY = 0;
+  var hbPinnedScrollX = 0;
+  window.__heybrocClearPinnedCard = function() {
+    hbPinnedCardId = '';
+  };
+
   function findAlignedSearchCard() {
-    if (isCartUrl()) return { title: '', storeImageUrl: '', barcode: '', cardId: '', batchPending: false };
+    if (isCheckoutUrl()) return { title: '', storeImageUrl: '', barcode: '', cardId: '', batchPending: false };
+    var vh = Math.max(320, window.innerHeight || 680);
+    var vw = Math.max(280, window.innerWidth || 412);
+    if (hbPinnedCardId) {
+      var pinnedOwner = hbOwnerCardById[hbPinnedCardId];
+      if (pinnedOwner && pinnedOwner.isConnected && isVisible(pinnedOwner)) {
+        var pr = pinnedOwner.getBoundingClientRect();
+        if (pr.bottom > 60 && pr.top < vh - 24 && pr.right > 16 && pr.left < vw - 16) {
+          var pSt = hbCardState ? hbCardState.get(pinnedOwner) : null;
+          var pTitle = (pSt && pSt.title) ? pSt.title : recoverFromCardLinks(pinnedOwner, extractBestCardTitle(pinnedOwner, CARD_TITLE_SELS)).title;
+          if (pTitle && !isNonFoodGridTitle(pTitle)) {
+            var pImg = (pSt && pSt.img) ? sanitizeStoreImgSrc(pSt.img) : '';
+            if (!pImg) {
+              var pImgs = pinnedOwner.querySelectorAll('img');
+              for (var pi = 0; pi < pImgs.length; pi++) {
+                var pu = sanitizeStoreImgSrc(pImgs[pi]);
+                if (pu) { pImg = pu; break; }
+              }
+            }
+            return {
+              title: pTitle,
+              storeImageUrl: pImg,
+              barcode: '',
+              cardId: hbPinnedCardId,
+              batchPending: Boolean(pSt && !pSt.resolved && !pSt.suppressedEstimate && pSt.badgeEl && pSt.badgeEl.isConnected)
+            };
+          }
+        }
+      }
+      hbPinnedCardId = '';
+    }
     var rawCards = Array.prototype.slice.call(document.querySelectorAll(CARD_SEL));
     if (!rawCards.length) {
       var links = document.querySelectorAll(PRODUCT_LINK_SEL);
@@ -873,11 +920,11 @@
         if (anc && rawCards.indexOf(anc) === -1) rawCards.push(anc);
       }
     }
-    var vh = Math.max(320, window.innerHeight || 680);
-    var vw = Math.max(280, window.innerWidth || 412);
     var targetY = (typeof window.__heybrocBubbleCenterY === 'number' && window.__heybrocBubbleCenterY > 40)
       ? window.__heybrocBubbleCenterY
       : (vh * 0.38);
+    var hasCustomX = typeof window.__heybrocBubbleCenterX === 'number' && window.__heybrocBubbleCenterX > 10;
+    var targetX = hasCustomX ? window.__heybrocBubbleCenterX : (vw * 0.5);
     var bestTitle = '';
     var bestBarcode = '';
     var bestCard = null;
@@ -887,7 +934,6 @@
       var card = rawCards[i];
       if (!isVisible(card)) continue;
       if (hasMultipleDistinctProductLinks(card)) continue;
-      if (card.closest('#sc-saved-cart, [data-testid*="saved-for-later" i], [data-test*="savedForLater" i]')) continue;
       if (isCartDrawer(card.closest('[role="dialog"], aside, section'))) continue;
       var cr = card.getBoundingClientRect();
       if (cr.height < 64 || cr.height > vh * 0.94 || cr.width < 100) continue;
@@ -899,11 +945,20 @@
       var candTitle = rec.title;
       if (!candTitle || isNonFoodGridTitle(candTitle)) continue;
 
-      var dist = 0;
-      if (targetY < cr.top) dist = cr.top - targetY;
-      else if (targetY > cr.bottom) dist = targetY - cr.bottom;
-      else dist = Math.abs(((cr.top + cr.bottom) * 0.5) - targetY) * 0.25;
-      dist += Math.abs(((cr.left + cr.right) * 0.5) - (vw * 0.5)) * 0.18;
+      var distY = 0;
+      if (targetY < cr.top) distY = cr.top - targetY;
+      else if (targetY > cr.bottom) distY = targetY - cr.bottom;
+      else distY = Math.abs(((cr.top + cr.bottom) * 0.5) - targetY) * 0.25;
+
+      var distX = 0;
+      if (targetX < cr.left) distX = cr.left - targetX;
+      else if (targetX > cr.right) distX = targetX - cr.right;
+      else distX = Math.abs(((cr.left + cr.right) * 0.5) - targetX) * 0.25;
+
+      var visW = Math.max(0, Math.min(cr.right, vw) - Math.max(cr.left, 0));
+      var clipPenalty = (cr.width > 0 && (visW / cr.width) < 0.65) ? 45 : 0;
+
+      var dist = distY + (distX * (hasCustomX ? 0.95 : 0.28)) + clipPenalty;
       if (cr.top < 72) dist += 180;
       if (dist < bestDist) {
         bestDist = dist;
@@ -912,7 +967,7 @@
         bestCard = card;
       }
     }
-    if (bestDist > 260 || !bestTitle) return { title: '', storeImageUrl: '', barcode: '', cardId: '', batchPending: false };
+    if (bestDist > 280 || !bestTitle) return { title: '', storeImageUrl: '', barcode: '', cardId: '', batchPending: false };
     var cardImgUrl = '';
     var cardId = '';
     var batchPending = false;
@@ -943,7 +998,7 @@
     return { title: bestTitle, storeImageUrl: cardImgUrl, barcode: bestBarcode, cardId: cardId, batchPending: batchPending };
   }
 
-  var NON_FOOD_GRID_RE = /\b(?:paper\s+towels?|toilet\s+(?:paper|tissue)|bath\s+tissue|facial\s+tissues?|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|parchment\s+paper|plastic\s+wrap|paper\s+plates?|laundry\s+(?:detergent|pods?|sanitizer)|fabric\s+softener|dryer\s+sheets?|dish\s+(?:soap|detergent)|dishwasher\s+(?:pods?|pac?ks?|detergent)|disinfecting\s+wipes?|bleach|all[- ]purpose\s+cleaner|glass\s+cleaner|toilet\s+bowl\s+cleaner|air\s+freshener|diapers?|pull[- ]ups?|baby\s+wipes?|cat\s+litter|dog\s+(?:food|treats?|pads?)|cat\s+(?:food|treats?)|pet\s+food|alkaline\s+batteries|aa\s+batteries|aaa\s+batteries|motor\s+oil|windshield\s+washer|light\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|body\s+wash|deodorant|antiperspirant|razor\s+blades?|shaving\s+cream|sunscreen|tampons?|maxi\s+pads?|pantiliners?)\b/i;
+  var NON_FOOD_GRID_RE = /\b(?:paper\s+towels?|toilet\s+(?:paper|tissue)|bath\s+tissue|facial\s+tissues?|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|parchment\s+paper|plastic\s+wrap|paper\s+plates?|laundry\s+(?:detergent|pods?|sanitizer)|fabric\s+softener|dryer\s+sheets?|dish\s+(?:soap|detergent)|dishwasher\s+(?:pods?|pac?ks?|detergent)|disinfecting\s+wipes?|bleach|all[- ]purpose\s+cleaner|glass\s+cleaner|toilet\s+bowl\s+cleaner|air\s+freshener|diapers?|pull[- ]ups?|baby\s+wipes?|cat\s+litter|dog\s+(?:food|treats?|pads?)|cat\s+(?:food|treats?)|pet\s+food|alkaline\s+batteries|aa\s+batteries|aaa\s+batteries|motor\s+oil|windshield\s+washer|light\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|body\s+wash|deodorant|antiperspirant|razor\s+blades?|shaving\s+cream|sunscreen|tampons?|maxi\s+pads?|pantiliners?|power\s+bank|air\s+fryer|jigsaw\s+puzzle|piece\s+puzzle|hopper\s+ball|bouncer|heated\s+(?:vest|clothing|jacket)|sippy\s+cups?|toddler\s+cups?|training\s+cups?|water\s+bottle\s+(?:with\s+straw|insulated|stainless))\b/i;
   var HOUSEHOLD_BAG_CUP_BRAND_RE = /\b(?:ziploc|hefty|glad|reynolds|up\s*&\s*up|great\s+value|kirkland\s+signature|member'?s\s+mark|solimo|amazon\s+basics|boulder|if\s+you\s+care|stasher|dixie|solo|chinet|vanity\s+fair|sparkle|bounty|charmin|scott|cottonelle|kleenex|puff'?s|tide|gain|downy|cascade|dawn|lysol|clorox)\b/i;
   var FOOD_CONTEXT_GUARD_RE = /\b(?:chicken|beef|pork|turkey|salmon|shrimp|fish|steak|meatball|nugget|strip|fillet|tender|wing|patty|sausage|bacon|ham|burrito|taquito|pizza|ravioli|pierogi|dumpling|gyoza|wonton|potsticker|vegetable|broccoli|pea|corn|berry|berries|strawberry|blueberry|mango|peach|fruit|fries|tot|waffle|pancake|oat|granola|cereal|chip|pretzel|popcorn|cracker|cookie|brownie|candy|chocolate|peanut\s+butter|reese'?s|butterfinger|snickers|m&m|gummy|yogurt|cheese|ice\s+cream|coffee|tea|k-cup|pod|broth|soup|rice|pasta|noodle|bean|dough|bread|flour|yeast|baking|seasoning|spice|sauce)\b/i;
 
@@ -1582,16 +1637,17 @@
 
   function flushHbBadgeBatch() {
     hbBatchTimer = null;
-    if (!hbPendingQueue.length || isCartUrl()) {
-      if (isCartUrl()) hbPendingQueue = [];
+    if (!hbPendingQueue.length || isCheckoutUrl()) {
+      if (isCheckoutUrl()) hbPendingQueue = [];
       return;
     }
     if (hbInFlightBatches >= MAX_IN_FLIGHT_BATCHES) {
       hbBatchTimer = setTimeout(flushHbBadgeBatch, 180);
       return;
     }
-    if (hbPendingQueue.length > 8) {
+    if (hbPendingQueue.length > 6) {
       var vhNow = Math.max(400, window.innerHeight || 800);
+      var vwNow = Math.max(280, window.innerWidth || 412);
       var onScreen = [];
       var nearScreen = [];
       var offScreen = [];
@@ -1599,8 +1655,8 @@
         var qe = hbPendingQueue[q];
         if (!qe.cardEl || !qe.cardEl.isConnected) continue;
         var qr = qe.cardEl.getBoundingClientRect();
-        if (qr.bottom > 40 && qr.top < vhNow - 20) onScreen.push(qe);
-        else if (qr.bottom > -220 && qr.top < vhNow + 260) nearScreen.push(qe);
+        if (qr.bottom > 40 && qr.top < vhNow - 20 && qr.right > 0 && qr.left < vwNow) onScreen.push(qe);
+        else if (qr.bottom > -220 && qr.top < vhNow + 260 && qr.right > -340 && qr.left < vwNow + 340) nearScreen.push(qe);
         else offScreen.push(qe);
       }
       hbPendingQueue = onScreen.concat(nearScreen, offScreen);
@@ -1655,7 +1711,7 @@
   }
 
   function processVisibleCard(cardEl) {
-    if (!cardEl || !cardEl.isConnected || isCartUrl()) return false;
+    if (!cardEl || !cardEl.isConnected || isCheckoutUrl()) return false;
     var info = readCardInfo(cardEl);
     if (!info || !info.anchor) return false;
     if (hbOwnerCardByImg && info.img) {
@@ -1752,7 +1808,7 @@
     hbOwnerCardById[cardId] = cardEl;
     hbPendingQueue.push({ id: cardId, title: info.title, sig: info.sig, badgeEl: b, cardEl: cardEl });
     if (!hbBatchTimer) {
-      hbBatchTimer = setTimeout(flushHbBadgeBatch, 110);
+      hbBatchTimer = setTimeout(flushHbBadgeBatch, 85);
     }
     return true;
   }
@@ -1789,7 +1845,7 @@
       hbLastBadgeUrl = location.href;
       clearHbBadges();
     }
-    if (isCartUrl()) {
+    if (isCheckoutUrl()) {
       clearHbBadges();
       return;
     }
@@ -1801,7 +1857,7 @@
             hbIntersectionObs.unobserve(entries[i].target);
           }
         }
-      }, { rootMargin: '220px 0px' });
+      }, { rootMargin: '220px 340px' });
     }
     var onPdp = Boolean(findOpenProductModal()) || looksLikeProductUrl(location.href);
     var maxCardW = onPdp ? 360 : Math.max(580, (window.innerWidth || 412) + 32);
@@ -2094,6 +2150,11 @@
     e.stopImmediatePropagation();
     var cardId = badge.getAttribute('data-hb-card-id') || '';
     var badgeSig = badge.getAttribute('data-hb-sig') || '';
+    if (cardId) {
+      hbPinnedCardId = cardId;
+      hbPinnedScrollY = window.scrollY || 0;
+      hbPinnedScrollX = window.scrollX || 0;
+    }
     var ownerCard = (cardId && hbOwnerCardById[cardId]) ? hbOwnerCardById[cardId] : (badge.closest ? badge.closest(CARD_SEL) : null);
     var st = (ownerCard && hbCardState) ? hbCardState.get(ownerCard) : null;
     var liveInfo = ownerCard ? readCardInfo(ownerCard) : null;
@@ -2339,6 +2400,11 @@
   window.__heybrocScheduleCheck = scheduleCheck;
 
   document.addEventListener('scroll', function() {
+    if (hbPinnedCardId) {
+      var dy = Math.abs((window.scrollY || 0) - hbPinnedScrollY);
+      var dx = Math.abs((window.scrollX || 0) - hbPinnedScrollX);
+      if (dy > 28 || dx > 28) hbPinnedCardId = '';
+    }
     if (scrollTimer) clearTimeout(scrollTimer);
     scrollTimer = setTimeout(extractProductData, 200);
   }, { capture: true, passive: true });
@@ -2351,13 +2417,15 @@
   }, true);
 
   window.addEventListener('popstate', function() {
+    hbPinnedCardId = '';
     clearInputFocusIfUnfocused();
     scheduleCheck(true);
   });
-  window.addEventListener('hashchange', function() { scheduleCheck(true); });
+  window.addEventListener('hashchange', function() { hbPinnedCardId = ''; scheduleCheck(true); });
   var origPush = history.pushState;
   history.pushState = function() {
     var r = origPush.apply(this, arguments);
+    hbPinnedCardId = '';
     clearInputFocusIfUnfocused();
     scheduleCheck(true);
     return r;
@@ -2365,6 +2433,7 @@
   var origReplace = history.replaceState;
   history.replaceState = function() {
     var r = origReplace.apply(this, arguments);
+    hbPinnedCardId = '';
     clearInputFocusIfUnfocused();
     scheduleCheck(true);
     return r;

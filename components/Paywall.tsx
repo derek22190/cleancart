@@ -67,7 +67,7 @@ export default function Paywall({
     creator: AppliedCreator | null;
   } | null>(null);
   const [remoteHeadline, setRemoteHeadline] = useState<string>(
-    "Scores & Ingredient Breakdowns Are Always Free. Unlock Unlimited Cleaner Picks & Order Audits.",
+    "Unlock Unlimited Clean Swaps & Order Audits",
   );
   const [remoteSubheadline, setRemoteSubheadline] = useState<string>("");
   const [remoteCtaLabel, setRemoteCtaLabel] = useState<string>("");

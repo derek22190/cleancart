@@ -1859,10 +1859,11 @@ async function lookupProviders(input: LookupInput): Promise<ProviderResult | nul
     if (!first) return null;
     if (first.source === "dsld" && SUPPLEMENT_FORM.test(cleaned) && passesRawTitleGuard(first)) return first;
     // Give peer provider a brief grace window so OFF vs USDA never depends on a 5ms network race
+    const graceMs = lookupAttemptContext.getStore()?.isBatch && passesRawTitleGuard(first) ? 90 : 320;
     let graceTimer: ReturnType<typeof setTimeout> | undefined;
     await Promise.race([
       Promise.allSettled(all),
-      new Promise<void>(resolve => { graceTimer = setTimeout(resolve, 320); }),
+      new Promise<void>(resolve => { graceTimer = setTimeout(resolve, graceMs); }),
     ]);
     clearTimeout(graceTimer);
     const resolved: ProviderResult[] = [];
@@ -2206,21 +2207,23 @@ export function matchesGenericWholeFood(query: string, candidate: string): boole
 const USDA_LUCENE_SKIP_WORDS = new Set([
   "the", "and", "with", "for", "from", "in", "of", "by", "on", "to",
   "snack", "snacks", "pack", "size", "family", "party", "share", "value", "giant", "mega",
-  "bag", "box", "can", "jar", "bottle", "tub", "carton", "pouch", "tray", "cup", "bowl",
+  "bag", "box", "can", "jar", "bottle", "tub", "carton", "pouch", "tray", "cup", "bowl", "packet", "packets",
   "count", "ct", "oz", "fl", "lb", "lbs", "gal", "gallon", "half", "quart", "pint", "pkg",
-  "assorted", "variety", "homemade", "fresh", "pure",
+  "assorted", "variety", "homemade", "fresh", "pure", "bakery", "loaf", "baked", "store", "steamable",
+  "individually", "wrapped", "classic", "america", "americas", "moist", "flavorful",
   "naturally", "fully", "cooked", "lightly", "priced", "per", "pound", "pounds", "avg", "average", "price",
   "food", "foods", "kids", "kid", "shelf", "stable", "pantry", "staple", "staples", "seasonal", "snap", "ebt", "eligible", "lunchbox",
 ]);
 
 function buildUsdaLuceneQuery(query: string): string {
+  const brandWords = new Set(tokens(detectQueryBrand(query)));
   const allWords = query
     .replace(/['’]s\b/gi, "")
     .replace(/['’]/g, "")
     .replace(/[^a-zA-Z0-9]+/g, " ")
     .trim()
     .split(/\s+/)
-    .filter((w) => w.length >= 2 && !USDA_LUCENE_SKIP_WORDS.has(w.toLowerCase()) && !/^\d+$/.test(w));
+    .filter((w) => w.length >= 2 && (brandWords.has(w.toLowerCase()) || !USDA_LUCENE_SKIP_WORDS.has(w.toLowerCase())) && !/^\d+$/.test(w));
   const compactWords =
     allWords.length > 4
       ? allWords.filter(
@@ -2345,7 +2348,7 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
     for (const response of responses) evaluateFoods(response?.foods);
     if (responses.every((r) => r === null) && !providerSignal.getStore()?.aborted) {
       const portalFallback = await Promise.all([
-        postUsdaPortalSearch(searchInput, { Branded: true }, 18),
+        postUsdaPortalSearch(searchInput, { Branded: true }, 24),
         ...(wholeQuery ? [postUsdaPortalSearch(wholeQuery, { Foundation: true, "SR Legacy": true }, 20)] : []),
       ]);
       for (const response of portalFallback) evaluateFoods(response?.foods);
@@ -2353,35 +2356,58 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
   } else {
     // DEMO_KEY on api.nal.usda.gov enforces a strict 10-req/4h IP cap; use USDA's public FoodData Central search directly
     const portalRequests = [
-      postUsdaPortalSearch(searchInput, { Branded: true }, 18),
+      postUsdaPortalSearch(searchInput, { Branded: true }, 24),
       ...(wholeQuery ? [postUsdaPortalSearch(wholeQuery, { Foundation: true, "SR Legacy": true }, 20)] : []),
     ];
     const responses = await Promise.all(portalRequests);
     for (const response of responses) evaluateFoods(response?.foods);
   }
 
-  // Secondary relaxed query when strict +word Lucene missed due to an extra retailer adjective (still strictly gated by brand + variant + relevance >= 0.55)
+  // Secondary relaxed query when strict +word Lucene missed due to an extra retailer adjective,
+  // naturally-gluten-free broth label, or multi-word house-brand phrase (still strictly gated by brand + variant + ingredient mismatch + relevance >= 0.55).
   if (
     (!best || bestScore < 0.55) &&
     !isBarcodeQuery &&
-    luceneQuery &&
-    luceneQuery.split(/\s+/).length >= 4 &&
     !providerSignal.getStore()?.aborted
   ) {
-    const relaxedInput = luceneQuery.replace(/\+/g, "");
-    if (Date.now() >= usdaUnavailableUntil) {
-      const relRes = await getJson<{ foods?: UsdaFood[] }>(
-        `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(relaxedInput)}&dataType=Branded&pageSize=18&api_key=${key}`,
-      );
-      if (relRes) {
-        evaluateFoods(relRes.foods);
-      } else if (!providerSignal.getStore()?.aborted) {
-        const portalRel = await postUsdaPortalSearch(relaxedInput, { Branded: true }, 18);
+    const detectedMultiBrand = detectQueryBrand(query);
+    const isNaturallyGfBroth =
+      /\bgluten[\s-]*free\b/i.test(query) &&
+      /\b(?:chicken|beef|bone|vegetable|turkey)\s+(?:broth|stock)\b/i.test(query);
+    let secondaryInput = "";
+    if (isNaturallyGfBroth) {
+      secondaryInput = buildUsdaLuceneQuery(query.replace(/\bgluten[\s-]*free\b/gi, " "));
+    } else if (detectedMultiBrand && /\s/.test(detectedMultiBrand.trim())) {
+      const brandToks = new Set(tokens(detectedMultiBrand));
+      const restWords = query
+        .replace(/['’]s\b/gi, "")
+        .replace(/['’]/g, "")
+        .replace(/[^a-zA-Z0-9]+/g, " ")
+        .trim()
+        .split(/\s+/)
+        .filter((w) => w.length >= 2 && !USDA_LUCENE_SKIP_WORDS.has(w.toLowerCase()) && !brandToks.has(w.toLowerCase()) && !/^\d+$/.test(w))
+        .slice(0, 4);
+      if (restWords.length > 0) {
+        secondaryInput = `"${detectedMultiBrand.trim()}" ${restWords.map((w) => `+${w}`).join(" ")}`;
+      }
+    } else if (luceneQuery && luceneQuery.split(/\s+/).length >= 4) {
+      secondaryInput = luceneQuery.replace(/\+/g, "");
+    }
+    if (secondaryInput && secondaryInput !== searchInput) {
+      if (Date.now() >= usdaUnavailableUntil) {
+        const relRes = await getJson<{ foods?: UsdaFood[] }>(
+          `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(secondaryInput)}&dataType=Branded&pageSize=20&api_key=${key}`,
+        );
+        if (relRes) {
+          evaluateFoods(relRes.foods);
+        } else if (!providerSignal.getStore()?.aborted) {
+          const portalRel = await postUsdaPortalSearch(secondaryInput, { Branded: true }, 24);
+          evaluateFoods(portalRel?.foods);
+        }
+      } else {
+        const portalRel = await postUsdaPortalSearch(secondaryInput, { Branded: true }, 24);
         evaluateFoods(portalRel?.foods);
       }
-    } else {
-      const portalRel = await postUsdaPortalSearch(relaxedInput, { Branded: true }, 18);
-      evaluateFoods(portalRel?.foods);
     }
   }
 
@@ -5596,7 +5622,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
 }
 
 const RETAILER_SEO_COMMA_SEGMENT_RE =
-  /^(?:free\s+of\s+top\s+\d+\s+allergens?|top\s+\d+\s+allergen[\s-]*free|allergen[\s-]*free|100%\s+(?:all\s+)?natural\s+ingredients?|soft\s*(?:&|and)\s*moist|\d+\s*g\s+(?:whey\s+|plant\s+)?protein(?:\s+per\s+(?:serving|cup))?|big\s+pack|good\s+source\s+of\s+.+|excellent\s+source\s+of\s+.+|rich\s+in\s+.+|heart\s+healthy|shelf[\s-]*stable|pantry\s+staples?|ready[\s-]*to[\s-]*(?:eat|drink|serve|bake|cook)|easy\s+(?:dinner|meal|lunch|prep)|quick\s+(?:meal|lunch|dinner|breakfast)|comfort\s+foods?|breakfast\s+foods?|breakfast\s+spread|frozen\s+(?:breakfast|food|meal|snack|entree|dessert)s?|fresh\s+deli(?:\s+soup)?|deli\s+soup|refrigerated|frozen|previously\s+frozen|(?:kids'?|school|lunch(?:\s*box)?|office|party|holiday|game\s+day|after[\s-]*school|on[\s-]*the[\s-]*go|bedtime|afternoon|everyday|family)\s+(?:snacks?|breakfast|treats?|drinks?|favorites?|lunch)|snacks?\s+for\s+.+|great\s+for\s+.+|perfect\s+for\s+.+|ideal\s+for\s+.+|snap\s+ebt(?:\s+eligible)?|seasonal(?:\s*[-–—]\s*\w+)?|mini\s+size|regular\s+size|king\s+size|share\s+size|family(?:\s+size|\s+pack)?|mega(?:\s+size|\s+pack)?|giant(?:\s+size)?|party(?:\s+size|\s+pack)?|value(?:\s+size|\s+pack)?|single[\s-]*serve|multi[\s-]*pack|about\s+\d+\s+[a-z]+\s+per\s+pack|serves\s+\d+(?:\s*[-–—]\s*\d+)?)$/i;
+  /^(?:free\s+of\s+top\s+\d+\s+allergens?|top\s+\d+\s+allergen[\s-]*free|allergen[\s-]*free|100%\s+(?:all\s+)?natural\s+ingredients?|soft\s*(?:&|and)\s*moist|moist\s*(?:&|and)\s*flavorful|baked\s+fresh(?:\s+in[\s-]*store)?|fresh(?:ly)?\s+baked(?:\s+in[\s-]*store)?|bakery\s+fresh|\d+\s*g\s+(?:whey\s+|plant\s+)?protein(?:\s+per\s+(?:serving|cup))?|big\s+pack|good\s+source\s+of\s+.+|excellent\s+source\s+of\s+.+|rich\s+in\s+.+|heart\s+healthy|shelf[\s-]*stable|pantry\s+staples?|ready[\s-]*to[\s-]*(?:eat|drink|serve|bake|cook)|easy\s+(?:dinner|meal|lunch|prep)|quick\s+(?:meal|lunch|dinner|breakfast)|comfort\s+foods?|breakfast\s+foods?|breakfast\s+spread|frozen\s+(?:breakfast|food|meal|snack|entree|dessert)s?|fresh\s+deli(?:\s+soup)?|deli\s+soup|refrigerated|frozen|previously\s+frozen|steamable(?:\s+bag)?|(?:kids'?|school|lunch(?:\s*box)?|office|party|holiday|game\s+day|after[\s-]*school|on[\s-]*the[\s-]*go|bedtime|afternoon|everyday|family)\s+(?:snacks?|breakfast|treats?|drinks?|favorites?|lunch)|snacks?\s+for\s+.+|great\s+for\s+.+|perfect\s+for\s+.+|ideal\s+for\s+.+|snap\s+ebt(?:\s+eligible)?|seasonal(?:\s*[-–—]\s*\w+)?|mini\s+size|regular\s+size|king\s+size|share\s+size|family(?:\s+size|\s+pack)?|mega(?:\s+size|\s+pack)?|giant(?:\s+size)?|party(?:\s+size|\s+pack)?|value(?:\s+size|\s+pack)?|single[\s-]*serve|multi[\s-]*pack|about\s+\d+\s+[a-z]+\s+per\s+pack|serves\s+\d+(?:\s*[-–—]\s*\d+)?)$/i;
 
 const AMBIGUOUS_SHORT_SEO_SEGMENT_RE = /^(?:high\s+(?:in\s+)?fiber|small|medium|large)$/i;
 const PRESERVED_VARIANT_ELLIPSIS_TOKEN_RE =
@@ -5607,6 +5633,8 @@ export function cleanSearchQuery(title: string): string {
   let out = title
     .replace(/[®™©]/g, "")
     .replace(/^\s*(?:sponsored(?:\s+ad)?|ad(?=\s*[-–—:|•]))\s*[,•|:\-–—]?\s*/i, "")
+    // Strip leading multi-pack prefixes like "(12 pack) Great Value Brown Gravy Mix" without truncating the product title
+    .replace(/^\s*\(\d+(?:\.\d+)?\s*(?:fl\.?\s*oz|oz|lb|lbs|ct|count|pk|pack|packs|case|box|boxes|cans?|jars?|bottles?|bags?|pouches?|packets?|cups?|bars?|rolls?|slices?)\.?\)\s*[-–—|]?\s*/i, "")
     .replace(/\s*[.,•|\-]?\s*\bbased\s+on(?:\s+[\d,]+\s+ratings?|\s+customer\s+ratings?|\s+star\s+ratings?)?\s*[.,•|\-]*$/i, "")
     .replace(/,\s*([^,]{0,28}?)(?:\.\.\.+|…)+\s*$/g, (_m, seg: string) => {
       const trimmedSeg = (seg || "").trim();
@@ -5621,15 +5649,19 @@ export function cleanSearchQuery(title: string): string {
     .replace(/,?\s*\b(?:final\s+cost\s+by\s+weight|avg\.?\s+price|average\s+price)\b.*$/i, "")
     .replace(/\s+for\s+(?:sandwiches|sushi|sashimi|dipping|prime\s+rib|steak|salads?|marinades?)\b.*$/i, "")
     .replace(/\s*[-–—|]\s*pack\s+of\s+\d+.*$/i, "")
-    .replace(/\s*\(\d+(\.\d+)?\s*(?:fl\.?\s*oz|oz|lb|lbs|ct|count|pk|pack|g|kg|ml|pop[- ]?tarts?|bars?|pouches?|packs?|packets?|cups?|bottles?|cans?|cookies?|pies?|cakes?|waffles?|rolls?|slices?)\.?\)\s*[-–—|]?.*$/i, "")
-    .replace(/\s*\(\d*[^)]*$/g, "")
+    .replace(/(?<=\S)\s*\(\d+(\.\d+)?\s*(?:fl\.?\s*oz|oz|lb|lbs|ct|count|pk|pack|g|kg|ml|pop[- ]?tarts?|bars?|pouches?|packs?|packets?|cups?|bottles?|cans?|cookies?|pies?|cakes?|waffles?|rolls?|slices?)\.?\)\s*[-–—|]?.*$/i, "")
+    .replace(/(?<=\S)\s*\(\d*[^)]*$/g, "")
     .replace(/:\s*\d+(?:\s*[-–—]\s*\d+)?\s*(?:fl\.?\s*oz|lbs?|oz|ct|count|pk|pack|g|kg|gal|gallon)\.?\b.*$/i, "")
     .replace(/,\s*(about\s+\d+\s+[a-z]+\s+per\s+pack|serves\s+\d+|\d+(\.\d+)?\s*(fl\.?\s*oz|pk|pack|ct|count|oz|lb|lbs|gal|gallon|qt|pt|g|kg|ml|l|box|bag|tub|can|jar|bottle|carton|cup|bowl|tray|pouch|dozen)\.?(?:\s*(?:can|cans|box|boxes|bag|bags|bottle|bottles|jar|jars|tub|tubs|carton|cartons|pouch|pouches|pack|packs|kit))?)\b.*$/i, "")
     .replace(/\s+\d+(\.\d+)?\s*(fl\.?\s*oz|oz|lb|lbs|gal|gallon|qt|pt|ct|count|pk|pack|dozen)\.?(?:\s*(?:can|cans|box|boxes|bag|bags|bottle|bottles|jar|jars|tub|tubs|carton|cartons|pouch|pouches|pack|packs|kit))?\b.*$/i, "")
     .replace(/\s*[-–—]\s*\d+(\.\d+)?\s*(fl\.?\s*oz|pk|pack|ct|count|oz|lb|lbs|gal|gallon|qt|pt|g|kg|ml|l|dozen)\.?\b.*$/i, "")
-    .replace(/\s*\((fresh|refrigerated|frozen)\)\s*$/i, "")
+    .replace(/\s*\((fresh|refrigerated|frozen|shelf[\s-]*stable)\)\s*$/i, "")
     .replace(/,\s*(now|was)\b.*$/i, "")
     .replace(/\bbig\s+pack\b/gi, " ")
+    .replace(/\bbakery\s+bread\s+loaf\b/gi, "bread")
+    .replace(/\bamerica['’]?s\s+classic\b/gi, " ")
+    .replace(/\bindividually\s+wrapped\b/gi, " ")
+    .replace(/\bmoist\s+(?:and|&)\s+flavorful\b/gi, " ")
     .replace(/\s+/g, " ")
     .replace(/\s*[.,•|\-]+\s*$/, "")
     .trim();
@@ -5658,7 +5690,7 @@ export function cleanSearchQuery(title: string): string {
   } else {
     out = out
       .replace(
-        /\b(?:breakfast\s+foods?|kids['’]?\s+snacks?|lunch(?:\s*box)?\s+snacks?|pantry\s+staples?|shelf[\s-]*stable|value\s+pack|family\s+(?:size|pack)|party\s+(?:size|pack)|mega\s+(?:size|pack)|snap\s+ebt(?:\s+eligible)?|\d+\s+pop[\s-]*tarts?)\b/gi,
+        /\b(?:breakfast\s+foods?|kids['’]?\s+snacks?|lunch(?:\s*box)?\s+snacks?|pantry\s+staples?|shelf[\s-]*stable|baked\s+fresh\s+in[\s-]*store|fresh(?:ly)?\s+baked\s+in[\s-]*store|steamable(?:\s+bag)?|value\s+pack|family\s+(?:size|pack)|party\s+(?:size|pack)|mega\s+(?:size|pack)|snap\s+ebt(?:\s+eligible)?|\d+\s+pop[\s-]*tarts?)\b/gi,
         " ",
       )
       .replace(/\s+/g, " ")

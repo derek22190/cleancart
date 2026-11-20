@@ -1193,7 +1193,7 @@ export function estimateNutritionFromProduct(productTitle = "", rawIngredients =
   // 8b. Chicken Wings (skin-on high-fat cut — 0g dietary fiber, never inherit plant-staple 3g fiber; handles USDA comma-separated "Chicken, Wing, Meat and Skin, Raw")
   if (
     /\b(?:chicken\s+wings?|chicken\s*,\s*(?:broilers\s+or\s+fryers\s*,\s*)?wings?|wing\s+sections?|drumettes?)\b/.test(combined) &&
-    !/\b(soup|chowder|bisque|stew|chili|salad|pasta|noodle|rice)\b/.test(combined)
+    !/\b(soup|chowder|bisque|stew|chili|salad|pasta|noodle|rice|sauce|marinade|seasoning|rub|glaze|dip|mix|dressing|gravy|broth|stock|flavou?r)\b/.test(combined)
   ) {
     return { caloriesKcal100g: 240, sugarsG100g: 0, saturatedFatG100g: 4.8, sodiumMg100g: 240, fiberG100g: 0, proteinG100g: 17.5, fruitsVegNutsPct: 0 };
   }
@@ -1464,7 +1464,7 @@ export function scoreProductYuka(
   const isSkinOnChickenWings =
     /\b(?:chicken\s+wings?|chicken\s*,\s*(?:broilers\s+or\s+fryers\s*,\s*)?wings?|wing\s+sections?|drumettes?)\b/i.test(titleAndIng) &&
     !/\bskinless\b/i.test(titleAndIng) &&
-    !/\b(soup|chowder|bisque|stew|chili|salad|pasta|noodle|rice)\b/i.test(titleAndIng);
+    !/\b(soup|chowder|bisque|stew|chili|salad|pasta|noodle|rice|sauce|marinade|seasoning|rub|glaze|dip|mix|dressing|gravy|broth|stock|flavou?r)\b/i.test(titleAndIng);
 
   const isWholeFood =
     nutrition.isWholeFood !== false &&

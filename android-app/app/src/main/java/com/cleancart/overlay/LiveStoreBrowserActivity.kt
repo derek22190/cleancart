@@ -368,7 +368,7 @@ class LiveStoreBrowserActivity : Activity() {
               if (/(?:^|\.)samsclub\.com$/i.test(location.hostname || '') && !document.getElementById('hb-sams-search-fix')) {
                 var sf = document.createElement('style');
                 sf.id = 'hb-sams-search-fix';
-                sf.textContent = 'header.sams-redesigned-main-header.hb-sams-searching > div, header.sams-redesigned-main-header.hb-sams-searching > a, header.sams-redesigned-main-header.hb-sams-searching > section, header.sams-redesigned-main-header.hb-sams-searching > nav, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > div, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > a, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > section, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > nav { display: none !important; } header.sams-redesigned-main-header.hb-sams-searching form[data-testid="search-form"], header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) form[data-testid="search-form"] { margin-left: 0 !important; margin-right: 0 !important; padding-left: 0 !important; padding-right: 0 !important; gap: 6px !important; } form[data-testid="search-form"], form[role="search"] { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; max-width: 100% !important; justify-content: flex-start !important; } form[data-testid="search-form"] > div, form[role="search"] > div { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; position: relative !important; overflow: hidden !important; border-radius: 9999px !important; } input[data-automation-id="header-input-search"], input.search-bar-redesigned-v2, form[data-testid="search-form"] input[type="search"], form[role="search"] input[type="search"] { display: block !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important; background-color: #ffffff !important; color: #0f172a !important; -webkit-text-fill-color: #0f172a !important; caret-color: #0f172a !important; opacity: 1 !important; font-size: 16px !important; line-height: 1.35 !important; padding-left: 14px !important; padding-right: 76px !important; border-radius: 9999px !important; text-indent: 0 !important; margin: 0 !important; } input[data-automation-id="header-input-search"]::placeholder, input.search-bar-redesigned-v2::placeholder, form[data-testid="search-form"] input[type="search"]::placeholder { color: #64748b !important; -webkit-text-fill-color: #64748b !important; opacity: 1 !important; } form[data-testid="search-form"] button[aria-label*="Clear" i], form[role="search"] button[aria-label*="Clear" i] { position: absolute !important; right: 38px !important; left: auto !important; top: 50% !important; transform: translateY(-50%) !important; z-index: 2 !important; color: #0f172a !important; } form[data-testid="search-form"] button.search-icon-redesigned-v2, form[role="search"] button.search-icon-redesigned-v2 { position: absolute !important; right: 6px !important; left: auto !important; top: 50% !important; transform: translateY(-50%) !important; z-index: 2 !important; color: #0f172a !important; } form[data-testid="search-form"] button[aria-label="Cancel"], form[role="search"] button[aria-label="Cancel"] { flex: 0 0 auto !important; white-space: nowrap !important; }';
+                sf.textContent = 'header.sams-redesigned-main-header.hb-sams-searching > div, header.sams-redesigned-main-header.hb-sams-searching > a, header.sams-redesigned-main-header.hb-sams-searching > section, header.sams-redesigned-main-header.hb-sams-searching > nav, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > div, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > a, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > section, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > nav { display: none !important; } header.sams-redesigned-main-header.hb-sams-searching form[data-testid="search-form"], header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) form[data-testid="search-form"] { margin-left: 0 !important; margin-right: 0 !important; padding-left: 0 !important; padding-right: 0 !important; gap: 6px !important; } form[data-testid="search-form"], form[role="search"] { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; max-width: 100% !important; justify-content: flex-start !important; } form[data-testid="search-form"] > div, form[role="search"] > div { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; position: relative !important; border-radius: 9999px !important; } input[data-automation-id="header-input-search"], input.search-bar-redesigned-v2, form[data-testid="search-form"] input[type="search"], form[role="search"] input[type="search"] { display: block !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important; background-color: #ffffff !important; color: #0f172a !important; -webkit-text-fill-color: #0f172a !important; caret-color: #0f172a !important; opacity: 1 !important; font-size: 16px !important; line-height: 1.35 !important; padding-left: 14px !important; padding-right: 76px !important; border-radius: 9999px !important; text-indent: 0 !important; margin: 0 !important; } input[data-automation-id="header-input-search"]::placeholder, input.search-bar-redesigned-v2::placeholder, form[data-testid="search-form"] input[type="search"]::placeholder { color: #64748b !important; -webkit-text-fill-color: #64748b !important; opacity: 1 !important; } form[data-testid="search-form"] button[aria-label*="Clear" i], form[role="search"] button[aria-label*="Clear" i] { position: absolute !important; right: 38px !important; left: auto !important; top: 50% !important; transform: translateY(-50%) !important; z-index: 2 !important; color: #0f172a !important; } form[data-testid="search-form"] button.search-icon-redesigned-v2, form[role="search"] button.search-icon-redesigned-v2 { position: absolute !important; right: 6px !important; left: auto !important; top: 50% !important; transform: translateY(-50%) !important; z-index: 2 !important; color: #0f172a !important; } form[data-testid="search-form"] button[aria-label="Cancel"], form[role="search"] button[aria-label="Cancel"] { flex: 0 0 auto !important; white-space: nowrap !important; }';
                 head.appendChild(sf);
               }
             })();
@@ -377,7 +377,7 @@ class LiveStoreBrowserActivity : Activity() {
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val ioExecutor = Executors.newFixedThreadPool(2)
+    private val ioExecutor = Executors.newFixedThreadPool(4)
     private val imageExecutor = Executors.newFixedThreadPool(4)
     private val sheetBitmapCache = SafeBitmapLoader.createBitmapLruCache(6 * 1024)
     private lateinit var activeStore: LiveStoreConfig
@@ -394,7 +394,9 @@ class LiveStoreBrowserActivity : Activity() {
     private lateinit var bubbleSubLabel: TextView
     private var isDockedLeft = false
     private var bubbleTopPx = 0
+    private var bubbleLeftPx = -1
     private var lastSyncedBubbleY = -1
+    private var lastSyncedBubbleX = -1
     private var topSystemInsetPx = 0
     private var bottomSystemInsetPx = 0
     private var userDraggedBubble = false
@@ -1248,20 +1250,22 @@ class LiveStoreBrowserActivity : Activity() {
     private fun showExternalOAuthPrompt(url: String, host: String) {
         if (isCleaningUp || isFinishing || isDestroyed) return
         val provider = if (host.contains("apple")) "Apple" else "Google"
+        val storeName = activeStore.label
+        val safeStoreUrl = validatedRetailerUrl(storeWebView?.url) ?: activeStore.homeUrl
         mainHandler.post {
             if (isCleaningUp || isFinishing || isDestroyed) return@post
             runCatching {
                 AlertDialog.Builder(this)
-                    .setTitle("Sign in with $provider in Browser")
+                    .setTitle("Use Email or Phone in Live Shop")
                     .setMessage(
-                        "$provider requires your system browser for sign-in security. " +
-                            "You can sign in using your store email & password right here in Live Shop, " +
-                            "or open $provider Sign-In in your browser."
+                        "$provider blocks sign-in inside in-app browsers and cannot pass login cookies back to Live Shop.\n\n" +
+                            "Instead, enter your $storeName email address (including your Gmail address) or use Phone right here in Live Shop — $storeName will send a 1-tap code and keep you signed in inside HeyBroc."
                     )
-                    .setPositiveButton("Open in Browser") { _, _ ->
+                    .setPositiveButton("Use Email / Phone Here", null)
+                    .setNeutralButton("Open $storeName in Browser") { _, _ ->
                         runCatching {
                             startActivity(
-                                Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                                Intent(Intent.ACTION_VIEW, Uri.parse(safeStoreUrl)).apply {
                                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                 }
                             )
@@ -1269,7 +1273,6 @@ class LiveStoreBrowserActivity : Activity() {
                             Toast.makeText(this, "Could not open browser.", Toast.LENGTH_SHORT).show()
                         }
                     }
-                    .setNegativeButton("Use Store Email Instead", null)
                     .show()
             }
         }
@@ -1557,15 +1560,36 @@ class LiveStoreBrowserActivity : Activity() {
 
         var downRawX = 0f
         var downRawY = 0f
+        var startLeft = 0
         var startTop = 0
         var moved = false
         val slop = dp(12)
+
+        floatingBubble.addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
+            if (!userDraggedBubble || bubbleLeftPx < 0) return@addOnLayoutChangeListener
+            val parentW = root.width
+            if (parentW <= dp(120) || v.width <= 0) return@addOnLayoutChangeListener
+            val minLeft = dp(8)
+            val maxLeft = (parentW - v.width - dp(8)).coerceAtLeast(minLeft)
+            val clamped = bubbleLeftPx.coerceIn(minLeft, maxLeft)
+            if (clamped != bubbleLeftPx) {
+                bubbleLeftPx = clamped
+                v.post {
+                    val curLp = v.layoutParams as FrameLayout.LayoutParams
+                    if (curLp.leftMargin != clamped) {
+                        curLp.leftMargin = clamped
+                        v.layoutParams = curLp
+                    }
+                }
+            }
+        }
 
         floatingBubble.setOnTouchListener { v, e ->
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downRawX = e.rawX
                     downRawY = e.rawY
+                    startLeft = v.left
                     startTop = (v.layoutParams as FrameLayout.LayoutParams).topMargin
                     moved = false
                     true
@@ -1578,27 +1602,32 @@ class LiveStoreBrowserActivity : Activity() {
                         userDraggedBubble = true
                     }
                     if (moved) {
+                        val parentW = root.width.coerceAtLeast(dp(320))
                         val parentH = root.height.coerceAtLeast(dp(360))
+                        val minLeft = dp(8)
+                        val maxLeft = (parentW - v.width - dp(8)).coerceAtLeast(minLeft)
                         val minTop = dp(96) + topSystemInsetPx
                         val maxTop = (parentH - v.height - dp(24) - bottomSystemInsetPx).coerceAtLeast(minTop + dp(20))
                         val curLp = v.layoutParams as FrameLayout.LayoutParams
-                        curLp.topMargin = (startTop + dy.toInt()).coerceIn(minTop, maxTop)
-                        bubbleTopPx = curLp.topMargin
-                        v.translationX = dx * 0.35f
+                        val nextLeft = (startLeft + dx.toInt()).coerceIn(minLeft, maxLeft)
+                        val nextTop = (startTop + dy.toInt()).coerceIn(minTop, maxTop)
+                        curLp.gravity = Gravity.TOP or Gravity.START
+                        curLp.marginStart = 0
+                        curLp.marginEnd = 0
+                        curLp.leftMargin = nextLeft
+                        curLp.topMargin = nextTop
+                        bubbleLeftPx = nextLeft
+                        bubbleTopPx = nextTop
+                        isDockedLeft = (nextLeft + v.width * 0.5f) < parentW * 0.5f
+                        v.translationX = 0f
                         v.layoutParams = curLp
                     }
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    v.animate().translationX(0f).setDuration(140L).start()
+                    v.translationX = 0f
                     if (moved) {
-                        val parentW = root.width.coerceAtLeast(dp(320))
-                        val snapLeft = e.rawX < parentW * 0.5f
-                        isDockedLeft = snapLeft
-                        val curLp = v.layoutParams as FrameLayout.LayoutParams
-                        curLp.gravity = Gravity.TOP or (if (snapLeft) Gravity.START else Gravity.END)
-                        v.layoutParams = curLp
-                        syncBubbleYToWebView(triggerRescan = true)
+                        v.post { syncBubbleYToWebView(triggerRescan = true, clearPinned = true) }
                     } else if (e.actionMasked == MotionEvent.ACTION_UP) {
                         onFloatingBubbleTapped()
                     }
@@ -1675,7 +1704,7 @@ class LiveStoreBrowserActivity : Activity() {
         }
     }
 
-    private fun syncBubbleYToWebView(triggerRescan: Boolean) {
+    private fun syncBubbleYToWebView(triggerRescan: Boolean, clearPinned: Boolean = false) {
         val wv = storeWebView ?: return
         if (isCleaningUp || wv.height <= 40) return
         val wvLoc = IntArray(2)
@@ -1684,12 +1713,27 @@ class LiveStoreBrowserActivity : Activity() {
         floatingBubble.getLocationOnScreen(bubLoc)
         val density = resources.displayMetrics.density.coerceAtLeast(1f)
         val centerCssY = (((bubLoc[1] + floatingBubble.height * 0.5f) - wvLoc[1]) / density).toInt().coerceAtLeast(50)
-        if (!triggerRescan && abs(centerCssY - lastSyncedBubbleY) < 6) return
+        val wvCssW = (wv.width / density).coerceAtLeast(280f)
+        val bubLeftCss = (bubLoc[0] - wvLoc[0]) / density
+        val bubW = (floatingBubble.width / density).coerceAtLeast(48f)
+        val aimCssX = if (userDraggedBubble) {
+            when {
+                bubLeftCss <= 24f -> (bubLeftCss + minOf(bubW * 0.34f, 64f)).toInt().coerceAtLeast(24)
+                (bubLeftCss + bubW) >= (wvCssW - 24f) -> (bubLeftCss + bubW - minOf(bubW * 0.34f, 64f)).toInt().coerceAtMost((wvCssW - 24f).toInt())
+                else -> (bubLeftCss + bubW * 0.5f).toInt().coerceIn(24, (wvCssW - 24f).toInt())
+            }
+        } else {
+            -1
+        }
+        if (!triggerRescan && !clearPinned && abs(centerCssY - lastSyncedBubbleY) < 6 && abs(aimCssX - lastSyncedBubbleX) < 6) return
         lastSyncedBubbleY = centerCssY
+        lastSyncedBubbleX = aimCssX
+        val xAssign = if (aimCssX > 0) "window.__heybrocBubbleCenterX = $aimCssX;" else "window.__heybrocBubbleCenterX = null;"
+        val clearPinCall = if (clearPinned) "if (typeof window.__heybrocClearPinnedCard === 'function') { window.__heybrocClearPinnedCard(); }" else ""
         val rescanCall = if (triggerRescan) {
             "if (typeof window.__heybrocScheduleCheck === 'function') { window.__heybrocScheduleCheck(false); }"
         } else ""
-        wv.evaluateJavascript("window.__heybrocBubbleCenterY = $centerCssY; $rescanCall", null)
+        wv.evaluateJavascript("window.__heybrocBubbleCenterY = $centerCssY; $xAssign $clearPinCall $rescanCall", null)
     }
 
     private fun setBubbleFailureState(sub: String = "Tap to retry scan") {
@@ -1823,9 +1867,8 @@ class LiveStoreBrowserActivity : Activity() {
                     attachDeviceStoreImage(parsed, finalStoreImg)
                     applyJsonToBubble(parsed)
                 } else {
-                    if (lastScannedKey == dedupeKey) {
-                        lastScannedKey = ""
-                    }
+                    // Keep lastScannedKey on passive failure so DOM mutations never trigger an infinite Scanning <-> Scan Unavailable flicker loop;
+                    // tapping the pill still passes force = true to retry manually.
                     if (!isCardScan) {
                         latestScanJson = null
                         setBubbleFailureState()

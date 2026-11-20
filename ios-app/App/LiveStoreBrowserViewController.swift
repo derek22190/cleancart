@@ -104,6 +104,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     private var bubbleTrailingConstraint: NSLayoutConstraint?
     private var bubbleLeadingConstraint: NSLayoutConstraint?
     private var isDockedLeft = false
+    private var userDraggedBubble = false
 
     private var lastDetectedTitle: String = ""
     private var lastDetectedIngredients: String = ""
@@ -121,6 +122,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     private var scanGeneration: Int = 0
     private var progressObservation: NSKeyValueObservation?
     private var lastSyncedBubbleY: Int = -1
+    private var lastSyncedBubbleX: Int = -1
 
     private static let validBatchItemIdRegex = try? NSRegularExpression(pattern: "^[A-Za-z0-9_-]{1,40}$")
 
@@ -709,7 +711,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 'header.sams-redesigned-main-header.hb-sams-searching > div, header.sams-redesigned-main-header.hb-sams-searching > a, header.sams-redesigned-main-header.hb-sams-searching > section, header.sams-redesigned-main-header.hb-sams-searching > nav, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > div, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > a, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > section, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > nav { display: none !important; }' +
                 'header.sams-redesigned-main-header.hb-sams-searching form[data-testid="search-form"], header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) form[data-testid="search-form"] { margin-left: 0 !important; margin-right: 0 !important; padding-left: 0 !important; padding-right: 0 !important; gap: 6px !important; }' +
                 'form[data-testid="search-form"], form[role="search"] { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; max-width: 100% !important; justify-content: flex-start !important; }' +
-                'form[data-testid="search-form"] > div, form[role="search"] > div { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; position: relative !important; overflow: hidden !important; border-radius: 9999px !important; }' +
+                'form[data-testid="search-form"] > div, form[role="search"] > div { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; position: relative !important; border-radius: 9999px !important; }' +
                 'input[data-automation-id="header-input-search"], input.search-bar-redesigned-v2, form[data-testid="search-form"] input[type="search"], form[role="search"] input[type="search"] { display: block !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important; background-color: #ffffff !important; color: #0f172a !important; -webkit-text-fill-color: #0f172a !important; caret-color: #0f172a !important; opacity: 1 !important; font-size: 16px !important; line-height: 1.35 !important; padding-left: 14px !important; padding-right: 76px !important; border-radius: 9999px !important; text-indent: 0 !important; margin: 0 !important; }' +
                 'input[data-automation-id="header-input-search"]::placeholder, input.search-bar-redesigned-v2::placeholder, form[data-testid="search-form"] input[type="search"]::placeholder { color: #64748b !important; -webkit-text-fill-color: #64748b !important; opacity: 1 !important; }' +
                 'form[data-testid="search-form"] button[aria-label*="Clear" i], form[role="search"] button[aria-label*="Clear" i] { position: absolute !important; right: 38px !important; left: auto !important; top: 50% !important; transform: translateY(-50%) !important; z-index: 2 !important; color: #0f172a !important; }' +
@@ -808,6 +810,10 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             return /\\/(?:cart|bag|basket|checkout|gp\\/cart|store\\/cart|shop\\/cart)(?:\\/|$)|\\/checkoutcart(?:display)?view(?:\\/|$|\\.)/i.test(location.pathname);
           }
 
+          function isCheckoutUrl() {
+            return /\\/(?:checkout|payment|placeorder|billing|signin|login)(?:\\/|$)/i.test(location.pathname);
+          }
+
           function looksLikeProductUrl(url) {
             if (isCartUrl()) return false;
             var host = (location.hostname || '').toLowerCase();
@@ -831,7 +837,13 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             if (/\\b(cart[-_ ]?(?:drawer|modal|panel|flyout|sidebar)|shopping[-_ ]?cart|mini[-_ ]?cart|bag[-_ ]?drawer)\\b/i.test(meta)) return true;
             var h = el.querySelector('h1, h2, h3, [role="heading"]');
             var ht = clean(h ? h.textContent : '');
+            if (ht && ht.length <= 80 && /\\b(?:cart|bag|basket)(?:\\s*\\(\\d+.*\\))?$/i.test(ht)) return true;
             if (/^(?:your\\s+)?(?:shopping\\s+)?(?:cart|bag|basket|order)(?:\\s*\\(\\d+.*\\))?$/i.test(ht)) return true;
+            var ctas = el.querySelectorAll('a, button, [role="button"]');
+            for (var i = 0; i < ctas.length && i < 40; i++) {
+              var bt = clean(ctas[i].textContent || '');
+              if (/^(?:go\\s+to\\s+checkout|proceed\\s+to\\s+checkout|continue\\s+to\\s+checkout|checkout(?:\\s+now)?|place\\s+order)\\b/i.test(bt)) return true;
+            }
             return false;
           }
 
@@ -1322,7 +1334,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             'a[href*="/products/"]', 'a[href*="/items/"]', 'a[href*="/detail/ps/p/"]', 'a[href*="/product/"]'
           ];
 
-          var NON_FOOD_GRID_RE = /\\b(?:paper\\s+towels?|toilet\\s+(?:paper|tissue)|bath\\s+tissue|facial\\s+tissues?|trash\\s+bags?|garbage\\s+bags?|aluminum\\s+foil|parchment\\s+paper|plastic\\s+wrap|paper\\s+plates?|laundry\\s+(?:detergent|pods?|sanitizer)|fabric\\s+softener|dryer\\s+sheets?|dish\\s+(?:soap|detergent)|dishwasher\\s+(?:pods?|pac?ks?|detergent)|disinfecting\\s+wipes?|bleach|all[- ]purpose\\s+cleaner|glass\\s+cleaner|toilet\\s+bowl\\s+cleaner|air\\s+freshener|diapers?|pull[- ]ups?|baby\\s+wipes?|cat\\s+litter|dog\\s+(?:food|treats?|pads?)|cat\\s+(?:food|treats?)|pet\\s+food|alkaline\\s+batteries|aa\\s+batteries|aaa\\s+batteries|motor\\s+oil|windshield\\s+washer|light\\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|body\\s+wash|deodorant|antiperspirant|razor\\s+blades?|shaving\\s+cream|sunscreen|tampons?|maxi\\s+pads?|pantiliners?)\\b/i;
+          var NON_FOOD_GRID_RE = /\\b(?:paper\\s+towels?|toilet\\s+(?:paper|tissue)|bath\\s+tissue|facial\\s+tissues?|trash\\s+bags?|garbage\\s+bags?|aluminum\\s+foil|parchment\\s+paper|plastic\\s+wrap|paper\\s+plates?|laundry\\s+(?:detergent|pods?|sanitizer)|fabric\\s+softener|dryer\\s+sheets?|dish\\s+(?:soap|detergent)|dishwasher\\s+(?:pods?|pac?ks?|detergent)|disinfecting\\s+wipes?|bleach|all[- ]purpose\\s+cleaner|glass\\s+cleaner|toilet\\s+bowl\\s+cleaner|air\\s+freshener|diapers?|pull[- ]ups?|baby\\s+wipes?|cat\\s+litter|dog\\s+(?:food|treats?|pads?)|cat\\s+(?:food|treats?)|pet\\s+food|alkaline\\s+batteries|aa\\s+batteries|aaa\\s+batteries|motor\\s+oil|windshield\\s+washer|light\\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|body\\s+wash|deodorant|antiperspirant|razor\\s+blades?|shaving\\s+cream|sunscreen|tampons?|maxi\\s+pads?|pantiliners?|power\\s+bank|air\\s+fryer|jigsaw\\s+puzzle|piece\\s+puzzle|hopper\\s+ball|bouncer|heated\\s+(?:vest|clothing|jacket)|sippy\\s+cups?|toddler\\s+cups?|training\\s+cups?|water\\s+bottle\\s+(?:with\\s+straw|insulated|stainless))\\b/i;
           var BAG_FOOD_CONTEXT_RE = /\\b(?:chicken|turkey|beef|pork|steak|salmon|shrimp|fish|meatballs?|nuggets?|tenders?|strips?|wings?|patties|sausage|bacon|berries|strawberr|blueberr|raspberr|mango|peach|pineapple|broccoli|spinach|peas|corn|vegetables?|fries|tots|waffles?|pancakes?|dumplings?|potstickers?|burritos?|pizza|fruit|cheese|ravioli|tortellini)\\b/i;
           var PAPER_CUP_FOOD_CONTEXT_RE = /\\b(?:reese'?s|peanut\\s+butter|chocolate|candy|ice\\s+cream|gelato|sorbet|yogurt|pudding|oatmeal|soup|noodles?|ramen|mac(?:aroni)?|cereal|fruit|butter|coffee|tea|cocoa)\\b/i;
           var FOOD_CONDITIONER_CONTEXT_RE = /\\b(?:dough|bread|bakery|flour|wheat|baking|gluten|food|meat|beer|wort)\\b/i;
@@ -1335,8 +1347,45 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             return false;
           }
 
+          var hbPinnedCardId = '';
+          var hbPinnedScrollY = 0;
+          var hbPinnedScrollX = 0;
+          window.__heybrocClearPinnedCard = function() {
+            hbPinnedCardId = '';
+          };
+
           function findAlignedSearchCard() {
-            if (isCartUrl()) return { title: '', storeImageUrl: '', barcode: '', cardId: '', batchPending: false };
+            if (isCheckoutUrl()) return { title: '', storeImageUrl: '', barcode: '', cardId: '', batchPending: false };
+            var vh = Math.max(320, window.innerHeight || 680);
+            var vw = Math.max(280, window.innerWidth || 390);
+            if (hbPinnedCardId) {
+              var pinnedOwner = hbOwnerCardById[hbPinnedCardId];
+              if (pinnedOwner && pinnedOwner.isConnected && isVisible(pinnedOwner)) {
+                var pr = pinnedOwner.getBoundingClientRect();
+                if (pr.bottom > 60 && pr.top < vh - 24 && pr.right > 16 && pr.left < vw - 16) {
+                  var pSt = hbCardState ? hbCardState.get(pinnedOwner) : null;
+                  var pTitle = (pSt && pSt.title) ? pSt.title : recoverFromCardLinks(pinnedOwner, extractBestCardTitle(pinnedOwner, CARD_TITLE_SELS)).title;
+                  if (pTitle && !isNonFoodGridTitle(pTitle)) {
+                    var pImg = (pSt && pSt.img) ? sanitizeStoreImgSrc(pSt.img) : '';
+                    if (!pImg) {
+                      var pImgs = pinnedOwner.querySelectorAll('img');
+                      for (var pi = 0; pi < pImgs.length; pi++) {
+                        var pu = sanitizeStoreImgSrc(pImgs[pi]);
+                        if (pu) { pImg = pu; break; }
+                      }
+                    }
+                    return {
+                      title: pTitle,
+                      storeImageUrl: pImg,
+                      barcode: '',
+                      cardId: hbPinnedCardId,
+                      batchPending: Boolean(pSt && !pSt.resolved && !pSt.suppressedEstimate && pSt.badgeEl && pSt.badgeEl.isConnected)
+                    };
+                  }
+                }
+              }
+              hbPinnedCardId = '';
+            }
             var rawCards = Array.prototype.slice.call(document.querySelectorAll(CARD_SEL));
             if (!rawCards.length) {
               var links = document.querySelectorAll(PRODUCT_LINK_SEL);
@@ -1345,11 +1394,11 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 if (anc && rawCards.indexOf(anc) === -1) rawCards.push(anc);
               }
             }
-            var vh = Math.max(320, window.innerHeight || 680);
-            var vw = Math.max(280, window.innerWidth || 390);
             var targetY = (typeof window.__heybrocBubbleCenterY === 'number' && window.__heybrocBubbleCenterY > 40)
               ? window.__heybrocBubbleCenterY
               : (vh * 0.38);
+            var hasCustomX = typeof window.__heybrocBubbleCenterX === 'number' && window.__heybrocBubbleCenterX > 10;
+            var targetX = hasCustomX ? window.__heybrocBubbleCenterX : (vw * 0.5);
             var bestTitle = '';
             var bestBarcode = '';
             var bestCard = null;
@@ -1359,7 +1408,6 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               var card = rawCards[i];
               if (!isVisible(card)) continue;
               if (hasMultipleDistinctProductLinks(card)) continue;
-              if (card.closest('#sc-saved-cart, [data-testid*="saved-for-later" i], [data-test*="savedForLater" i]')) continue;
               if (isCartDrawer(card.closest('[role="dialog"], aside, section'))) continue;
               var cr = card.getBoundingClientRect();
               if (cr.height < 64 || cr.height > vh * 0.94 || cr.width < 100) continue;
@@ -1371,15 +1419,23 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               var candTitle = rec.title;
               if (!candTitle || isNonFoodGridTitle(candTitle)) continue;
 
-              var dist = 0;
+              var distY = 0;
               if (targetY < cr.top) {
-                dist = cr.top - targetY;
+                distY = cr.top - targetY;
               } else if (targetY > cr.bottom) {
-                dist = targetY - cr.bottom;
+                distY = targetY - cr.bottom;
               } else {
-                dist = Math.abs(((cr.top + cr.bottom) * 0.5) - targetY) * 0.25;
+                distY = Math.abs(((cr.top + cr.bottom) * 0.5) - targetY) * 0.25;
               }
-              dist += Math.abs(((cr.left + cr.right) * 0.5) - (vw * 0.5)) * 0.18;
+              var distX = 0;
+              if (targetX < cr.left) distX = cr.left - targetX;
+              else if (targetX > cr.right) distX = targetX - cr.right;
+              else distX = Math.abs(((cr.left + cr.right) * 0.5) - targetX) * 0.25;
+
+              var visW = Math.max(0, Math.min(cr.right, vw) - Math.max(cr.left, 0));
+              var clipPenalty = (cr.width > 0 && (visW / cr.width) < 0.65) ? 45 : 0;
+
+              var dist = distY + (distX * (hasCustomX ? 0.95 : 0.28)) + clipPenalty;
               if (cr.top < 72) dist += 180;
               if (dist < bestDist) {
                 bestDist = dist;
@@ -1388,7 +1444,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 bestCard = card;
               }
             }
-            if (bestDist > 260 || !bestTitle) return { title: '', storeImageUrl: '', barcode: '', cardId: '', batchPending: false };
+            if (bestDist > 280 || !bestTitle) return { title: '', storeImageUrl: '', barcode: '', cardId: '', batchPending: false };
             var cardImgUrl = '';
             var cardId = '';
             var batchPending = false;
@@ -2066,16 +2122,17 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
           function flushHbBadgeBatch() {
             hbBatchTimer = null;
-            if (!hbPendingQueue.length || isCartUrl()) {
-              if (isCartUrl()) hbPendingQueue = [];
+            if (!hbPendingQueue.length || isCheckoutUrl()) {
+              if (isCheckoutUrl()) hbPendingQueue = [];
               return;
             }
             if (hbInFlightBatches >= MAX_IN_FLIGHT_BATCHES) {
               hbBatchTimer = setTimeout(flushHbBadgeBatch, 180);
               return;
             }
-            if (hbPendingQueue.length > 8) {
+            if (hbPendingQueue.length > 6) {
               var vhNow = Math.max(400, window.innerHeight || 720);
+              var vwNow = Math.max(280, window.innerWidth || 390);
               var onScreen = [];
               var nearScreen = [];
               var offScreen = [];
@@ -2083,8 +2140,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 var qe = hbPendingQueue[q];
                 if (!qe.cardEl || !qe.cardEl.isConnected) continue;
                 var qr = qe.cardEl.getBoundingClientRect();
-                if (qr.bottom > 40 && qr.top < vhNow - 20) onScreen.push(qe);
-                else if (qr.bottom > -220 && qr.top < vhNow + 260) nearScreen.push(qe);
+                if (qr.bottom > 40 && qr.top < vhNow - 20 && qr.right > 0 && qr.left < vwNow) onScreen.push(qe);
+                else if (qr.bottom > -220 && qr.top < vhNow + 260 && qr.right > -340 && qr.left < vwNow + 340) nearScreen.push(qe);
                 else offScreen.push(qe);
               }
               hbPendingQueue = onScreen.concat(nearScreen, offScreen);
@@ -2139,7 +2196,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           }
 
           function processVisibleCard(cardEl) {
-            if (!cardEl || !cardEl.isConnected || isCartUrl()) return;
+            if (!cardEl || !cardEl.isConnected || isCheckoutUrl()) return;
             var info = readCardInfo(cardEl);
             if (!info || !info.anchor) return;
             var prev = hbCardState ? hbCardState.get(cardEl) : null;
@@ -2242,7 +2299,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             hbOwnerCardById[cardId] = cardEl;
             hbPendingQueue.push({ id: cardId, title: info.title, sig: info.sig, badgeEl: b, cardEl: cardEl });
             if (!hbBatchTimer) {
-              hbBatchTimer = setTimeout(flushHbBadgeBatch, 120);
+              hbBatchTimer = setTimeout(flushHbBadgeBatch, 85);
             }
           }
 
@@ -2287,7 +2344,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               hbLastBadgeUrl = location.href;
               clearHbBadges();
             }
-            if (isCartUrl()) {
+            if (isCheckoutUrl()) {
               clearHbBadges();
               return;
             }
@@ -2298,7 +2355,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                   hbIntersectionObs.unobserve(entries[i].target);
                   processVisibleCard(entries[i].target);
                 }
-              }, { rootMargin: '220px 0px' });
+              }, { rootMargin: '220px 340px' });
             }
             var onPdp = Boolean(findOpenProductModal()) || looksLikeProductUrl(location.href);
             var maxCardW = onPdp ? 360 : Math.max(580, (window.innerWidth || 390) + 32);
@@ -2580,6 +2637,11 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             e.stopImmediatePropagation();
             var cardId = badge.getAttribute('data-hb-card-id') || '';
             var badgeSig = badge.getAttribute('data-hb-sig') || '';
+            if (cardId) {
+              hbPinnedCardId = cardId;
+              hbPinnedScrollY = window.scrollY || 0;
+              hbPinnedScrollX = window.scrollX || 0;
+            }
             var ownerCard = (cardId && hbOwnerCardById[cardId]) ? hbOwnerCardById[cardId] : (badge.closest ? badge.closest(CARD_SEL) : null);
             var st = (ownerCard && hbCardState) ? hbCardState.get(ownerCard) : null;
             var liveInfo = ownerCard ? readCardInfo(ownerCard) : null;
@@ -2830,6 +2892,11 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           window.__heybrocScheduleCheck = scheduleCheck;
 
           document.addEventListener('scroll', function() {
+            if (hbPinnedCardId) {
+              var dy = Math.abs((window.scrollY || 0) - hbPinnedScrollY);
+              var dx = Math.abs((window.scrollX || 0) - hbPinnedScrollX);
+              if (dy > 28 || dx > 28) hbPinnedCardId = '';
+            }
             if (scrollTimer) clearTimeout(scrollTimer);
             scrollTimer = setTimeout(extractProductData, 200);
           }, { capture: true, passive: true });
@@ -2841,17 +2908,25 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           }, true);
           // Photo badges are driven by IntersectionObserver, debounced scroll/mutation,
           // image load events, history hooks, and retry timers (no idle 1800ms polling).
-          window.addEventListener('popstate', function() { scheduleCheck(true); });
-          window.addEventListener('hashchange', function() { scheduleCheck(true); });
+          window.addEventListener('popstate', function() {
+            hbPinnedCardId = '';
+            clearInputFocusIfUnfocused();
+            scheduleCheck(true);
+          });
+          window.addEventListener('hashchange', function() { hbPinnedCardId = ''; scheduleCheck(true); });
           var origPush = history.pushState;
           history.pushState = function() {
             var r = origPush.apply(this, arguments);
+            hbPinnedCardId = '';
+            clearInputFocusIfUnfocused();
             scheduleCheck(true);
             return r;
           };
           var origReplace = history.replaceState;
           history.replaceState = function() {
             var r = origReplace.apply(this, arguments);
+            hbPinnedCardId = '';
+            clearInputFocusIfUnfocused();
             scheduleCheck(true);
             return r;
           };
@@ -2898,6 +2973,13 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               }
             } catch (e) {}
           }
+          function clearInputFocusIfUnfocused() {
+            if (hbInputBlurTimer) { clearTimeout(hbInputBlurTimer); hbInputBlurTimer = null; }
+            if (!isEditableTarget(document.activeElement)) {
+              setSamsSearchingHeader(false);
+              postInputFocus(false);
+            }
+          }
           document.addEventListener('focusin', function(e) {
             var t = e && e.target;
             if (!isEditableTarget(t)) return;
@@ -2941,7 +3023,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           if (/(?:^|\\.)samsclub\\.com$/i.test(location.hostname || '') && !document.getElementById('hb-sams-search-fix')) {
             var sf = document.createElement('style');
             sf.id = 'hb-sams-search-fix';
-            sf.textContent = 'header.sams-redesigned-main-header.hb-sams-searching > div, header.sams-redesigned-main-header.hb-sams-searching > a, header.sams-redesigned-main-header.hb-sams-searching > section, header.sams-redesigned-main-header.hb-sams-searching > nav, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > div, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > a, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > section, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > nav { display: none !important; } header.sams-redesigned-main-header.hb-sams-searching form[data-testid="search-form"], header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) form[data-testid="search-form"] { margin-left: 0 !important; margin-right: 0 !important; padding-left: 0 !important; padding-right: 0 !important; gap: 6px !important; } form[data-testid="search-form"], form[role="search"] { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; max-width: 100% !important; justify-content: flex-start !important; } form[data-testid="search-form"] > div, form[role="search"] > div { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; position: relative !important; overflow: hidden !important; border-radius: 9999px !important; } input[data-automation-id="header-input-search"], input.search-bar-redesigned-v2, form[data-testid="search-form"] input[type="search"], form[role="search"] input[type="search"] { display: block !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important; background-color: #ffffff !important; color: #0f172a !important; -webkit-text-fill-color: #0f172a !important; caret-color: #0f172a !important; opacity: 1 !important; font-size: 16px !important; line-height: 1.35 !important; padding-left: 14px !important; padding-right: 76px !important; border-radius: 9999px !important; text-indent: 0 !important; margin: 0 !important; } input[data-automation-id="header-input-search"]::placeholder, input.search-bar-redesigned-v2::placeholder, form[data-testid="search-form"] input[type="search"]::placeholder { color: #64748b !important; -webkit-text-fill-color: #64748b !important; opacity: 1 !important; } form[data-testid="search-form"] button[aria-label*="Clear" i], form[role="search"] button[aria-label*="Clear" i] { position: absolute !important; right: 38px !important; left: auto !important; top: 50% !important; transform: translateY(-50%) !important; z-index: 2 !important; color: #0f172a !important; } form[data-testid="search-form"] button.search-icon-redesigned-v2, form[role="search"] button.search-icon-redesigned-v2 { position: absolute !important; right: 6px !important; left: auto !important; top: 50% !important; transform: translateY(-50%) !important; z-index: 2 !important; color: #0f172a !important; } form[data-testid="search-form"] button[aria-label="Cancel"], form[role="search"] button[aria-label="Cancel"] { flex: 0 0 auto !important; white-space: nowrap !important; }';
+            sf.textContent = 'header.sams-redesigned-main-header.hb-sams-searching > div, header.sams-redesigned-main-header.hb-sams-searching > a, header.sams-redesigned-main-header.hb-sams-searching > section, header.sams-redesigned-main-header.hb-sams-searching > nav, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > div, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > a, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > section, header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) > nav { display: none !important; } header.sams-redesigned-main-header.hb-sams-searching form[data-testid="search-form"], header.sams-redesigned-main-header:has(form[data-testid="search-form"]:focus-within) form[data-testid="search-form"] { margin-left: 0 !important; margin-right: 0 !important; padding-left: 0 !important; padding-right: 0 !important; gap: 6px !important; } form[data-testid="search-form"], form[role="search"] { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; max-width: 100% !important; justify-content: flex-start !important; } form[data-testid="search-form"] > div, form[role="search"] > div { display: flex !important; flex: 1 1 auto !important; min-width: 0 !important; width: 100% !important; position: relative !important; border-radius: 9999px !important; } input[data-automation-id="header-input-search"], input.search-bar-redesigned-v2, form[data-testid="search-form"] input[type="search"], form[role="search"] input[type="search"] { display: block !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important; background-color: #ffffff !important; color: #0f172a !important; -webkit-text-fill-color: #0f172a !important; caret-color: #0f172a !important; opacity: 1 !important; font-size: 16px !important; line-height: 1.35 !important; padding-left: 14px !important; padding-right: 76px !important; border-radius: 9999px !important; text-indent: 0 !important; margin: 0 !important; } input[data-automation-id="header-input-search"]::placeholder, input.search-bar-redesigned-v2::placeholder, form[data-testid="search-form"] input[type="search"]::placeholder { color: #64748b !important; -webkit-text-fill-color: #64748b !important; opacity: 1 !important; } form[data-testid="search-form"] button[aria-label*="Clear" i], form[role="search"] button[aria-label*="Clear" i] { position: absolute !important; right: 38px !important; left: auto !important; top: 50% !important; transform: translateY(-50%) !important; z-index: 2 !important; color: #0f172a !important; } form[data-testid="search-form"] button.search-icon-redesigned-v2, form[role="search"] button.search-icon-redesigned-v2 { position: absolute !important; right: 6px !important; left: auto !important; top: 50% !important; transform: translateY(-50%) !important; z-index: 2 !important; color: #0f172a !important; } form[data-testid="search-form"] button[aria-label="Cancel"], form[role="search"] button[aria-label="Cancel"] { flex: 0 0 auto !important; white-space: nowrap !important; }';
             head.appendChild(sf);
           }
         })();
@@ -3030,6 +3112,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         let topC = floatingBubble.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 236)
         let trailingC = floatingBubble.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12)
         let leadingC = floatingBubble.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12)
+        leadingC.priority = .defaultHigh
         leadingC.isActive = false
         self.bubbleTopConstraint = topC
         self.bubbleTrailingConstraint = trailingC
@@ -3038,6 +3121,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         NSLayoutConstraint.activate([
             topC,
             trailingC,
+            floatingBubble.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -8),
             floatingBubble.heightAnchor.constraint(equalToConstant: 50),
             floatingBubble.widthAnchor.constraint(lessThanOrEqualToConstant: 235),
 
@@ -3091,41 +3175,63 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         }
     }
 
-    private func syncBubbleYToWebView(triggerRescan: Bool) {
+    private func syncBubbleYToWebView(triggerRescan: Bool, clearPinned: Bool = false) {
         guard !isCleaningUp, let wv = storeWebView, wv.bounds.height > 40 else { return }
         let frameInWv = wv.convert(floatingBubble.frame, from: view)
         let centerY = max(60, Int(frameInWv.midY.rounded()))
-        if !triggerRescan && abs(centerY - lastSyncedBubbleY) < 6 { return }
+        let wvW = max(280, wv.bounds.width)
+        let bubW = max(48, frameInWv.width)
+        let aimX: Int
+        if userDraggedBubble {
+            if frameInWv.minX <= 24 {
+                aimX = max(24, Int((frameInWv.minX + min(bubW * 0.34, 64)).rounded()))
+            } else if frameInWv.maxX >= (wvW - 24) {
+                aimX = min(Int(wvW - 24), Int((frameInWv.maxX - min(bubW * 0.34, 64)).rounded()))
+            } else {
+                aimX = max(24, min(Int(wvW - 24), Int(frameInWv.midX.rounded())))
+            }
+        } else {
+            aimX = -1
+        }
+        if !triggerRescan && !clearPinned && abs(centerY - lastSyncedBubbleY) < 6 && abs(aimX - lastSyncedBubbleX) < 6 { return }
         lastSyncedBubbleY = centerY
+        lastSyncedBubbleX = aimX
+        let xAssign = aimX > 0 ? "window.__heybrocBubbleCenterX = \(aimX);" : "window.__heybrocBubbleCenterX = null;"
+        let clearPinJS = clearPinned ? "if (typeof window.__heybrocClearPinnedCard === 'function') { window.__heybrocClearPinnedCard(); }" : ""
         let rescanJS = triggerRescan
             ? "if (typeof window.__heybrocScheduleCheck === 'function') { window.__heybrocScheduleCheck(false); }"
             : ""
-        wv.evaluateJavaScript("window.__heybrocBubbleCenterY = \(centerY); \(rescanJS)", completionHandler: nil)
+        wv.evaluateJavaScript("window.__heybrocBubbleCenterY = \(centerY); \(xAssign) \(clearPinJS) \(rescanJS)", completionHandler: nil)
     }
 
     @objc private func handleBubblePan(_ gesture: UIPanGestureRecognizer) {
         let translation = gesture.translation(in: view)
         gesture.setTranslation(.zero, in: view)
 
+        if gesture.state == .began && !userDraggedBubble {
+            userDraggedBubble = true
+            let curMinX = floatingBubble.frame.minX
+            bubbleTrailingConstraint?.isActive = false
+            bubbleLeadingConstraint?.constant = max(8, curMinX)
+            bubbleLeadingConstraint?.isActive = true
+        }
+
         let minTop: CGFloat = 95
         let maxTop: CGFloat = max(minTop + 40, view.bounds.height - view.safeAreaInsets.bottom - 70)
         if let topC = bubbleTopConstraint {
             topC.constant = min(maxTop, max(minTop, topC.constant + translation.y))
         }
+        let minLeft: CGFloat = 8
+        let maxLeft: CGFloat = max(minLeft, view.bounds.width - max(120, floatingBubble.bounds.width) - 8)
+        if let leadC = bubbleLeadingConstraint, leadC.isActive {
+            let nextLeft = min(maxLeft, max(minLeft, leadC.constant + translation.x))
+            leadC.constant = nextLeft
+            isDockedLeft = (nextLeft + floatingBubble.bounds.width * 0.5) < view.bounds.midX
+        }
 
         if gesture.state == .ended || gesture.state == .cancelled {
-            let loc = gesture.location(in: view)
-            let snapLeft = loc.x < view.bounds.midX
-            if snapLeft != isDockedLeft {
-                isDockedLeft = snapLeft
-                bubbleTrailingConstraint?.isActive = !snapLeft
-                bubbleLeadingConstraint?.isActive = snapLeft
-            }
-            UIView.animate(withDuration: 0.22, delay: 0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0.5, animations: {
-                self.view.layoutIfNeeded()
-            }, completion: { [weak self] _ in
-                self?.syncBubbleYToWebView(triggerRescan: true)
-            })
+            view.layoutIfNeeded()
+            syncBubbleYToWebView(triggerRescan: true, clearPinned: true)
         }
     }
 
@@ -3328,9 +3434,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                     self.applySummaryToBubble(summary)
                 }
             case .failure:
-                if self.lastScannedKey == dedupeKey {
-                    self.lastScannedKey = ""
-                }
+                // Keep lastScannedKey on passive failure so DOM mutations never trigger an infinite Scanning <-> Idle flicker loop;
+                // tapping the pill passes force = true to retry manually.
                 if isPassiveCard, let prev = previousSummary {
                     self.applySummaryToBubble(prev)
                 } else {
@@ -3730,15 +3835,15 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         }
 
         let alert = UIAlertController(
-            title: "Sign in with \(provider) in Safari",
-            message: "\(provider) blocks sign-in inside in-app browsers and cannot share sign-in cookies back into Live Shop. Sign in with your \(storeName) email & password right here in Live Shop, or open \(storeName) in Safari (where you can also use the HeyBroc Safari Extension).",
+            title: "Use Email or Phone in Live Shop",
+            message: "\(provider) blocks sign-in inside in-app browsers and cannot share login cookies back into Live Shop.\n\nInstead, enter your \(storeName) email (including your \(provider) email) or phone number right here in Live Shop — or open \(storeName) in Safari.",
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "Open in Safari", style: .default) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: "Use Email / Phone Here", style: .default))
+        alert.addAction(UIAlertAction(title: "Open \(storeName) in Safari", style: .cancel) { [weak self] _ in
             guard let self = self, !self.isCleaningUp else { return }
             UIApplication.shared.open(targetUrl, options: [:], completionHandler: nil)
         })
-        alert.addAction(UIAlertAction(title: "Use Store Email Instead", style: .cancel))
 
         if presenter.viewIfLoaded?.window != nil {
             presenter.present(alert, animated: true)

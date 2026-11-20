@@ -98,9 +98,20 @@ export default function ToolsClient() {
     "dyes",
     "hfcs",
   ]);
+  const [isIosClient, setIsIosClient] = useState(false);
 
   useEffect(() => {
     try {
+      const sp = new URLSearchParams(window.location.search);
+      const plat = (sp.get("platform") || "").toLowerCase();
+      const ua = navigator.userAgent || "";
+      const nativeBridge = Boolean(
+        (window as unknown as { __HEYBROC_NATIVE_LIVE_SHOP__?: boolean }).__HEYBROC_NATIVE_LIVE_SHOP__ ||
+        (window as unknown as { webkit?: { messageHandlers?: { heybrocNative?: unknown } } }).webkit?.messageHandlers?.heybrocNative,
+      );
+      if (plat.startsWith("ios") || nativeBridge || /iPhone|iPad|iPod|HeyBrocIOS/i.test(ua)) {
+        setIsIosClient(true);
+      }
       const saved = JSON.parse(
         window.localStorage.getItem("heybroc_family_watchlist") || "null"
       ) as Category[] | null;
@@ -988,7 +999,8 @@ export default function ToolsClient() {
             gap: 12,
           }}
         >
-          {/* Android Card */}
+          {/* Android Card — hidden on iPhone / iOS */}
+          {!isIosClient && (
           <div
             style={{
               background: "#f0fdf4",
@@ -1044,6 +1056,7 @@ export default function ToolsClient() {
               📲 Download Android App (.apk)
             </a>
           </div>
+          )}
 
           {/* iPhone Card */}
           <div

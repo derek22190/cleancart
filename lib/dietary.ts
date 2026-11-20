@@ -97,7 +97,7 @@ export function detectPesticideRisk(
         " ",
       )
       .replace(
-        /\b(?:natural|artificial)\s+[a-z\s]{0,20}flavors?\b|\b(?:apple\s+cider\s+vinegar|apple\s+pectin|fruit\s+pectin|citrus\s+pectin|tomato\s+lycopene|grape\s+skin\s+extract|rosemary\s+extract)\b/gi,
+        /\b(?:natural|artificial)\s+[a-z\s]{0,20}flavors?\b|\b(?:apple\s+cider\s+vinegar|apple\s+pectin|fruit\s+pectin|citrus\s+pectin|tomato\s+lycopene|grape\s+skin\s+extract|rosemary\s+extract)\b|\b(?:(?:red|green|yellow|sweet|jalape[nñ]o|hot|chili|chilli)\s+(?:(?:and|&|\/)\s+(?:red|green|yellow|sweet)\s+)?)?(?:bell\s+peppers?|sweet\s+peppers?|jalape[nñ]o\s+peppers?|hot\s+peppers?|celery|tomato(?:es)?)\s+(?:powder|seed|seeds|salt|extract|oleoresin|oil|flakes?)\b/gi,
         " ",
       );
 

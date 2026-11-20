@@ -16,7 +16,8 @@ export function collapseSingleLetterCompounds(s: string): string {
     .replace(/\bh(?:\.\s*|\s*-\s*)e(?:\.\s*|\s*-\s*)b\b\.?/g, "heb")
     .replace(/(?<!\bvitamin\s+)(?<!\bgrade\s+)\ba(?:\.\s*|\s*-\s*)1\.?(?!\s*%|\w)/g, "a1")
     .replace(/\bhi\s*-\s*c\b/g, "hic")
-    .replace(/\bjell\s*-\s*o\b/g, "jello");
+    .replace(/\bjell\s*-\s*o\b/g, "jello")
+    .replace(/\bland\s+o'?\s*lakes\b/g, "land o lakes");
 }
 
 export function normalizeBrandPhrase(s: string): string {
