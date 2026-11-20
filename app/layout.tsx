@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
@@ -150,6 +151,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           Impact-Site-Verification: dd34dc80-a3ee-41d1-8a59-ee030cf929f9
         </span>
         {children}
+        <Analytics />
       </body>
     </html>
   );
