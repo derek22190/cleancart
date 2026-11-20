@@ -3,6 +3,7 @@ import {
   confirmPasswordReset,
   deleteUserAccount,
   getAuthenticatedUser,
+  isValidEmail,
   issueServerOAuthNonce,
   linkDeviceToUser,
   loginWithOAuth,
@@ -42,7 +43,7 @@ async function checkEmailOtpSendCooldown(
   rawEmail?: string
 ): Promise<boolean> {
   const email = normalizeEmail(rawEmail || "");
-  if (!email) return true;
+  if (!email || !isValidEmail(email)) return true;
   if (!(await checkRateLimitAsync(`auth:otp-send:${email}`, 4))) {
     return false;
   }

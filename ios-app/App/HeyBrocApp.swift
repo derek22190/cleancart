@@ -286,13 +286,19 @@ enum OfflineIngredientAnalyzer {
             badges.append("SUGAR")
         }
         if dietaryWatchlist.contains("pesticide_risk") {
+            let titleLower = title.lowercased()
+            let hasPartialOrNonOrganic =
+                titleLower.range(of: "\\b(non[\\s-]*organic|made\\s+with\\s+organic)\\b", options: .regularExpression) != nil
             let isWholeProductOrganic =
-                title.lowercased().contains("organic") ||
-                lower.contains("usda organic") ||
-                lower.contains("certified organic")
+                !hasPartialOrNonOrganic && (
+                    titleLower.range(of: "\\borganic\\b", options: .regularExpression) != nil ||
+                    lower.range(of: "\\b(usda\\s+organic|certified\\s+organic)\\b", options: .regularExpression) != nil
+                )
             if !isWholeProductOrganic {
                 let cleaned = lower
                     .replacingOccurrences(of: "\\b(sweet\\s+potato(?:es)?|pineapples?|grapefruits?|grapeseed|spearmint)\\b", with: " ", options: .regularExpression)
+                    .replacingOccurrences(of: "\\b(modified\\s+)?potato\\s+(starch|flour|maltodextrin|protein|fiber)\\b", with: " ", options: .regularExpression)
+                    .replacingOccurrences(of: "\\b(natural|artificial)\\s+[a-z\\s]{0,20}flavors?\\b|\\b(apple\\s+cider\\s+vinegar|apple\\s+pectin|fruit\\s+pectin|tomato\\s+lycopene|grape\\s+skin\\s+extract)\\b|\\b(cultured\\s+)?celery\\s+(powder|seed|seeds|salt|extract|juice(?:\\s+powder)?|concentrate)\\b|\\b(bell\\s+peppers?|sweet\\s+peppers?|jalape[nñ]o\\s+peppers?|hot\\s+peppers?|tomato(?:es)?|apple|cherry|grape|blueberry|strawberry|peach|pear|spinach|kale)\\s+(powder|seed|seeds|salt|extract|oil|flakes?)\\b", with: " ", options: .regularExpression)
                 let producePattern = "\\b(strawberries|strawberry|baby\\s+spinach|spinach|kale|collard\\s+greens?|mustard\\s+greens?|seedless\\s+grapes?|grapes?|raisins?|peaches|peach|pears|pear|nectarines?|applesauce|apples?|bell\\s+peppers?|sweet\\s+peppers?|jalape[nñ]o\\s+peppers?|hot\\s+peppers?|cherries|blueberries|blueberry|green\\s+beans?|string\\s+beans?|potatoes|celery|tomatoes)\\b"
                 let grainPattern = "\\b(whole\\s+grain\\s+(?:rolled\\s+)?oats?|rolled\\s+oats?|steel\\s+cut\\s+oats?|oat\\s+flour|oats|enriched\\s+(?:bleached\\s+|unbleached\\s+)?wheat\\s+flour|whole\\s+wheat\\s+flour|wheat\\s+flour|barley|lentils?|chickpeas?|garbanzo\\s+beans?|hummus)\\b"
                 if cleaned.range(of: producePattern, options: .regularExpression) != nil {

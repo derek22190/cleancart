@@ -4750,7 +4750,7 @@ class MainActivity : Activity() {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
-                setOnClickListener {
+                setOnClickListener { btn ->
                     val em = emailInput.text.toString().trim().lowercase()
                     val pw = passInput.text.toString()
                     val rc = resetCodeInput.text.toString().trim()
@@ -4777,6 +4777,7 @@ class MainActivity : Activity() {
                         password = pw,
                         resetCode = if (isReset) rc else null,
                         provider = "email",
+                        submitBtn = btn,
                         onSuccess = { authDialog?.dismiss() }
                     )
                 }
@@ -5254,8 +5255,12 @@ class MainActivity : Activity() {
         password: String?,
         resetCode: String? = null,
         provider: String = "email",
+        submitBtn: View? = null,
         onSuccess: (() -> Unit)? = null
     ) {
+        if (submitBtn != null && !submitBtn.isEnabled) return
+        submitBtn?.isEnabled = false
+        submitBtn?.alpha = 0.6f
         val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
         io.execute {
             runCatching {
@@ -5323,6 +5328,8 @@ class MainActivity : Activity() {
                     )
                     mainHandler.post {
                         if (isDestroyed || isFinishing) return@post
+                        submitBtn?.isEnabled = true
+                        submitBtn?.alpha = 1f
                         onSuccess?.invoke()
                         renderScreen()
                         if (createdNow && provider == "email" && !emailVerified) {
@@ -5341,12 +5348,16 @@ class MainActivity : Activity() {
                     val errMsg = json.optString("error", "Could not sign in. Please check your credentials.")
                     mainHandler.post {
                         if (isDestroyed || isFinishing) return@post
+                        submitBtn?.isEnabled = true
+                        submitBtn?.alpha = 1f
                         Toast.makeText(this@MainActivity, errMsg, Toast.LENGTH_LONG).show()
                     }
                 }
             }.onFailure {
                 mainHandler.post {
                     if (isDestroyed || isFinishing) return@post
+                    submitBtn?.isEnabled = true
+                    submitBtn?.alpha = 1f
                     Toast.makeText(this@MainActivity, "Network error connecting to HeyBroc. Please try again.", Toast.LENGTH_LONG).show()
                 }
             }
