@@ -229,12 +229,26 @@ export async function POST(request: Request) {
         device.weeklySwapsUsed.push(normKey);
         await saveDevice(device);
       }
+      const reqPlatformHdr = (
+        request.headers.get("x-heybroc-platform") ||
+        request.headers.get("x-client-platform") ||
+        ""
+      )
+        .trim()
+        .toLowerCase();
+      const analyticsPlatform = reqPlatformHdr.includes("ios")
+        ? "ios"
+        : reqPlatformHdr.includes("extension") || reqPlatformHdr.includes("chrome")
+          ? "extension"
+          : reqPlatformHdr === "web" || !deviceId
+            ? "web"
+            : "android";
       void import("@/lib/analytics")
         .then(({ trackServerEvent }) =>
           trackServerEvent({
             event: "clean_swap_clicked",
             distinctId: deviceId || ip,
-            platform: !deviceId ? "web" : "android",
+            platform: analyticsPlatform,
             properties: { product: normKey },
           }),
         )

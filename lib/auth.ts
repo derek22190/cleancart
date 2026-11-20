@@ -1330,29 +1330,37 @@ export async function resendVerificationCode(rawEmail: string): Promise<{
   if (!isValidEmail(email)) {
     return { ok: false, error: "Please enter a valid email address." };
   }
-  const existing = await getUserByEmail(email);
-  if (!existing) {
-    return { ok: false, error: "Account not found." };
+  if (!isEmailDeliveryConfigured()) {
+    return {
+      ok: false,
+      error: "Verification emails are temporarily unavailable on this server. Please email support@heybroc.com for help.",
+    };
   }
-  if (existing.emailVerified) {
-    return { ok: true, message: "Your email is already verified." };
+  const genericOk = {
+    ok: true,
+    message: `If an unverified account exists for ${email}, a 6-digit verification code has been sent.`,
+  };
+  const existing = await getUserByEmail(email);
+  if (!existing || existing.emailVerified) {
+    return genericOk;
   }
   const code = String(crypto.randomInt(100000, 1000000));
   existing.verificationCode = code;
   existing.verificationExpiresAt = Date.now() + 15 * 60 * 1000;
   existing.verificationAttempts = 0;
   await saveUser(existing);
-  const sent = await sendVerificationEmail(email, code);
+  const sent = await sendVerificationEmail(email, code).catch(() => ({
+    ok: false,
+    error: "Could not send verification email right now.",
+  }));
   if (!sent.ok) {
+    console.error("[auth] Failed to deliver verification email");
     return {
       ok: false,
       error: sent.error || "Could not send verification email right now.",
     };
   }
-  return {
-    ok: true,
-    message: `Sent a 6-digit verification code to ${email}.`,
-  };
+  return genericOk;
 }
 
 export async function verifyEmailCode(params: {

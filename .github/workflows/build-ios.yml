@@ -554,14 +554,21 @@ jobs:
             codesign --entitlements "ios-app/build/HeyBroc/Extension.entitlements" --force --sign "-" "$EXT_BUNDLE"
           done
           codesign --entitlements "ios-app/build/HeyBroc/HeyBroc.entitlements" --force --sign "-" "$ARCHIVE_APP"
-          xcodebuild -exportArchive \
+          if ! xcodebuild -exportArchive \
             -archivePath "ios-app/build/HeyBroc.xcarchive" \
             -exportOptionsPlist "ios-app/build/ExportOptions.plist" \
             -exportPath "ios-app/build/ipa" \
             -allowProvisioningUpdates \
             -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
             -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"; then
+            DIST_LOG="$(ls -td /var/folders/*/*/T/HeyBroc_*.xcdistributionlogs 2>/dev/null | head -n 1 || true)"
+            if [ -n "$DIST_LOG" ] && [ -f "$DIST_LOG/IDEDistribution.standard.log" ]; then
+              echo "=== IDEDistribution.standard.log (tail 120 lines) ==="
+              tail -n 120 "$DIST_LOG/IDEDistribution.standard.log" || true
+            fi
+            exit 70
+          fi
 
       - name: Verify Exported IPA Integrity
         if: ${{ github.event.inputs.upload_to_testflight != 'false' && env.ASC_KEY_ID != '' }}

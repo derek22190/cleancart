@@ -285,6 +285,18 @@ enum OfflineIngredientAnalyzer {
            ["corn syrup", "cane sugar", "dextrose", "maltodextrin"].contains(where: { lower.contains($0) }) {
             badges.append("SUGAR")
         }
+        if dietaryWatchlist.contains("pesticide_risk"),
+           !lower.contains("organic") {
+            let dirtyProduce = ["strawberr", "spinach", "kale", "collard green", "mustard green", "grape", "raisin", "peach", "pear", "nectarine", "apple", "bell pepper", "jalapeno pepper", "hot pepper", "cherr", "blueberr", "green bean", "potato", "celery", "tomato"]
+            let convGrains = ["rolled oats", "whole grain oats", "oat flour", "wheat flour", "enriched wheat", "whole wheat", "barley", "lentil", "chickpea", "garbanzo", "hummus"]
+            if dirtyProduce.contains(where: { lower.contains($0) }) {
+                badges.append("PESTICIDE")
+                score = max(4, score - 25)
+            } else if convGrains.contains(where: { lower.contains($0) }) {
+                badges.append("PESTICIDE")
+                score = max(4, score - 20)
+            }
+        }
 
         let rating: String
         let color: String

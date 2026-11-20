@@ -91,10 +91,19 @@ function buildBridgeHtml(payload: {
       }
       var returnTarget = "/?login=1";
       try {
-        var savedReturn = sessionStorage.getItem("heybroc_oauth_return_to") || "";
+        var savedReturn = (sessionStorage.getItem("heybroc_oauth_return_to") || "").trim();
         sessionStorage.removeItem("heybroc_oauth_return_to");
-        if (savedReturn && savedReturn.charAt(0) === "/" && savedReturn.indexOf("//") !== 0) {
-          returnTarget = savedReturn;
+        if (
+          savedReturn &&
+          savedReturn.charAt(0) === "/" &&
+          savedReturn.indexOf("//") !== 0 &&
+          savedReturn.indexOf("/\\\\") !== 0 &&
+          !/[\\x00-\\x1f\\x7f]/.test(savedReturn)
+        ) {
+          var parsedRet = new URL(savedReturn, window.location.origin);
+          if (parsedRet.origin === window.location.origin) {
+            returnTarget = parsedRet.pathname + parsedRet.search + parsedRet.hash;
+          }
         }
       } catch (e) {}
       if (data.idToken) {

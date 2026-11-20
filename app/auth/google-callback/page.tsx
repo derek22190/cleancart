@@ -81,8 +81,16 @@ export default function GoogleOAuthCallbackPage() {
       try {
         const savedReturn = (window.sessionStorage.getItem("heybroc_oauth_return_to") || "").trim();
         window.sessionStorage.removeItem("heybroc_oauth_return_to");
-        if (savedReturn.startsWith("/") && !savedReturn.startsWith("//")) {
-          returnTarget = savedReturn;
+        if (
+          savedReturn.startsWith("/") &&
+          !savedReturn.startsWith("//") &&
+          !savedReturn.startsWith("/\\") &&
+          !/[\x00-\x1f\x7f]/.test(savedReturn)
+        ) {
+          const parsedRet = new URL(savedReturn, window.location.origin);
+          if (parsedRet.origin === window.location.origin) {
+            returnTarget = `${parsedRet.pathname}${parsedRet.search}${parsedRet.hash}`;
+          }
         }
       } catch {
         // ignore storage errors

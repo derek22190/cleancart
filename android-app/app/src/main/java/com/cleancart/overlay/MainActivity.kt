@@ -4085,15 +4085,18 @@ class MainActivity : Activity() {
                         ViewGroup.LayoutParams.WRAP_CONTENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
                     ).apply { marginEnd = dp(6) }
-                    setOnClickListener {
+                    setOnClickListener { btn ->
                         val code = codeInput.text.toString().trim()
                         if (code.length < 6) {
                             Toast.makeText(this@MainActivity, "Enter your 6-digit verification code.", Toast.LENGTH_SHORT).show()
                             return@setOnClickListener
                         }
+                        if (!btn.isEnabled) return@setOnClickListener
+                        btn.isEnabled = false
+                        btn.alpha = 0.6f
                         io.execute {
                             runCatching {
-                                val conn = (URL("https://www.heybroc.com/api/auth").openConnection() as HttpURLConnection).apply {
+                                val conn = (URL(authApiEndpoint()).openConnection() as HttpURLConnection).apply {
                                     requestMethod = "POST"
                                     doOutput = true
                                     setRequestProperty("Content-Type", "application/json")
@@ -4121,6 +4124,8 @@ class MainActivity : Activity() {
                                     val msg = if (ok) "✓ Email verified!" else json.optString("error", "Invalid or expired verification code.")
                                     mainHandler.post {
                                         if (isDestroyed || isFinishing) return@post
+                                        btn.isEnabled = true
+                                        btn.alpha = 1f
                                         Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
                                         if (ok) {
                                             authDialog?.dismiss()
@@ -4129,6 +4134,13 @@ class MainActivity : Activity() {
                                     }
                                 } finally {
                                     conn.disconnect()
+                                }
+                            }.onFailure {
+                                mainHandler.post {
+                                    if (isDestroyed || isFinishing) return@post
+                                    btn.isEnabled = true
+                                    btn.alpha = 1f
+                                    Toast.makeText(this@MainActivity, "Network error verifying email. Please try again.", Toast.LENGTH_LONG).show()
                                 }
                             }
                         }
@@ -4141,10 +4153,13 @@ class MainActivity : Activity() {
                         setStroke(dp(1), 0xFFCBD5E1.toInt())
                         cornerRadius = dp(10).toFloat()
                     }
-                    setOnClickListener {
+                    setOnClickListener { btn ->
+                        if (!btn.isEnabled) return@setOnClickListener
+                        btn.isEnabled = false
+                        btn.alpha = 0.6f
                         io.execute {
                             runCatching {
-                                val conn = (URL("https://www.heybroc.com/api/auth").openConnection() as HttpURLConnection).apply {
+                                val conn = (URL(authApiEndpoint()).openConnection() as HttpURLConnection).apply {
                                     requestMethod = "POST"
                                     doOutput = true
                                     setRequestProperty("Content-Type", "application/json")
@@ -4168,10 +4183,19 @@ class MainActivity : Activity() {
                                     }
                                     mainHandler.post {
                                         if (isDestroyed || isFinishing) return@post
+                                        btn.isEnabled = true
+                                        btn.alpha = 1f
                                         Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
                                     }
                                 } finally {
                                     conn.disconnect()
+                                }
+                            }.onFailure {
+                                mainHandler.post {
+                                    if (isDestroyed || isFinishing) return@post
+                                    btn.isEnabled = true
+                                    btn.alpha = 1f
+                                    Toast.makeText(this@MainActivity, "Network error resending verification code.", Toast.LENGTH_LONG).show()
                                 }
                             }
                         }
@@ -4476,6 +4500,7 @@ class MainActivity : Activity() {
                 bold = true
             ))
 
+            var activeEmailInput: EditText? = null
             if (!isReset) {
                 val tabBar = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
@@ -4503,7 +4528,10 @@ class MainActivity : Activity() {
                         } else null
                         layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                         setOnClickListener {
-                            if (!active) renderStep(targetStep)
+                            if (!active) {
+                                prefilledEmail = activeEmailInput?.text?.toString()?.trim()?.lowercase() ?: prefilledEmail
+                                renderStep(targetStep)
+                            }
                         }
                     })
                 }
@@ -4545,16 +4573,20 @@ class MainActivity : Activity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply { bottomMargin = dp(10) }
             }
+            activeEmailInput = emailInput
             card.addView(emailInput)
 
-            fun sendPasswordResetCodeFor(targetEmail: String) {
+            fun sendPasswordResetCodeFor(targetEmail: String, triggerBtn: View? = null) {
                 if (!targetEmail.contains("@") || !targetEmail.contains(".")) {
                     Toast.makeText(this@MainActivity, "Enter your account email first, then tap Send Reset Code.", Toast.LENGTH_SHORT).show()
                     return
                 }
+                if (triggerBtn != null && !triggerBtn.isEnabled) return
+                triggerBtn?.isEnabled = false
+                triggerBtn?.alpha = 0.6f
                 io.execute {
                     runCatching {
-                        val conn = (URL("https://www.heybroc.com/api/auth").openConnection() as HttpURLConnection).apply {
+                        val conn = (URL(authApiEndpoint()).openConnection() as HttpURLConnection).apply {
                             requestMethod = "POST"
                             doOutput = true
                             setRequestProperty("Content-Type", "application/json")
@@ -4578,6 +4610,8 @@ class MainActivity : Activity() {
                             }
                             mainHandler.post {
                                 if (isDestroyed || isFinishing) return@post
+                                triggerBtn?.isEnabled = true
+                                triggerBtn?.alpha = 1f
                                 Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
                             }
                         } finally {
@@ -4586,6 +4620,8 @@ class MainActivity : Activity() {
                     }.onFailure {
                         mainHandler.post {
                             if (isDestroyed || isFinishing) return@post
+                            triggerBtn?.isEnabled = true
+                            triggerBtn?.alpha = 1f
                             Toast.makeText(this@MainActivity, "Network error requesting reset code.", Toast.LENGTH_LONG).show()
                         }
                     }
@@ -4608,10 +4644,10 @@ class MainActivity : Activity() {
                         gravity = Gravity.END
                         bottomMargin = dp(10)
                     }
-                    setOnClickListener {
+                    setOnClickListener { btn ->
                         val em = emailInput.text.toString().trim().lowercase()
                         prefilledEmail = em
-                        sendPasswordResetCodeFor(em)
+                        sendPasswordResetCodeFor(em, btn)
                     }
                 })
             }
@@ -5176,6 +5212,7 @@ class MainActivity : Activity() {
                         .putString("auth_name", resolvedName)
                         .putString("auth_provider", "google")
                         .putString("auth_token", tok)
+                        .putBoolean("auth_email_verified", true)
                         .putBoolean("onboarding_funnel_done_v1", true)
                         .apply()
                     ScanApi.trackEvent(
