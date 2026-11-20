@@ -190,10 +190,12 @@ export function evaluateDietaryAlerts(
         /\b(?:free\s+(?:from|of)|without|no)\s+(?:peanuts?|tree\s+nuts?|nuts?|eggs?|dairy|milk|lactose|soy(?:\s+lecithin)?|sesame|wheat|gluten)(?:\s*(?:,|&|and|or|\/)\s*(?:peanuts?|tree\s+nuts?|nuts?|eggs?|dairy|milk|lactose|soy(?:\s+lecithin)?|sesame|wheat|gluten))*\b/gi,
         " ",
       );
+  const safeTitle = productTitle || "";
+  const safeIngredients = ingredients || "";
   const ing = stripCoordinatedFreeClaims(
-    stripPrecautionaryCrossContactClauses(ingredients).toLowerCase(),
+    stripPrecautionaryCrossContactClauses(safeIngredients).toLowerCase(),
   );
-  const cleanTitleForAlerts = stripCoordinatedFreeClaims(productTitle.toLowerCase());
+  const cleanTitleForAlerts = stripCoordinatedFreeClaims(safeTitle.toLowerCase());
   const text = `${cleanTitleForAlerts} ${ing}`;
   const alerts: DietaryAlert[] = [];
 

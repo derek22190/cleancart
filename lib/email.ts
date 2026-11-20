@@ -1,5 +1,15 @@
 const RESEND_API_URL = "https://api.resend.com/emails";
 const DEFAULT_FROM = "HeyBroc <onboarding@heybroc.com>";
+const DEFAULT_REPLY_TO = "support@heybroc.com";
+
+export function isEmailDeliveryConfigured(): boolean {
+  return Boolean(process.env.RESEND_API_KEY?.trim());
+}
+
+function sanitizeOtpCode(rawCode: string): string {
+  const digitsOnly = String(rawCode || "").replace(/[^0-9A-Za-z-]/g, "").slice(0, 12);
+  return digitsOnly || "000000";
+}
 
 interface SendEmailResult {
   ok: boolean;
@@ -14,6 +24,7 @@ async function sendResendEmail(params: {
 }): Promise<SendEmailResult> {
   const apiKey = process.env.RESEND_API_KEY?.trim();
   const from = process.env.EMAIL_FROM?.trim() || DEFAULT_FROM;
+  const replyTo = process.env.EMAIL_REPLY_TO?.trim() || DEFAULT_REPLY_TO;
 
   if (!apiKey) {
     console.warn("[email] RESEND_API_KEY is not configured; skipping outbound email to", params.to);
@@ -29,6 +40,7 @@ async function sendResendEmail(params: {
       },
       body: JSON.stringify({
         from,
+        reply_to: replyTo,
         to: [params.to],
         subject: params.subject,
         text: params.text,
@@ -54,11 +66,12 @@ export async function sendVerificationEmail(
   to: string,
   code: string
 ): Promise<SendEmailResult> {
-  const subject = `${code} is your HeyBroc email verification code`;
+  const safeCode = sanitizeOtpCode(code);
+  const subject = `${safeCode} is your HeyBroc email verification code`;
   const text = [
     "Welcome to HeyBroc!",
     "",
-    `Your 6-digit email verification code is: ${code}`,
+    `Your 6-digit email verification code is: ${safeCode}`,
     "",
     "This code expires in 15 minutes. Verify your email in the HeyBroc account sheet to sync paid Family Pro memberships linked to your email address.",
     "",
@@ -72,7 +85,7 @@ export async function sendVerificationEmail(
         Enter this 6-digit verification code in HeyBroc to verify your email address and sync any Family Pro membership associated with your email:
       </p>
       <div style="background: #f4f4f5; border-radius: 12px; padding: 16px; text-align: center; font-size: 28px; font-weight: 800; letter-spacing: 6px; color: #18181b; margin: 0 0 16px;">
-        ${code}
+        ${safeCode}
       </div>
       <p style="margin: 0; font-size: 13px; color: #71717a;">
         This code expires in 15 minutes. If you did not create a HeyBroc account, you can ignore this email.
@@ -87,11 +100,12 @@ export async function sendPasswordResetEmail(
   to: string,
   code: string
 ): Promise<SendEmailResult> {
-  const subject = `${code} is your HeyBroc password reset code`;
+  const safeCode = sanitizeOtpCode(code);
+  const subject = `${safeCode} is your HeyBroc password reset code`;
   const text = [
     "HeyBroc Password Reset",
     "",
-    `Your 6-digit password reset code is: ${code}`,
+    `Your 6-digit password reset code is: ${safeCode}`,
     "",
     "This code expires in 15 minutes and allows up to 5 attempts.",
     "",
@@ -105,7 +119,7 @@ export async function sendPasswordResetEmail(
         Use the 6-digit code below to reset your HeyBroc password:
       </p>
       <div style="background: #f4f4f5; border-radius: 12px; padding: 16px; text-align: center; font-size: 28px; font-weight: 800; letter-spacing: 6px; color: #18181b; margin: 0 0 16px;">
-        ${code}
+        ${safeCode}
       </div>
       <p style="margin: 0; font-size: 13px; color: #71717a;">
         This code expires in 15 minutes. If you did not request a password reset, you can safely ignore this email.

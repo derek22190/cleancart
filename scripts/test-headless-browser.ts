@@ -22,6 +22,7 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import * as fs from "node:fs";
+import * as http from "node:http";
 import * as net from "node:net";
 import * as path from "node:path";
 
@@ -331,8 +332,148 @@ async function main() {
 
   let nextProc: ChildProcess | null = null;
   let chromeProc: ChildProcess | null = null;
+  let kvServer: http.Server | null = null;
+
+  // Ephemeral in-memory Upstash Redis REST mock so local `next start` (NODE_ENV=production)
+  // exercises the real Upstash client in lib/storage.ts & lib/auth.ts end-to-end.
+  const kvStrings = new Map<string, { val: string; exp?: number }>();
+  const kvSets = new Map<string, Set<string>>();
+  const kvHashes = new Map<string, Map<string, string>>();
+  const kvGetLive = (k: string): string | null => {
+    const e = kvStrings.get(k);
+    if (!e) return null;
+    if (e.exp && e.exp <= Date.now()) {
+      kvStrings.delete(k);
+      return null;
+    }
+    return e.val;
+  };
+  let kvMockUrl = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL || "";
+  let kvMockToken = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN || "";
+  if (!kvMockUrl || !kvMockToken) {
+    const kvPort = await getFreePort();
+    kvMockUrl = `http://127.0.0.1:${kvPort}`;
+    kvMockToken = "headless-e2e-kv-token";
+    kvServer = http.createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on("data", (c) => chunks.push(c));
+      req.on("end", () => {
+        let result: unknown = null;
+        try {
+          const args = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Array<string | number>;
+          const cmd = String(args[0] || "").toUpperCase();
+          if (cmd === "GET") {
+            result = kvGetLive(String(args[1]));
+          } else if (cmd === "SET") {
+            const k = String(args[1]);
+            const v = String(args[2] ?? "");
+            const rest = args.slice(3).map((x) => String(x).toUpperCase());
+            const isNx = rest.includes("NX");
+            const exIdx = rest.indexOf("EX");
+            const ttlSec = exIdx >= 0 ? Number(args[3 + exIdx + 1]) : 0;
+            if (isNx && kvGetLive(k) !== null) {
+              result = null;
+            } else {
+              kvStrings.set(k, {
+                val: v,
+                exp: ttlSec > 0 ? Date.now() + ttlSec * 1000 : undefined,
+              });
+              result = "OK";
+            }
+          } else if (cmd === "DEL") {
+            const k = String(args[1]);
+            kvStrings.delete(k);
+            kvSets.delete(k);
+            kvHashes.delete(k);
+            result = 1;
+          } else if (cmd === "SADD") {
+            const k = String(args[1]);
+            if (!kvSets.has(k)) kvSets.set(k, new Set());
+            kvSets.get(k)!.add(String(args[2]));
+            result = 1;
+          } else if (cmd === "SREM") {
+            kvSets.get(String(args[1]))?.delete(String(args[2]));
+            result = 1;
+          } else if (cmd === "SMEMBERS") {
+            result = Array.from(kvSets.get(String(args[1])) || []);
+          } else if (cmd === "HSET") {
+            const k = String(args[1]);
+            if (!kvHashes.has(k)) kvHashes.set(k, new Map());
+            const h = kvHashes.get(k)!;
+            for (let i = 2; i + 1 < args.length; i += 2) {
+              h.set(String(args[i]), String(args[i + 1]));
+            }
+            result = 1;
+          } else if (cmd === "HGETALL") {
+            const h = kvHashes.get(String(args[1]));
+            const arr: string[] = [];
+            if (h) {
+              for (const [fk, fv] of h) arr.push(fk, fv);
+            }
+            result = arr;
+          } else if (cmd === "HINCRBY" || cmd === "HINCRBYFLOAT") {
+            const k = String(args[1]);
+            const f = String(args[2]);
+            const inc = Number(args[3] || 0);
+            if (!kvHashes.has(k)) kvHashes.set(k, new Map());
+            const h = kvHashes.get(k)!;
+            const next = (Number(h.get(f) || 0) || 0) + inc;
+            h.set(f, String(next));
+            result = next;
+          } else if (cmd === "EVAL") {
+            const lua = String(args[1] || "");
+            const numKeys = Number(args[2] || 0);
+            const k1 = String(args[3] || "");
+            if (lua.includes('redis.call("DEL", KEYS[1])')) {
+              result = kvGetLive(k1);
+              kvStrings.delete(k1);
+            } else if (lua.includes("INCRBY") && lua.includes("PEXPIRE")) {
+              const winMs = Number(args[3 + numKeys] || 60000);
+              const delta = Number(args[3 + numKeys + 1] || 1);
+              const cur = Number(kvGetLive(k1) || 0);
+              const next = cur + delta;
+              kvStrings.set(k1, {
+                val: String(next),
+                exp: kvStrings.get(k1)?.exp || Date.now() + winMs,
+              });
+              result = next;
+            } else if (lua.includes("HINCRBY")) {
+              if (kvGetLive(k1) !== null) {
+                result = 0;
+              } else {
+                const k2 = String(args[4] || "");
+                const ttl = Number(args[5] || 3600);
+                kvStrings.set(k1, { val: "1", exp: Date.now() + ttl * 1000 });
+                if (!kvHashes.has(k2)) kvHashes.set(k2, new Map());
+                const h = kvHashes.get(k2)!;
+                for (let i = 6; i + 2 < args.length; i += 3) {
+                  const f = String(args[i]);
+                  const d = Number(args[i + 1] || 0);
+                  h.set(f, String((Number(h.get(f) || 0) || 0) + d));
+                }
+                result = 1;
+              }
+            }
+          }
+        } catch {
+          result = null;
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ result }));
+      });
+    });
+    await new Promise<void>((resolve) => kvServer!.listen(kvPort, "127.0.0.1", resolve));
+  }
 
   const cleanup = () => {
+    if (kvServer) {
+      try {
+        kvServer.close();
+      } catch {
+        // ignore
+      }
+      kvServer = null;
+    }
     if (chromeProc?.pid) {
       try {
         process.kill(-chromeProc.pid, "SIGKILL");
@@ -374,6 +515,11 @@ async function main() {
       env: {
         ...process.env,
         NODE_ENV: "production",
+        AUTH_SECRET:
+          process.env.AUTH_SECRET ||
+          "headless-e2e-ephemeral-auth-secret-0123456789abcdef",
+        UPSTASH_REDIS_REST_URL: kvMockUrl,
+        UPSTASH_REDIS_REST_TOKEN: kvMockToken,
         NODE_USE_ENV_PROXY: "1",
         NO_PROXY: "127.0.0.1,localhost",
         no_proxy: "127.0.0.1,localhost",
@@ -420,36 +566,73 @@ async function main() {
       });
     }
 
-    const userDataDir = fs.mkdtempSync("/tmp/heybroc-chromium-");
     const envProxy = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || "";
-    console.log(
-      `🌐 Launching Headless Chromium on CDP port ${cdpPort}${offCdnReachable ? "" : " (offline OFF photo fixture mode)"}…`,
-    );
-    chromeProc = spawn(
-      CHROMIUM_BIN,
-      [
-        "--headless",
-        "--no-sandbox",
-        "--disable-gpu",
-        "--disable-dev-shm-usage",
-        "--no-first-run",
-        "--no-default-browser-check",
-        "--ignore-certificate-errors",
-        ...(envProxy ? [`--proxy-server=${envProxy}`] : []),
-        `--proxy-bypass-list=127.0.0.1,localhost,www.walmart.com,www.costco.com,i5.walmartimages.com${offCdnReachable ? "" : ",images.openfoodfacts.org"}`,
-        `--user-data-dir=${userDataDir}`,
-        `--remote-debugging-port=${cdpPort}`,
-        "--window-size=393,852",
-      ],
-      { stdio: ["ignore", "pipe", "pipe"] },
-    );
-    await waitForHttp(`http://127.0.0.1:${cdpPort}/json/version`);
+    let activeCdpPort = cdpPort;
+    const launchChromium = async (port: number): Promise<void> => {
+      const userDataDir = fs.mkdtempSync("/tmp/heybroc-chromium-");
+      let stderrBuf = "";
+      console.log(
+        `🌐 Launching Headless Chromium on CDP port ${port}${offCdnReachable ? "" : " (offline OFF photo fixture mode)"}…`,
+      );
+      chromeProc = spawn(
+        CHROMIUM_BIN,
+        [
+          "--headless=new",
+          "--no-sandbox",
+          "--disable-gpu",
+          "--disable-dev-shm-usage",
+          "--disable-background-networking",
+          "--no-first-run",
+          "--no-default-browser-check",
+          "--ignore-certificate-errors",
+          ...(envProxy ? [`--proxy-server=${envProxy}`] : []),
+          `--proxy-bypass-list=127.0.0.1,localhost,www.walmart.com,www.costco.com,www.instacart.com,i5.walmartimages.com${offCdnReachable ? "" : ",images.openfoodfacts.org"}`,
+          `--user-data-dir=${userDataDir}`,
+          `--remote-debugging-port=${port}`,
+          "--window-size=393,852",
+        ],
+        { detached: true, stdio: ["ignore", "pipe", "pipe"] },
+      );
+      chromeProc.stderr?.on("data", (chunk: Buffer) => {
+        if (stderrBuf.length < 4000) stderrBuf += chunk.toString("utf8");
+      });
+      try {
+        await waitForHttp(`http://127.0.0.1:${port}/json/version`, 45000);
+      } catch (err) {
+        if (chromeProc?.pid) {
+          try {
+            process.kill(-chromeProc.pid, "SIGKILL");
+          } catch {
+            try {
+              chromeProc.kill("SIGKILL");
+            } catch {
+              // ignore
+            }
+          }
+        }
+        chromeProc = null;
+        throw new Error(
+          `${err instanceof Error ? err.message : String(err)}${stderrBuf ? `\nChromium stderr:\n${stderrBuf.trim()}` : ""}`,
+        );
+      }
+    };
+
+    try {
+      await launchChromium(activeCdpPort);
+    } catch (firstErr) {
+      console.warn(
+        `⚠️ First Chromium CDP launch failed (${firstErr instanceof Error ? firstErr.message.split("\n")[0] : String(firstErr)}); retrying on a fresh port…`,
+      );
+      activeCdpPort = await getFreePort();
+      await launchChromium(activeCdpPort);
+    }
+    const resolvedCdpPort = activeCdpPort;
 
     // =========================================================================
     // SUITE 1: iPhone 16 Pro Native App WKWebView (`/?platform=ios`, Build 122)
     // =========================================================================
-    console.log("\n📱 [1/4] Testing iPhone Native App WKWebView (/?platform=ios)...");
-    const iosPage = await createPageTarget(cdpPort);
+    console.log("\n📱 [1/6] Testing iPhone Native App WKWebView (/?platform=ios)...");
+    const iosPage = await createPageTarget(resolvedCdpPort);
     await enableOfflineOffPhotoStub(iosPage);
     await iosPage.send("Emulation.setDeviceMetricsOverride", {
       width: 393,
@@ -736,8 +919,8 @@ async function main() {
     // =========================================================================
     // SUITE 2: Older iPhone Build Fallback Check (`__HEYBROC_NATIVE_LIVE_SHOP__ = false`)
     // =========================================================================
-    console.log("\n📲 [2/4] Testing Legacy iPhone Build Fallback Banner & Sheet...");
-    const legacyIosPage = await createPageTarget(cdpPort);
+    console.log("\n📲 [2/6] Testing Legacy iPhone Build Fallback Banner & Sheet...");
+    const legacyIosPage = await createPageTarget(resolvedCdpPort);
     await legacyIosPage.send("Emulation.setDeviceMetricsOverride", {
       width: 393,
       height: 852,
@@ -765,8 +948,8 @@ async function main() {
     // =========================================================================
     // SUITE 3: Android Mobile Web (`412x915`, Pixel 9) + Android Native API/Image Parity
     // =========================================================================
-    console.log("\n🤖 [3/4] Testing Android Chrome Mobile Web & Android Native API/Image Parity...");
-    const androidPage = await createPageTarget(cdpPort);
+    console.log("\n🤖 [3/6] Testing Android Chrome Mobile Web & Android Native API/Image Parity...");
+    const androidPage = await createPageTarget(resolvedCdpPort);
     await enableOfflineOffPhotoStub(androidPage);
     await androidPage.send("Emulation.setDeviceMetricsOverride", {
       width: 412,
@@ -925,7 +1108,7 @@ async function main() {
     // =========================================================================
     // SUITE 4: iOS LiveStoreBrowser `detectorJS` + Safari/Chrome Extension `content.js`
     // =========================================================================
-    console.log("\n🥦 [4/4] Testing LiveStoreBrowser detectorJS & Safari/Chrome Extension Overlay on Walmart PDP...");
+    console.log("\n🥦 [4/6] Testing LiveStoreBrowser detectorJS & Safari/Chrome Extension Overlay on Walmart PDP...");
     const detectorJS = extractSwiftDetectorJS();
     const extContentJS = fs.readFileSync(
       path.join(ROOT, "ios-app/SafariExtension/Resources/content.js"),
@@ -983,7 +1166,7 @@ async function main() {
 </body>
 </html>`;
 
-    const storePage = await createPageTarget(cdpPort);
+    const storePage = await createPageTarget(resolvedCdpPort);
     await storePage.send("Emulation.setDeviceMetricsOverride", {
       width: 393,
       height: 852,
@@ -997,12 +1180,13 @@ async function main() {
       platform: "iPhone",
     });
 
-    // Intercept https://www.walmart.com/* and https://www.heybroc.com/* locally via CDP Fetch
-    // so no external Walmart request is hit and HTTPS->HTTPS extension calls hit our local Next.js build!
+    // Intercept https://www.walmart.com/*, https://www.instacart.com/*, and https://www.heybroc.com/* locally via CDP Fetch
+    // so no external retailer request is hit and HTTPS->HTTPS extension calls hit our local Next.js build!
     await storePage.send("Fetch.enable", {
       patterns: [
         { urlPattern: "https://www.walmart.com/*", requestStage: "Request" },
         { urlPattern: "https://www.costco.com/*", requestStage: "Request" },
+        { urlPattern: "https://www.instacart.com/*", requestStage: "Request" },
         { urlPattern: "https://i5.walmartimages.com/*", requestStage: "Request" },
         { urlPattern: "https://www.heybroc.com/*", requestStage: "Request" },
         ...(offCdnReachable
@@ -1100,7 +1284,8 @@ async function main() {
         reqUrl.startsWith("https://www.walmart.com/ip/") ||
         reqUrl.startsWith("https://www.walmart.com/search") ||
         reqUrl.startsWith("https://www.walmart.com/cart") ||
-        reqUrl.startsWith("https://www.costco.com/CheckoutCartDisplayView")
+        reqUrl.startsWith("https://www.costco.com/CheckoutCartDisplayView") ||
+        reqUrl.startsWith("https://www.instacart.com/")
       ) {
         const searchFixture = `<!doctype html><html><body><div data-item-id="998877"><h1 data-automation-id="product-title">Primal Kitchen Ranch Dressing &amp; Marinade Made with Avocado Oil, 8 fl oz</h1><button>Add to cart</button></div></body></html>`;
         void storePage.send("Fetch.fulfillRequest", {
@@ -2459,9 +2644,537 @@ async function main() {
     );
     console.log("   ✓ P1 #2 Hidden ingredient panels ignored across Android, iOS, and Chrome/Safari extension detectors!");
 
+    // =========================================================================
+    // SUITE 6 (Store Overlay v2.6.2/v2.6.3): Walmart /cart + Saved for later +
+    // 2D Pill Aiming + Carousel Unpin + Instacart Cart Drawer + Unified 🌱 Icon
+    // =========================================================================
+    console.log("\n🛒 [5/6] Testing v2.6.2/v2.6.3 Floating Pill 2D Aiming, Carousel Unpin, Walmart /cart, Instacart Drawer & Unified 🌱 Icon...");
+
+    // 6A: Walmart /cart with full-page <section>, Usuals horizontal carousel, Saved for later, and non-food Power Bank
+    const walmartCartFixtureHtml = `
+      <main style="padding:12px; font-family:system-ui,sans-serif;">
+        <section style="display:block; width:100%; min-height:240px; padding:10px; background:#fff;">
+          <h1>Cart (2 items)</h1>
+          <div data-testid="cart-item-row" data-item-id="cart-milk-1" style="display:flex; gap:10px; padding:8px; border:1px solid #e2e8f0; margin-bottom:10px; width:340px; height:120px;">
+            <img src="https://i5.walmartimages.com/asr/milk.jpg" width="90" height="90" alt="Great Value 2% Reduced Fat Milk, 1 Gallon" />
+            <div>
+              <a href="/ip/Great-Value-2-Reduced-Fat-Milk-Gallon/10450115" data-automation-id="product-title">Great Value 2% Reduced Fat Milk, 1 Gallon</a>
+              <div>$3.48</div>
+            </div>
+          </div>
+          <button type="button" style="width:100%; padding:10px; background:#0071dc; color:#fff;">Continue to checkout</button>
+        </section>
+
+        <section style="margin-top:16px;">
+          <h2>Don't forget your usuals</h2>
+          <div id="hb-usuals-carousel" style="display:flex; gap:12px; overflow-x:auto; width:370px; padding:8px 0;">
+            <div data-item-id="usual-corn-1" style="flex:0 0 150px; width:150px; height:190px; border:1px solid #e2e8f0; padding:6px;">
+              <img src="https://i5.walmartimages.com/asr/corn.jpg" width="120" height="100" alt="Great Value Whole Kernel Sweet Corn, 15.25 oz" />
+              <a href="/ip/Great-Value-Whole-Kernel-Sweet-Corn/10415511" data-automation-id="product-title">Great Value Whole Kernel Sweet Corn, 15.25 oz</a>
+            </div>
+            <div data-item-id="usual-mac-2" style="flex:0 0 150px; width:150px; height:190px; border:1px solid #e2e8f0; padding:6px;">
+              <img src="https://i5.walmartimages.com/asr/mac.jpg" width="120" height="100" alt="Kraft Original Macaroni and Cheese Dinner, 7.25 oz" />
+              <a href="/ip/Kraft-Original-Macaroni-and-Cheese-Dinner/10295546" data-automation-id="product-title">Kraft Original Macaroni and Cheese Dinner, 7.25 oz</a>
+            </div>
+            <div data-item-id="usual-powerbank-3" style="flex:0 0 150px; width:150px; height:190px; border:1px solid #e2e8f0; padding:6px;">
+              <img src="https://i5.walmartimages.com/asr/pb.jpg" width="120" height="100" alt="Anker PowerCore 10000mAh Portable Power Bank USB-C Charger" />
+              <a href="/ip/Anker-PowerCore-10000-Power-Bank/99887766" data-automation-id="product-title">Anker PowerCore 10000mAh Portable Power Bank USB-C Charger</a>
+            </div>
+          </div>
+        </section>
+
+        <section style="margin-top:16px;">
+          <h2>Saved for later</h2>
+          <div data-item-id="saved-yogurt-1" style="display:flex; gap:10px; padding:8px; border:1px solid #e2e8f0; width:340px; height:120px;">
+            <img src="https://i5.walmartimages.com/asr/yogurt.jpg" width="90" height="90" alt="Stonyfield Organic Whole Milk Plain Yogurt, 32 oz" />
+            <div>
+              <a href="/ip/Stonyfield-Organic-Whole-Milk-Plain-Yogurt/10801433" data-automation-id="product-title">Stonyfield Organic Whole Milk Plain Yogurt, 32 oz</a>
+            </div>
+          </div>
+        </section>
+      </main>
+    `;
+
+    await storePage.navigate("https://www.walmart.com/cart");
+    await storePage.eval(`
+      document.body.innerHTML = ${JSON.stringify(walmartCartFixtureHtml)};
+      window.__s6BatchPayloads = [];
+      window.__s6CardEvents = [];
+      window.__heybrocBridgeSecret = ${JSON.stringify(androidBridgeSecret)};
+      window.heybrocAndroidBridge = {
+        postMessage: function(rawJson) {
+          const msg = JSON.parse(rawJson);
+          if (msg._hbSec !== ${JSON.stringify(androidBridgeSecret)}) return;
+          if (msg.kind === "gridBatch") window.__s6BatchPayloads.push(msg);
+          if (msg.kind === "card" || msg.kind === "inspectCard" || msg.kind === "product") window.__s6CardEvents.push(msg);
+        }
+      };
+    `);
+    await storePage.eval(androidDetectorJS, false);
+
+    const s6BatchMeta = await storePage.waitFor<{
+      pageToken: number;
+      items: Array<{ id: string; productTitle: string }>;
+    }>(
+      `(() => {
+        const payloads = window.__s6BatchPayloads || [];
+        const all = payloads.flatMap((p) => p.items || []);
+        const hasMilk = all.some((i) => /Great Value 2% Reduced Fat Milk/i.test(i.productTitle || ""));
+        const hasCorn = all.some((i) => /Great Value Whole Kernel Sweet Corn/i.test(i.productTitle || ""));
+        const hasSaved = all.some((i) => /Stonyfield Organic Whole Milk Plain Yogurt/i.test(i.productTitle || ""));
+        return hasMilk && hasCorn && hasSaved
+          ? { pageToken: payloads[payloads.length - 1]?.pageToken || 1, items: all }
+          : null;
+      })()`,
+      "Walmart /cart + Usuals + Saved for later gridBatch candidates",
+      8000,
+    );
+    const s6Batch = s6BatchMeta.items;
+    assert(
+      !s6Batch.some((i) => /Power Bank|PowerCore/i.test(i.productTitle || "")),
+      `Non-food Power Bank should NEVER be batched for food scoring: ${JSON.stringify(s6Batch)}`,
+    );
+    console.log(
+      `   ✓ Walmart /cart, Usuals carousel, and Saved-for-later food items all queued (${s6Batch.length} food items; non-food Power Bank skipped)`,
+    );
+
+    // Render photo badges (including unified 🌱 pesticide icon vs ⚠️ allergen icon), then test 2D pill aiming + badge pin + carousel swipe unpin!
+    const cornCard = s6Batch.find((i) => /Sweet Corn/i.test(i.productTitle));
+    const macCard = s6Batch.find((i) => /Macaroni/i.test(i.productTitle));
+    const milkCard = s6Batch.find((i) => /Reduced Fat Milk/i.test(i.productTitle));
+    assert(Boolean(cornCard && macCard && milkCard), "Expected corn, mac, and milk cardIds in Walmart /cart batch");
+
+    const badgeAndPinResult = await storePage.eval<{
+      cornBadgeText: string;
+      macBadgeText: string;
+      milkBadgeText: string;
+      aimedLeftTitle: string;
+      aimedRightTitle: string;
+      pinnedTitle: string;
+      unpinnedAfterCarouselSwipe: boolean;
+    }>(`(async () => {
+      window.__heybrocApplyCardBadges({
+        [${JSON.stringify(cornCard!.id)}]: { ok: true, score: 65, hasAlert: true, alertSeverity: "advisory", alertIcon: "🌱" },
+        [${JSON.stringify(macCard!.id)}]: { ok: true, score: 43, hasAlert: true, alertSeverity: "allergen", alertIcon: "⚠️" },
+        [${JSON.stringify(milkCard!.id)}]: { ok: true, score: 88, hasAlert: false, alertSeverity: "none" }
+      }, ${JSON.stringify(s6BatchMeta.pageToken)});
+      await new Promise((r) => setTimeout(r, 120));
+
+      const cornEl = document.querySelector('[data-item-id="usual-corn-1"]');
+      const macEl = document.querySelector('[data-item-id="usual-mac-2"]');
+      const cornBadge = document.querySelector('.hb-photo-badge[data-hb-card-id=' + ${JSON.stringify(JSON.stringify(cornCard!.id))} + ']');
+      const macBadge = document.querySelector('.hb-photo-badge[data-hb-card-id=' + ${JSON.stringify(JSON.stringify(macCard!.id))} + ']');
+      const milkBadge = document.querySelector('.hb-photo-badge[data-hb-card-id=' + ${JSON.stringify(JSON.stringify(milkCard!.id))} + ']');
+      if (!cornBadge || !macBadge || !milkBadge) {
+        throw new Error("Missing rendered photo badge(s): corn=" + Boolean(cornBadge) + " mac=" + Boolean(macBadge) + " milk=" + Boolean(milkBadge));
+      }
+
+      // Aim 2D bubble (in CSS pixels) directly over far-left Corn card
+      const cr = cornEl.getBoundingClientRect();
+      window.__heybrocBubbleCenterX = cr.left + cr.width * 0.5;
+      window.__heybrocBubbleCenterY = cr.top + cr.height * 0.5;
+      window.__s6CardEvents = [];
+      if (typeof window.__heybrocScheduleCheck === "function") window.__heybrocScheduleCheck(true);
+      await new Promise((r) => setTimeout(r, 260));
+      const aimedLeftTitle = (window.__s6CardEvents[window.__s6CardEvents.length - 1]?.title) || "";
+
+      // Aim 2D bubble (in CSS pixels) directly over center Mac & Cheese card
+      const mr = macEl.getBoundingClientRect();
+      window.__heybrocBubbleCenterX = mr.left + mr.width * 0.5;
+      window.__heybrocBubbleCenterY = mr.top + mr.height * 0.5;
+      window.__s6CardEvents = [];
+      if (typeof window.__heybrocScheduleCheck === "function") window.__heybrocScheduleCheck(true);
+      await new Promise((r) => setTimeout(r, 260));
+      const aimedRightTitle = (window.__s6CardEvents[window.__s6CardEvents.length - 1]?.title) || "";
+
+      // Tap the Corn badge to pin it, verify it emits inspectCard for Sweet Corn
+      window.__s6CardEvents = [];
+      cornBadge.click();
+      await new Promise((r) => setTimeout(r, 180));
+      const pinnedTitle = (window.__s6CardEvents[window.__s6CardEvents.length - 1]?.title) || "";
+
+      // Horizontally swipe the Usuals carousel >28px -> should unpin Corn and re-aim at Mac (at bubble X/Y)
+      const carousel = document.getElementById("hb-usuals-carousel");
+      carousel.scrollLeft = 90;
+      carousel.dispatchEvent(new Event("scroll", { bubbles: true }));
+      window.__s6CardEvents = [];
+      await new Promise((r) => setTimeout(r, 320));
+      if (typeof window.__heybrocScheduleCheck === "function") window.__heybrocScheduleCheck(true);
+      await new Promise((r) => setTimeout(r, 260));
+      const afterSwipeTitle = (window.__s6CardEvents[window.__s6CardEvents.length - 1]?.title) || "";
+
+      return {
+        cornBadgeText: (cornBadge?.textContent || "").trim(),
+        macBadgeText: (macBadge?.textContent || "").trim(),
+        milkBadgeText: (milkBadge?.textContent || "").trim(),
+        aimedLeftTitle,
+        aimedRightTitle,
+        pinnedTitle,
+        unpinnedAfterCarouselSwipe: /Macaroni/i.test(afterSwipeTitle) || !/Sweet Corn/i.test(afterSwipeTitle)
+      };
+    })()`);
+
+    assert(
+      badgeAndPinResult.cornBadgeText.includes("🌱") && !badgeAndPinResult.cornBadgeText.includes("⚠"),
+      `Pesticide-only badge must render 🌱 (not ⚠️), got "${badgeAndPinResult.cornBadgeText}"`,
+    );
+    assert(
+      badgeAndPinResult.macBadgeText.includes("⚠") && !badgeAndPinResult.macBadgeText.includes("🌱"),
+      `Allergen badge must render ⚠️ (not 🌱), got "${badgeAndPinResult.macBadgeText}"`,
+    );
+    assert(
+      /88/.test(badgeAndPinResult.milkBadgeText),
+      `Milk badge should show 88, got "${badgeAndPinResult.milkBadgeText}"`,
+    );
+    assert(
+      /Sweet Corn/i.test(badgeAndPinResult.aimedLeftTitle),
+      `2D bubble over far-left Corn card should aim at Sweet Corn, got "${badgeAndPinResult.aimedLeftTitle}"`,
+    );
+    assert(
+      /Macaroni/i.test(badgeAndPinResult.aimedRightTitle),
+      `2D bubble over center Mac card should aim at Macaroni, got "${badgeAndPinResult.aimedRightTitle}"`,
+    );
+    assert(
+      /Sweet Corn/i.test(badgeAndPinResult.pinnedTitle),
+      `Tapping Corn photo badge should pin Sweet Corn, got "${badgeAndPinResult.pinnedTitle}"`,
+    );
+    assert(
+      badgeAndPinResult.unpinnedAfterCarouselSwipe,
+      "Horizontal carousel scroll should unpin previously tapped Corn badge",
+    );
+    console.log("   ✓ 2D Floating Pill aiming, badge tap-pin, carousel swipe unpin, and unified 🌱 vs ⚠️ badge icons verified!");
+
+    // 6B: Instacart slide-over Cart Drawer suppression (zero Scanning <-> Unavailable flicker)
+    const instacartDrawerHtml = `
+      <main style="padding:12px;">
+        <div data-testid="item-card" style="width:180px; height:220px;">
+          <img src="https://i5.walmartimages.com/asr/bg.jpg" width="120" height="120" alt="Chobani Greek Yogurt" />
+          <a href="/products/12345">Chobani Non-Fat Plain Greek Yogurt, 32 oz</a>
+        </div>
+      </main>
+      <div role="dialog" aria-modal="true" style="position:fixed; top:0; right:0; width:340px; height:852px; z-index:9999; background:#fff; padding:16px;">
+        <h2>Personal Market 32 and Price Chopper Cart</h2>
+        <p>Subtotal $42.19</p>
+        <button type="button" style="width:100%; padding:14px; background:#108910; color:#fff;">Go to checkout</button>
+      </div>
+    `;
+    await storePage.navigate("https://www.instacart.com/store/price-chopper-market-32/storefront");
+    await storePage.eval(`
+      document.body.innerHTML = ${JSON.stringify(instacartDrawerHtml)};
+      window.__icEvents = [];
+      window.__heybrocBridgeSecret = ${JSON.stringify(androidBridgeSecret)};
+      window.heybrocAndroidBridge = {
+        postMessage: function(rawJson) {
+          const msg = JSON.parse(rawJson);
+          if (msg._hbSec !== ${JSON.stringify(androidBridgeSecret)}) return;
+          window.__icEvents.push(msg);
+        }
+      };
+    `);
+    await storePage.eval(androidDetectorJS, false);
+    await sleep(600);
+    const icDrawerEvents = await storePage.eval<{ productOrCardCount: number; browseCount: number }>(`({
+      productOrCardCount: (window.__icEvents || []).filter((e) => e.kind === "product" || e.kind === "card").length,
+      browseCount: (window.__icEvents || []).filter((e) => e.kind === "browse").length
+    })`);
+    assert(
+      icDrawerEvents.productOrCardCount === 0,
+      `Instacart slide-over cart drawer must suppress product/card scanning (zero flicker), got ${icDrawerEvents.productOrCardCount} events`,
+    );
+    console.log("   ✓ Instacart slide-over Cart Drawer suppresses background scanning with 0 flicker!");
+
     storePage.close();
 
-    console.log("\n✅ ALL HEADLESS BROWSER E2E SUITES PASSED (iPhone + Android + Safari/Chrome Extension)!");
+    // =========================================================================
+    // SUITE 5 (6/6): Full-App Route & Interactive Button Matrix (Desktop Chrome)
+    // =========================================================================
+    console.log("\n🖱️  [6/6] Auditing Every App Route & Interactive Button in Headless Chromium...");
+    const appPage = await createPageTarget(resolvedCdpPort);
+    await enableOfflineOffPhotoStub(appPage);
+    await appPage.send("Emulation.setDeviceMetricsOverride", {
+      width: 1280,
+      height: 900,
+      deviceScaleFactor: 2,
+      mobile: false,
+    });
+
+    // 1) Visit every route across the entire Next.js app and assert healthy render & zero JS exceptions
+    const allRoutes: Array<{ path: string; expectText: RegExp }> = [
+      { path: "/", expectText: /HeyBroc/i },
+      { path: "/test", expectText: /Score|Ingredient|Free/i },
+      { path: "/tools", expectText: /Ingredient|Grader|Android/i },
+      { path: "/swaps", expectText: /Clean.*Swaps/i },
+      { path: "/swaps/doritos-nacho-cheese", expectText: /Doritos/i },
+      { path: "/compare", expectText: /Yuka|Bobby/i },
+      { path: "/compare/heybroc-vs-yuka", expectText: /Yuka/i },
+      { path: "/creators", expectText: /Creator|Commission/i },
+      { path: "/r/CLEANMOM", expectText: /CLEANMOM|Free Trial/i },
+      { path: "/login", expectText: /HeyBroc/i },
+      { path: "/delete-account", expectText: /Delete|Account/i },
+      { path: "/privacy", expectText: /privacy@heybroc\.com/i },
+      { path: "/terms", expectText: /billing@heybroc\.com/i },
+      { path: "/independence", expectText: /Independent|100%/i },
+    ];
+
+    for (const r of allRoutes) {
+      await appPage.navigate(`${baseOrigin}${r.path}`);
+      const pageCheck = await appPage.eval<{ textLen: number; bodyText: string; url: string }>(`({
+        textLen: (document.body.innerText || "").trim().length,
+        bodyText: (document.body.innerText || ""),
+        url: window.location.href
+      })`);
+      assert(pageCheck.textLen > 60, `Route ${r.path} rendered empty page`);
+      assert(r.expectText.test(pageCheck.bodyText), `Route ${r.path} missing expected copy (${r.expectText})`);
+      if (r.path === "/login") {
+        assert(pageCheck.url.includes("login=1"), `/login should redirect to /?login=1, got ${pageCheck.url}`);
+      }
+      if (r.path === "/swaps/doritos-nacho-cheese") {
+        const swapButtons = await appPage.eval<{ primaryLinks: number; allLinksAfterExpand: number; hasHttpsOnly: boolean; hasDisclosure: boolean }>(`(() => {
+          const getRetailLinks = () => Array.from(document.querySelectorAll('a[target="_blank"]')).filter((a) => /Shop|Walmart|Target|Instacart|Amazon|Costco|Kroger|ALDI|Sam|BJ|DoorDash|Uber|Shipt/i.test(a.textContent || ""));
+          const primaryLinks = getRetailLinks().length;
+          const summary = Array.from(document.querySelectorAll("summary")).find((s) => /more stores/i.test(s.textContent || ""));
+          if (summary) summary.click();
+          const allLinks = getRetailLinks();
+          return {
+            primaryLinks,
+            allLinksAfterExpand: allLinks.length,
+            hasHttpsOnly: allLinks.every((a) => (a.getAttribute("href") || "").startsWith("https://")),
+            hasDisclosure: /Amazon Associate|paid link|affiliate/i.test(document.body.innerText)
+          };
+        })()`);
+        assert(swapButtons.primaryLinks >= 3, `/swaps/doritos-nacho-cheese missing primary store links (${swapButtons.primaryLinks})`);
+        assert(swapButtons.allLinksAfterExpand >= 12, `/swaps/doritos-nacho-cheese should expose all 12 stores after expanding, got ${swapButtons.allLinksAfterExpand}`);
+        assert(swapButtons.hasHttpsOnly, `/swaps/doritos-nacho-cheese has non-HTTPS store link`);
+        assert(swapButtons.hasDisclosure, `/swaps/doritos-nacho-cheese missing affiliate/FTC disclosure`);
+      }
+      if (r.path === "/r/CLEANMOM") {
+        const refCheck = await appPage.eval<{ hasTestHref: boolean; copyBtnWorks: boolean }>(`(async () => {
+          const btn = Array.from(document.querySelectorAll("button")).find((b) => /Copy Code/i.test(b.textContent || ""));
+          if (btn) btn.click();
+          await new Promise((r) => setTimeout(r, 80));
+          const testLink = Array.from(document.querySelectorAll("a")).find((a) => (a.getAttribute("href") || "").includes("/test"));
+          return {
+            hasTestHref: Boolean(testLink && testLink.getAttribute("href")?.includes("code=CLEANMOM")),
+            copyBtnWorks: Boolean(btn)
+          };
+        })()`);
+        assert(refCheck.hasTestHref, "/r/CLEANMOM missing /test?code=CLEANMOM CTA");
+      }
+    }
+    console.log(`   ✓ All ${allRoutes.length} app routes rendered cleanly with verified links, FTC disclosures & /login redirect`);
+
+    // 2) Verify /tools?platform=ios hides Android APK download card
+    await appPage.navigate(`${baseOrigin}/tools?platform=ios`);
+    const toolsIosCheck = await appPage.eval<boolean>(`!document.body.innerText.includes("Download Android APK")`);
+    assert(toolsIosCheck, "/tools?platform=ios must hide Android APK download card");
+    console.log("   ✓ /tools?platform=ios cleanly hides Android APK card");
+
+    // 3) Verify EVERY interactive button & modal on / (Home Simulator, Floating Pill, AuthModal incl. Send Reset Code + Post-Signup Verification, Paywall, Watchlist, Label Scanner, Weekly Audit)
+    await appPage.navigate(`${baseOrigin}/`);
+    await appPage.waitFor(`Boolean(document.getElementById("open-auth-modal"))`, "Home page topbar to mount");
+
+    // 3a) Test AuthModal: 1-tap buttons -> Email tab -> Sign In / Create Account tabs -> Forgot Password + Send Reset Code button -> Full Email Sign-Up stays open on Verification screen -> Log out
+    const testEmail = `audit-e2e-${Date.now()}@example.com`;
+    const authMatrix = await appPage.eval<{
+      hasAppleBtn: boolean;
+      hasGoogleBtn: boolean;
+      hasUseEmailBtn: boolean;
+      hasGuestBtn: boolean;
+      hasSendResetCodeBtn: boolean;
+      resetCodePromptShown: boolean;
+      signupStayedOpenOnVerify: boolean;
+      hasVerifyLaterCta: boolean;
+      loggedOutCleanly: boolean;
+    }>(`(async () => {
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+      const setVal = (el, v) => {
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+        setter?.call(el, v);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+
+      document.getElementById("open-auth-modal")?.click();
+      await wait(120);
+      const hasAppleBtn = Boolean(document.getElementById("auth-apple-btn"));
+      const hasGoogleBtn = Boolean(document.getElementById("auth-google-btn"));
+      const hasUseEmailBtn = Boolean(document.getElementById("auth-use-email-btn"));
+      const hasGuestBtn = Boolean(document.getElementById("auth-continue-guest"));
+
+      // Expand email form -> switch to Sign In -> tap Forgot password? BEFORE typing email
+      document.getElementById("auth-use-email-btn")?.click();
+      await wait(80);
+      document.getElementById("auth-tab-signin")?.click();
+      await wait(80);
+      const forgotBtn = Array.from(document.querySelectorAll("button")).find((b) => /Forgot password/i.test(b.textContent || ""));
+      forgotBtn?.click();
+      await wait(120);
+      const sendResetBtn = document.getElementById("auth-send-reset-code-btn");
+      const hasSendResetCodeBtn = Boolean(sendResetBtn);
+      sendResetBtn?.click();
+      await wait(100);
+      const resetCodePromptShown = /Enter your account email/i.test(document.body.innerText);
+
+      // Go back from forgot -> Create Free Account -> submit fresh email account -> verify stays open on verification step
+      document.querySelector('button[aria-label="Back to email sign in"]')?.click();
+      await wait(80);
+      document.getElementById("auth-tab-signup")?.click();
+      await wait(80);
+      setVal(document.getElementById("auth-email-input"), ${JSON.stringify(testEmail)});
+      setVal(document.getElementById("auth-password-input"), "CleanCartTest123!");
+      await wait(60);
+      document.getElementById("auth-submit-btn")?.click();
+
+      // Wait for logged-in verification screen
+      let signupStayedOpenOnVerify = false;
+      let hasVerifyLaterCta = false;
+      for (let i = 0; i < 30; i++) {
+        await wait(120);
+        const contBtn = document.getElementById("auth-continue-shopping-btn");
+        if (contBtn && document.body.innerText.includes("6-digit verification code")) {
+          signupStayedOpenOnVerify = true;
+          hasVerifyLaterCta = /Verify Later/i.test(contBtn.textContent || "");
+          break;
+        }
+      }
+
+      // Log out cleanly
+      const logoutBtn = Array.from(document.querySelectorAll("button")).find((b) => /^Log out$/i.test((b.textContent || "").trim()));
+      logoutBtn?.click();
+      await wait(120);
+      const loggedOutCleanly = !document.getElementById("auth-continue-shopping-btn");
+
+      return {
+        hasAppleBtn,
+        hasGoogleBtn,
+        hasUseEmailBtn,
+        hasGuestBtn,
+        hasSendResetCodeBtn,
+        resetCodePromptShown,
+        signupStayedOpenOnVerify,
+        hasVerifyLaterCta,
+        loggedOutCleanly
+      };
+    })()`);
+
+    assert(
+      authMatrix.hasAppleBtn && authMatrix.hasGoogleBtn && authMatrix.hasUseEmailBtn && authMatrix.hasGuestBtn,
+      `AuthModal missing core 1-tap buttons: ${JSON.stringify(authMatrix)}`,
+    );
+    assert(
+      authMatrix.hasSendResetCodeBtn && authMatrix.resetCodePromptShown,
+      `AuthModal forgot-password Send Reset Code button broken: ${JSON.stringify(authMatrix)}`,
+    );
+    assert(
+      authMatrix.signupStayedOpenOnVerify && authMatrix.hasVerifyLaterCta,
+      `AuthModal email signup should stay open on 6-digit verification step with Verify Later CTA: ${JSON.stringify(authMatrix)}`,
+    );
+    assert(authMatrix.loggedOutCleanly, "AuthModal Log out button failed to close/reset");
+    console.log("   ✓ AuthModal 1-tap, Forgot Password Send Reset Code, Email Signup Verification & Logout verified!");
+
+    // 3b) Test Topbar More Menu, Floating Pill, Watchlist, Label Scanner, Weekly Audit, and Paywall buttons on /
+    const uiButtonChecks = await appPage.eval<{
+      pesticideToggled: boolean;
+      labelScannerOpened: boolean;
+      weeklyAuditOpened: boolean;
+      floatingPillPresent: boolean;
+      paywallControlsWorked: boolean;
+    }>(`(async () => {
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+      // More menu -> Pesticide toggle
+      document.getElementById("topbar-more-menu-btn")?.click();
+      await wait(80);
+      const pestBtn = document.getElementById("topbar-pesticide-toggle");
+      const beforePest = pestBtn?.getAttribute("aria-pressed") || pestBtn?.textContent || "";
+      pestBtn?.click();
+      await wait(80);
+      const afterPest = document.getElementById("topbar-pesticide-toggle")?.getAttribute("aria-pressed") || document.getElementById("topbar-pesticide-toggle")?.textContent || "";
+      const pesticideToggled = Boolean(pestBtn) && (beforePest !== afterPest || Boolean(document.getElementById("pill-dietary-alert")));
+
+      // More menu -> Label Scanner modal
+      if (!document.getElementById("topbar-label-scanner")) {
+        document.getElementById("topbar-more-menu-btn")?.click();
+        await wait(80);
+      }
+      document.getElementById("topbar-label-scanner")?.click();
+      await wait(150);
+      const labelCloseBtn = document.querySelector('button[aria-label="Close label scanner"]');
+      const labelScannerOpened = Boolean(labelCloseBtn) && /Scan.*Label|Upload.*Photo|Ingredients/i.test(document.body.innerText);
+      labelCloseBtn?.click();
+      await wait(100);
+
+      // More menu -> Weekly Order Audit modal
+      if (!document.getElementById("topbar-weekly-audit")) {
+        document.getElementById("topbar-more-menu-btn")?.click();
+        await wait(80);
+      }
+      document.getElementById("topbar-weekly-audit")?.click();
+      await wait(150);
+      const weeklyCloseBtn = document.querySelector('button[aria-label="Close weekly order auditor"]');
+      const weeklyAuditOpened = Boolean(weeklyCloseBtn) && /Weekly.*Audit|Paste.*Order|Receipt/i.test(document.body.innerText);
+      weeklyCloseBtn?.click();
+      await wait(100);
+
+      // Floating pill + 5-Tab Overlay Bottom Nav + Store Brand toggle + Paywall modal
+      const floatingPillPresent = Boolean(document.getElementById("floating-overlay-pill"));
+      document.getElementById("floating-overlay-pill")?.click();
+      await wait(140);
+      const navButtons = Array.from(document.querySelectorAll('nav[aria-label="HeyBroc tabs"] button'));
+      for (const tabLabel of ["Scans", "Top Picks", "Swaps", "Search"]) {
+        const tabBtn = navButtons.find((b) => (b.textContent || "").trim().includes(tabLabel));
+        tabBtn?.click();
+        await wait(90);
+      }
+      document.getElementById("toggle-prefer-store-brand")?.click();
+      await wait(80);
+
+      // Open Paywall & click Annual/Monthly/ARL checkbox/Close
+      let paywallBtn = document.getElementById("app-open-paywall");
+      if (!paywallBtn) {
+        paywallBtn = Array.from(document.querySelectorAll("button")).find((b) => /Unlock.*Pro|Upgrade|7-Day Free/i.test(b.textContent || "")) || null;
+      }
+      let paywallControlsWorked = false;
+      if (paywallBtn) {
+        paywallBtn.click();
+        await wait(180);
+        const mBtn = document.getElementById("plan-monthly");
+        const aBtn = document.getElementById("plan-annual");
+        const arl = document.getElementById("paywall-arl-consent");
+        const closePw = document.querySelector('button[aria-label="Close paywall"]');
+        mBtn?.click();
+        await wait(60);
+        aBtn?.click();
+        await wait(60);
+        arl?.click();
+        await wait(60);
+        paywallControlsWorked = Boolean(mBtn && aBtn && document.getElementById("paywall-cta") && closePw);
+        closePw?.click();
+        await wait(80);
+      }
+
+      return {
+        pesticideToggled,
+        labelScannerOpened,
+        weeklyAuditOpened,
+        floatingPillPresent,
+        paywallControlsWorked
+      };
+    })()`);
+
+    assert(uiButtonChecks.floatingPillPresent, "Floating overlay pill (#floating-overlay-pill) missing on /");
+    assert(uiButtonChecks.pesticideToggled, "Topbar 🌱 Pesticide toggle button did not respond");
+    assert(uiButtonChecks.labelScannerOpened, "Label Scanner modal button did not open");
+    assert(uiButtonChecks.weeklyAuditOpened, "Weekly Order Audit modal button did not open");
+    assert(uiButtonChecks.paywallControlsWorked, "Paywall modal plan/consent buttons failed");
+    assert(
+      appPage.exceptions.length === 0,
+      `Uncaught JS exceptions across Full-App Button Matrix: ${appPage.exceptions.join(" | ")}`,
+    );
+    console.log("   ✓ Topbar More menu, 🌱 Pesticides toggle, Floating Pill, Label Scanner, Weekly Audit & Paywall buttons verified with 0 JS exceptions!");
+    appPage.close();
+
+    console.log("\n✅ ALL 6 HEADLESS BROWSER E2E SUITES PASSED (iPhone + Android + Extension + Floating Pill 2D + Full-App Button Matrix)!");
   } finally {
     cleanup();
   }

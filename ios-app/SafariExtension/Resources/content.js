@@ -1929,6 +1929,7 @@
     '[auto-data*="productCard" i]',
     '[class*="sc-pc-" i][class*="card" i]',
     '[class*="ProductCard" i]',
+    '[class*="CardTemplate-Horizontal"]',
     '[class*="ItemCard" i]',
     '[class*="product-tile" i]',
     'article[class*="product" i]',
@@ -1957,6 +1958,7 @@
     "app-product-card",
     '[auto-data*="productCard" i]',
     '[class*="ProductCard" i]',
+    '[class*="CardTemplate-Horizontal"]',
     '[class*="product-tile" i]',
   ].join(", ");
 
@@ -1979,6 +1981,7 @@
     '[data-automation-id="product-tile"]',
     "app-product-card",
     '[auto-data*="productCard" i]',
+    '[class*="CardTemplate-Horizontal"]',
   ].join(", ");
 
   const DEFINITIVE_SINGLE_CARD_SEL = [

@@ -370,7 +370,7 @@ enum HeyBrocVisionOCR {
 
 enum HeyBrocNativeScannerAPI {
     static let endpoint = URL(string: "https://www.heybroc.com/api/scan")!
-    static let entitlementsEndpoint = URL(string: "https://www.heybroc.com/api/entitlements")!
+    static let entitlementsEndpoint = URL(string: "https://www.heybroc.com/api/referral")!
     private static let majorAllergenIds: Set<String> = [
         "peanuts_nuts", "dairy", "wheat_gluten", "soy", "egg", "shellfish_fish", "sesame"
     ]

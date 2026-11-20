@@ -1111,7 +1111,7 @@ object ScanApi {
                 )
             }
         val produceMatch = Regex(
-            "\\b(strawberries|strawberry|baby\\s+spinach|spinach|kale|collard\\s+greens?|mustard\\s+greens?|seedless\\s+grapes?|grapes?|raisins?|peaches|peach|pears|pear|nectarines?|applesauce|apples?|bell\\s+peppers?|sweet\\s+peppers?|hot\\s+peppers?|cherries|blueberries|blueberry|green\\s+beans?|string\\s+beans?|potatoes|celery|tomatoes)\\b",
+            "\\b(strawberries|strawberry|baby\\s+spinach|spinach|kale|collard\\s+greens?|mustard\\s+greens?|seedless\\s+grapes?|grapes?|raisins?|peaches|peach|pears|pear|nectarines?|applesauce|apples?|bell\\s+peppers?|sweet\\s+peppers?|jalape[nñ]o\\s+peppers?|hot\\s+peppers?|cherries|blueberries|blueberry|green\\s+beans?|string\\s+beans?|potatoes|celery|tomatoes)\\b",
             RegexOption.IGNORE_CASE
         ).find(cleaned)
         if (produceMatch != null) {

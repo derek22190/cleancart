@@ -12069,6 +12069,63 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         chromeExtSrc.includes('rootMargin: "180px 340px"') &&
         scanTsAuditSrc.includes('dietaryAlerts.every((a) => a.id === "pesticide_risk") ? "🌱" : "⚠️"'),
     );
+    // 14. Full 6-Pillar Platform Audit Regressions (Auth, Email, Affiliates, iOS Shortcuts, Android/iOS Parity, Kroger Selector)
+    const { evaluateDietaryAlerts: evalDietaryAudit } = await import("../lib/dietary");
+    const { isAffiliateAllowedOnClient: isAffAllowedAudit } = await import("../lib/swaps");
+    const emailLibSrc = fsNode.readFileSync("lib/email.ts", "utf8");
+    const authApiRouteSrc = fsNode.readFileSync("app/api/auth/route.ts", "utf8");
+    const authModalAuditSrc = fsNode.readFileSync("components/AuthModal.tsx", "utf8");
+    const appleCbSrc = fsNode.readFileSync("app/api/auth/apple-callback/route.ts", "utf8");
+    const googleCbSrc = fsNode.readFileSync("app/auth/google-callback/page.tsx", "utf8");
+    const iosShortcutsAuditSrc = fsNode.readFileSync("ios-app/App/HeyBrocShortcuts.swift", "utf8");
+    const iosAppSwiftSrc = fsNode.readFileSync("ios-app/App/HeyBrocApp.swift", "utf8");
+    const androidMainAuthSrc = fsNode.readFileSync(
+      "android-app/app/src/main/java/com/cleancart/overlay/MainActivity.kt",
+      "utf8",
+    );
+    const androidScanApiAuditSrc = fsNode.readFileSync(
+      "android-app/app/src/main/java/com/cleancart/overlay/ScanApi.kt",
+      "utf8",
+    );
+    const extListingSrc = fsNode.readFileSync("chrome-extension/STORE_LISTING.md", "utf8");
+    const iosWorkflowSrc = fsNode.readFileSync(".github/workflows/build-ios.yml", "utf8");
+
+    const undefinedTitleDietary = evalDietaryAudit(
+      ["dairy", "pesticide_risk"],
+      undefined as unknown as string,
+      "Milk, Salt.",
+    );
+    check(
+      "Full 6-Pillar Platform Audit Regressions: evaluateDietaryAlerts handles undefined title; GET /api/auth rejects ?token= query strings; lib/email.ts includes reply_to & OTP sanitization; AuthModal & Android MainActivity include Create Account toggle, Send/Resend Reset Code & post-signup verification; OAuth callbacks preserve safe same-origin return paths; HeyBrocShortcuts uses /api/referral (not 404 /api/entitlements); iOS/Android pesticide parity & Kroger horizontal card selector synced; Chrome listing matches zero-affiliate gate; build-ios.yml ad-hoc embeds entitlements before Cloud Signing",
+      undefinedTitleDietary.some((a) => a.id === "dairy") &&
+        !isAffAllowedAudit("extension", "chrome-extension") &&
+        !isAffAllowedAudit("ios", "ios-app") &&
+        !isAffAllowedAudit("web", "ios-safari") &&
+        !authApiRouteSrc.includes('searchParams.get("token")') &&
+        emailLibSrc.includes("reply_to: replyTo") &&
+        emailLibSrc.includes("sanitizeOtpCode") &&
+        emailLibSrc.includes("export function isEmailDeliveryConfigured") &&
+        authModalAuditSrc.includes('id="auth-send-reset-code-btn"') &&
+        authModalAuditSrc.includes("heybroc_oauth_return_to") &&
+        !authModalAuditSrc.includes('includes("no account found")') &&
+        appleCbSrc.includes("heybroc_oauth_return_to") &&
+        appleCbSrc.includes('\\u2028') &&
+        googleCbSrc.includes("heybroc_oauth_return_to") &&
+        iosShortcutsAuditSrc.includes('https://www.heybroc.com/api/referral') &&
+        !iosShortcutsAuditSrc.includes('https://www.heybroc.com/api/entitlements') &&
+        iosAppSwiftSrc.includes('id: "pesticide_risk"') &&
+        iosAppSwiftSrc.includes('isPesticide ? "🌱" : "⚠️"') &&
+        androidMainAuthSrc.includes('addModeTab("Create Free Account"') &&
+        androidMainAuthSrc.includes('Send / Resend 6-Digit Reset Code') &&
+        androidMainAuthSrc.includes('auth_email_verified') &&
+        !androidMainAuthSrc.includes('contains("No account found"') &&
+        androidScanApiAuditSrc.includes("jalape[nñ]o") &&
+        androidDetectorSrc.includes('[class*="CardTemplate-Horizontal"]') &&
+        iosBrowserSrc.includes('[class*="CardTemplate-Horizontal"]') &&
+        chromeExtSrc.includes('[class*="CardTemplate-Horizontal"]') &&
+        !extListingSrc.includes("Amazon Associates") &&
+        iosWorkflowSrc.includes('codesign --entitlements "ios-app/build/HeyBroc/HeyBroc.entitlements" --force --sign "-" "$ARCHIVE_APP"'),
+    );
   }
 
   console.log("Checks executed:", checks);

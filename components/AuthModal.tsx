@@ -334,6 +334,16 @@ export default function AuthModal({
         `popup=yes,width=${width},height=${height},left=${left},top=${top}`
       );
       if (!popup) {
+        try {
+          const retUrl = new URL(window.location.href);
+          retUrl.searchParams.set("login", "1");
+          window.sessionStorage.setItem(
+            "heybroc_oauth_return_to",
+            `${retUrl.pathname}${retUrl.search}`
+          );
+        } catch {
+          // ignore storage errors
+        }
         window.location.assign(authUrl.toString());
         return;
       }
@@ -632,6 +642,16 @@ export default function AuthModal({
 
     if (!popup) {
       // Mobile browser blocked popup -> navigate directly to Google's Choose an Account screen
+      try {
+        const retUrl = new URL(window.location.href);
+        retUrl.searchParams.set("login", "1");
+        window.sessionStorage.setItem(
+          "heybroc_oauth_return_to",
+          `${retUrl.pathname}${retUrl.search}`
+        );
+      } catch {
+        // ignore storage errors
+      }
       window.location.assign(authUrl.toString());
       return;
     }
@@ -809,13 +829,6 @@ export default function AuthModal({
       let { res, data } = await sendRequest(primaryAction);
       if (
         (!res.ok || !data.ok) &&
-        primaryAction === "login" &&
-        typeof data.error === "string" &&
-        data.error.toLowerCase().includes("no account found")
-      ) {
-        ({ res, data } = await sendRequest("register"));
-      } else if (
-        (!res.ok || !data.ok) &&
         primaryAction === "register" &&
         typeof data.error === "string" &&
         data.error.toLowerCase().includes("already")
@@ -827,10 +840,54 @@ export default function AuthModal({
         setError(data.error || "Could not sign in. Please check your details and try again.");
         return;
       }
-      onAuthSuccess(data.user as AuthenticatedUser, data.token as string);
+      const authedUser = data.user as AuthenticatedUser;
+      onAuthSuccess(authedUser, data.token as string);
+      if (data.created && !authedUser.emailVerified) {
+        setPassword("");
+        setVerifyCode("");
+        setInfoMessage(
+          data.verificationEmailSent === false
+            ? "Account created! We couldn't send the verification email right now — tap Resend anytime or Continue Shopping below."
+            : `Account created! Enter the 6-digit verification code sent to ${authedUser.email}, or tap Continue Shopping to verify later.`
+        );
+        return;
+      }
       onClose();
     } catch {
       setError("Network error connecting to HeyBroc. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSendResetCode = async (targetEmailRaw?: string) => {
+    const cleanEmail = (targetEmailRaw ?? email).trim();
+    setError("");
+    setInfoMessage("");
+    if (!cleanEmail || !cleanEmail.includes("@")) {
+      setError("Enter your account email address first, then tap Send Reset Code.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "forgot_password", email: cleanEmail }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        setError(
+          data?.error || "Could not send a password reset code right now. Please try again."
+        );
+        return;
+      }
+      setInfoMessage(
+        data?.message ||
+          `If an account exists for ${cleanEmail}, a 6-digit reset code has been sent.`
+      );
+    } catch {
+      setError("Network error requesting reset code. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -842,18 +899,11 @@ export default function AuthModal({
     if (mode !== "forgot") {
       setMode("forgot");
       setPassword("");
+      setResetCode("");
       if (email.trim().includes("@")) {
-        const res = await fetch("/api/auth", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "forgot_password", email: email.trim() }),
-        }).catch(() => null);
-        const data = res ? await res.json().catch(() => null) : null;
-        if (data?.message) {
-          setInfoMessage(data.message);
-        }
+        await handleSendResetCode(email.trim());
       } else {
-        setInfoMessage("Enter your email and choose a new password (8+ characters) below.");
+        setInfoMessage("Enter your email address below and tap Send Reset Code to get your 6-digit code.");
       }
     }
   };
@@ -1115,11 +1165,12 @@ export default function AuthModal({
             {error && <p className="gococo-error">{error}</p>}
 
             <button
+              id="auth-continue-shopping-btn"
               type="button"
               className="gococo-submit-pill is-ready"
               onClick={onClose}
             >
-              <span>Continue Shopping</span>
+              <span>{user.emailVerified ? "Continue Shopping" : "Verify Later · Continue Shopping"}</span>
               <span className="gococo-submit-icon" aria-hidden="true">→</span>
             </button>
 
@@ -1410,21 +1461,43 @@ export default function AuthModal({
             </div>
 
             {mode === "forgot" && (
-              <div className="gococo-pill-ring">
-                <div className="gococo-pill-inner">
-                  <input
-                    id="auth-reset-code-input"
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    value={resetCode}
-                    onChange={(e) => setResetCode(e.target.value)}
-                    placeholder="6-digit reset code"
-                    aria-label="6-digit reset code"
-                    className="gococo-input"
-                  />
+              <>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: -4, marginBottom: 2 }}>
+                  <button
+                    id="auth-send-reset-code-btn"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void handleSendResetCode()}
+                    style={{
+                      background: "#ecfdf5",
+                      border: "1px solid #bbf7d0",
+                      borderRadius: 999,
+                      padding: "6px 12px",
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                      color: "#0f7a4a",
+                      cursor: busy ? "wait" : "pointer",
+                    }}
+                  >
+                    {busy ? "Sending…" : "Send / Resend 6-Digit Reset Code"}
+                  </button>
                 </div>
-              </div>
+                <div className="gococo-pill-ring">
+                  <div className="gococo-pill-inner">
+                    <input
+                      id="auth-reset-code-input"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      value={resetCode}
+                      onChange={(e) => setResetCode(e.target.value)}
+                      placeholder="6-digit reset code"
+                      aria-label="6-digit reset code"
+                      className="gococo-input"
+                    />
+                  </div>
+                </div>
+              </>
             )}
 
             {/* Password Input with Show/Hide Toggle */}

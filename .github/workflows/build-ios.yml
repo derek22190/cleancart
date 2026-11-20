@@ -443,7 +443,12 @@ jobs:
             marker_file = File.join(dc_out.strip, "tmp", "heybroc_smoke_passed.json")
             File.delete(marker_file) if File.exist?(marker_file)
 
-            l_code, l_out = run_bounded(90, "xcrun", "simctl", "launch", udid, "com.heybroc.app", "--heybroc-smoke-test-liveshop")
+            l_code, l_out = run_bounded(150, "xcrun", "simctl", "launch", udid, "com.heybroc.app", "--heybroc-smoke-test-liveshop")
+            if l_code != 0
+              puts "::warning::First simctl launch attempt returned #{l_code}; retrying once after 5s..."
+              sleep 5
+              l_code, l_out = run_bounded(150, "xcrun", "simctl", "launch", udid, "com.heybroc.app", "--heybroc-smoke-test-liveshop")
+            end
             if l_code != 0
               puts "::error::iOS Simulator launch failed (#{l_code}): #{l_out.strip}"
               spawn_detached_bounded(10, "xcrun", "simctl", "shutdown", udid)
@@ -540,6 +545,15 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             archive
+          # Because CODE_SIGNING_ALLOWED=NO skips ProcessProductPackaging, ad-hoc embed the
+          # target entitlements inside-out before Cloud Signing so xcodebuild -exportArchive
+          # preserves Sign in with Apple (com.apple.developer.applesignin) and App Group.
+          ARCHIVE_APP="ios-app/build/HeyBroc.xcarchive/Products/Applications/HeyBroc.app"
+          for EXT_BUNDLE in "$ARCHIVE_APP/PlugIns"/*.appex; do
+            [ -d "$EXT_BUNDLE" ] || continue
+            codesign --entitlements "ios-app/build/HeyBroc/Extension.entitlements" --force --sign "-" "$EXT_BUNDLE"
+          done
+          codesign --entitlements "ios-app/build/HeyBroc/HeyBroc.entitlements" --force --sign "-" "$ARCHIVE_APP"
           xcodebuild -exportArchive \
             -archivePath "ios-app/build/HeyBroc.xcarchive" \
             -exportOptionsPlist "ios-app/build/ExportOptions.plist" \
@@ -571,10 +585,14 @@ jobs:
           APP_ENTITLEMENTS="$(codesign -d --entitlements :- "$TMP_DIR/Payload/HeyBroc.app" 2>/dev/null)"
           if ! printf '%s' "$APP_ENTITLEMENTS" | grep -q "com.apple.developer.applesignin"; then
             echo "::error::Host app HeyBroc.app is missing Sign in with Apple entitlement (com.apple.developer.applesignin)!"
+            echo "Observed entitlements:"
+            printf '%s\n' "$APP_ENTITLEMENTS"
             exit 1
           fi
           if ! printf '%s' "$APP_ENTITLEMENTS" | grep -q "group.com.heybroc.app"; then
             echo "::error::Host app HeyBroc.app is missing App Group entitlement (group.com.heybroc.app)!"
+            echo "Observed entitlements:"
+            printf '%s\n' "$APP_ENTITLEMENTS"
             exit 1
           fi
 

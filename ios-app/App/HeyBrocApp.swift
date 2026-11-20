@@ -69,6 +69,7 @@ final class HeyBrocPreferencesStore: ObservableObject {
     static let appGroupSuite = "group.com.heybroc.app"
 
     static let dietaryOptions: [WatchlistOption] = [
+        WatchlistOption(id: "pesticide_risk", title: "🌱 Herbicides & Pesticides Watch", subtitle: "Flags non-organic Dirty-Dozen produce & conventional oats/wheat/legumes"),
         WatchlistOption(id: "peanuts_nuts", title: "Peanuts & Tree Nuts", subtitle: "Flags peanut, almond, walnut, cashew, pecan, hazelnut"),
         WatchlistOption(id: "dairy", title: "Milk & Dairy", subtitle: "Flags milk, whey, casein, butter, cream, lactose"),
         WatchlistOption(id: "wheat_gluten", title: "Wheat & Gluten", subtitle: "Flags wheat flour, barley, rye, malt, triticale"),
@@ -731,12 +732,13 @@ struct NativeScannerView: View {
             if !result.dietaryBadges.isEmpty {
                 HStack(spacing: 6) {
                     ForEach(result.dietaryBadges, id: \.self) { badge in
-                        Text("⚠️ \(badge)")
+                        let isPesticide = badge.uppercased().contains("PESTICIDE")
+                        Text("\(isPesticide ? "🌱" : "⚠️") \(badge)")
                             .font(.caption2.weight(.heavy))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(Color.red.opacity(0.14))
-                            .foregroundStyle(Color.red)
+                            .background(isPesticide ? Color.orange.opacity(0.16) : Color.red.opacity(0.14))
+                            .foregroundStyle(isPesticide ? Color.orange : Color.red)
                             .clipShape(Capsule())
                     }
                 }

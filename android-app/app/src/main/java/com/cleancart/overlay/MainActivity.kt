@@ -4023,16 +4023,165 @@ class MainActivity : Activity() {
                     scaleType = ImageView.ScaleType.FIT_CENTER
                 })
             }
+            val isEmailVerified = savedProvider != "email" || prefs.getBoolean("auth_email_verified", true)
             val providerBadge = when (savedProvider) {
                 "google" -> "Connected with Gmail"
                 "apple" -> "✓ Connected with Apple"
-                else -> "✓ Connected with Email"
+                else -> if (isEmailVerified) "✓ Verified Email Account" else "Email Verification Pending"
             }
-            providerRow.addView(label(providerBadge, 12.5f, 0xFF0F7A4A.toInt(), bold = true))
+            providerRow.addView(label(providerBadge, 12.5f, if (isEmailVerified) 0xFF0F7A4A.toInt() else 0xFFB45309.toInt(), bold = true))
             profileCard.addView(providerRow)
             card.addView(profileCard)
 
-            card.addView(label("Continue Shopping  →", 15.5f, Color.WHITE, bold = true).apply {
+            if (!isEmailVerified) {
+                val verifyBox = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(14), dp(12), dp(14), dp(12))
+                    background = GradientDrawable().apply {
+                        setColor(0xFFF8FAFC.toInt())
+                        setStroke(dp(1), 0xFFE2E8F0.toInt())
+                        cornerRadius = dp(14).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { topMargin = dp(12) }
+                }
+                verifyBox.addView(label(
+                    "Enter the 6-digit verification code sent to $savedEmail to sync any email-based Family Pro plan:",
+                    12.5f,
+                    0xFF334155.toInt()
+                ).apply { setPadding(0, 0, 0, dp(8)) })
+
+                val verifyRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                }
+                val codeInput = EditText(this).apply {
+                    hint = "6-digit code"
+                    setHintTextColor(0xFF9CA3AF.toInt())
+                    setTextColor(0xFF111814.toInt())
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                    inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                    setSingleLine(true)
+                    setPadding(dp(12), dp(10), dp(12), dp(10))
+                    background = GradientDrawable().apply {
+                        setColor(Color.WHITE)
+                        setStroke(dp(1), 0xFFCBD5E1.toInt())
+                        cornerRadius = dp(10).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                        marginEnd = dp(8)
+                    }
+                }
+                verifyRow.addView(codeInput)
+                verifyRow.addView(label("Verify", 13f, Color.WHITE, bold = true).apply {
+                    setPadding(dp(14), dp(10), dp(14), dp(10))
+                    background = GradientDrawable().apply {
+                        setColor(0xFF0F7A4A.toInt())
+                        cornerRadius = dp(10).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { marginEnd = dp(6) }
+                    setOnClickListener {
+                        val code = codeInput.text.toString().trim()
+                        if (code.length < 6) {
+                            Toast.makeText(this@MainActivity, "Enter your 6-digit verification code.", Toast.LENGTH_SHORT).show()
+                            return@setOnClickListener
+                        }
+                        io.execute {
+                            runCatching {
+                                val conn = (URL("https://www.heybroc.com/api/auth").openConnection() as HttpURLConnection).apply {
+                                    requestMethod = "POST"
+                                    doOutput = true
+                                    setRequestProperty("Content-Type", "application/json")
+                                    connectTimeout = 7000
+                                    readTimeout = 7000
+                                }
+                                try {
+                                    val payload = JSONObject().apply {
+                                        put("action", "verify_email")
+                                        put("email", savedEmail)
+                                        put("verificationCode", code)
+                                        put("deviceId", ScanApi.deviceId(this@MainActivity))
+                                    }.toString()
+                                    conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+                                    val okHttp = conn.responseCode in 200..299
+                                    val stream = if (okHttp) conn.inputStream else conn.errorStream
+                                    val raw = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                                    val json = if (raw.isNotBlank()) JSONObject(raw) else JSONObject()
+                                    val ok = okHttp && json.optBoolean("ok")
+                                    if (ok) {
+                                        val usr = json.optJSONObject("user")
+                                        ScanApi.saveEntitlementSnapshot(this@MainActivity, usr)
+                                        prefs.edit().putBoolean("auth_email_verified", true).apply()
+                                    }
+                                    val msg = if (ok) "✓ Email verified!" else json.optString("error", "Invalid or expired verification code.")
+                                    mainHandler.post {
+                                        if (isDestroyed || isFinishing) return@post
+                                        Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
+                                        if (ok) {
+                                            authDialog?.dismiss()
+                                            renderScreen()
+                                        }
+                                    }
+                                } finally {
+                                    conn.disconnect()
+                                }
+                            }
+                        }
+                    }
+                })
+                verifyRow.addView(label("Resend", 12.5f, 0xFF334155.toInt(), bold = true).apply {
+                    setPadding(dp(10), dp(10), dp(10), dp(10))
+                    background = GradientDrawable().apply {
+                        setColor(0xFFF1F5F9.toInt())
+                        setStroke(dp(1), 0xFFCBD5E1.toInt())
+                        cornerRadius = dp(10).toFloat()
+                    }
+                    setOnClickListener {
+                        io.execute {
+                            runCatching {
+                                val conn = (URL("https://www.heybroc.com/api/auth").openConnection() as HttpURLConnection).apply {
+                                    requestMethod = "POST"
+                                    doOutput = true
+                                    setRequestProperty("Content-Type", "application/json")
+                                    connectTimeout = 7000
+                                    readTimeout = 7000
+                                }
+                                try {
+                                    val payload = JSONObject().apply {
+                                        put("action", "resend_verification")
+                                        put("email", savedEmail)
+                                    }.toString()
+                                    conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+                                    val okHttp = conn.responseCode in 200..299
+                                    val stream = if (okHttp) conn.inputStream else conn.errorStream
+                                    val raw = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                                    val json = if (raw.isNotBlank()) JSONObject(raw) else JSONObject()
+                                    val msg = if (okHttp && json.optBoolean("ok")) {
+                                        json.optString("message", "Sent a 6-digit verification code to $savedEmail.")
+                                    } else {
+                                        json.optString("error", "Could not send verification email right now.")
+                                    }
+                                    mainHandler.post {
+                                        if (isDestroyed || isFinishing) return@post
+                                        Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
+                                    }
+                                } finally {
+                                    conn.disconnect()
+                                }
+                            }
+                        }
+                    }
+                })
+                verifyBox.addView(verifyRow)
+                card.addView(verifyBox)
+            }
+
+            card.addView(label(if (isEmailVerified) "Continue Shopping  →" else "Verify Later · Continue Shopping  →", 15.5f, Color.WHITE, bold = true).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(16), dp(15), dp(16), dp(15))
                 background = GradientDrawable().apply {
@@ -4081,6 +4230,7 @@ class MainActivity : Activity() {
                         .remove("auth_name")
                         .remove("auth_provider")
                         .remove("auth_token")
+                        .remove("auth_email_verified")
                         .apply()
                     authDialog?.dismiss()
                     renderScreen()
@@ -4134,6 +4284,7 @@ class MainActivity : Activity() {
                                             .remove("auth_name")
                                             .remove("auth_provider")
                                             .remove("auth_token")
+                                            .remove("auth_email_verified")
                                             .apply()
                                         ScanHistoryStore.clearHistory(this@MainActivity)
                                         authDialog?.dismiss()
@@ -4316,18 +4467,55 @@ class MainActivity : Activity() {
             card.addView(buildTopHeader({ renderStep(if (isReset) "email_login" else "welcome") }, showBackArrow = true))
             card.addView(label(
                 when {
-                    isRegister -> "Create Account"
+                    isRegister -> "Create Free Account"
                     isReset -> "Reset Password"
-                    else -> "Continue with Email"
+                    else -> "Sign In with Email"
                 },
                 23f,
                 0xFF111814.toInt(),
                 bold = true
             ))
+
+            if (!isReset) {
+                val tabBar = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    setPadding(dp(4), dp(4), dp(4), dp(4))
+                    background = GradientDrawable().apply {
+                        setColor(0xFFF1F5F9.toInt())
+                        setStroke(dp(1), 0xFFE2E8F0.toInt())
+                        cornerRadius = dp(999).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        topMargin = dp(10)
+                        bottomMargin = dp(8)
+                    }
+                }
+                fun addModeTab(text: String, active: Boolean, targetStep: String) {
+                    tabBar.addView(label(text, 13f, if (active) 0xFF0F7A4A.toInt() else 0xFF475569.toInt(), bold = true).apply {
+                        gravity = Gravity.CENTER
+                        setPadding(dp(10), dp(9), dp(10), dp(9))
+                        background = if (active) GradientDrawable().apply {
+                            setColor(Color.WHITE)
+                            cornerRadius = dp(999).toFloat()
+                        } else null
+                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                        setOnClickListener {
+                            if (!active) renderStep(targetStep)
+                        }
+                    })
+                }
+                addModeTab("Sign In", !isRegister, "email_login")
+                addModeTab("Create Free Account", isRegister, "email_register")
+                card.addView(tabBar)
+            }
+
             card.addView(label(
                 when {
                     isRegister -> "Create a free HeyBroc account to sync your Watchlist & Clean Swaps across devices."
-                    isReset -> "Enter your email, 6-digit reset code, and a new password (8+ characters)."
+                    isReset -> "Enter your email, tap Send Reset Code if needed, then enter the 6-digit code and a new password."
                     else -> "Enter your email and password (8+ characters) — saved passwords autofill automatically."
                 },
                 14f,
@@ -4358,6 +4546,75 @@ class MainActivity : Activity() {
                 ).apply { bottomMargin = dp(10) }
             }
             card.addView(emailInput)
+
+            fun sendPasswordResetCodeFor(targetEmail: String) {
+                if (!targetEmail.contains("@") || !targetEmail.contains(".")) {
+                    Toast.makeText(this@MainActivity, "Enter your account email first, then tap Send Reset Code.", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                io.execute {
+                    runCatching {
+                        val conn = (URL("https://www.heybroc.com/api/auth").openConnection() as HttpURLConnection).apply {
+                            requestMethod = "POST"
+                            doOutput = true
+                            setRequestProperty("Content-Type", "application/json")
+                            connectTimeout = 7000
+                            readTimeout = 7000
+                        }
+                        try {
+                            val payload = JSONObject().apply {
+                                put("action", "forgot_password")
+                                put("email", targetEmail)
+                            }.toString()
+                            conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+                            val okHttp = conn.responseCode in 200..299
+                            val stream = if (okHttp) conn.inputStream else conn.errorStream
+                            val raw = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                            val json = if (raw.isNotBlank()) JSONObject(raw) else JSONObject()
+                            val msg = if (okHttp && json.optBoolean("ok")) {
+                                json.optString("message", "If an account exists for $targetEmail, a 6-digit reset code has been emailed.")
+                            } else {
+                                json.optString("error", "Could not send reset code right now. Please try again.")
+                            }
+                            mainHandler.post {
+                                if (isDestroyed || isFinishing) return@post
+                                Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
+                            }
+                        } finally {
+                            conn.disconnect()
+                        }
+                    }.onFailure {
+                        mainHandler.post {
+                            if (isDestroyed || isFinishing) return@post
+                            Toast.makeText(this@MainActivity, "Network error requesting reset code.", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            }
+
+            if (isReset) {
+                card.addView(label("Send / Resend 6-Digit Reset Code", 12.5f, 0xFF0F7A4A.toInt(), bold = true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(14), dp(8), dp(14), dp(8))
+                    background = GradientDrawable().apply {
+                        setColor(0xFFECFDF5.toInt())
+                        setStroke(dp(1), 0xFFBBF7D0.toInt())
+                        cornerRadius = dp(999).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        gravity = Gravity.END
+                        bottomMargin = dp(10)
+                    }
+                    setOnClickListener {
+                        val em = emailInput.text.toString().trim().lowercase()
+                        prefilledEmail = em
+                        sendPasswordResetCodeFor(em)
+                    }
+                })
+            }
 
             val resetCodeInput = EditText(this).apply {
                 hint = "6-digit reset code"
@@ -4435,42 +4692,16 @@ class MainActivity : Activity() {
                         prefilledEmail = em
                         renderStep("email_reset")
                         if (em.contains("@") && em.contains(".")) {
-                            io.execute {
-                                runCatching {
-                                    val conn = (URL("https://www.heybroc.com/api/auth").openConnection() as HttpURLConnection).apply {
-                                        requestMethod = "POST"
-                                        doOutput = true
-                                        setRequestProperty("Content-Type", "application/json")
-                                        connectTimeout = 7000
-                                        readTimeout = 7000
-                                    }
-                                    try {
-                                        val payload = JSONObject().apply {
-                                            put("action", "forgot_password")
-                                            put("email", em)
-                                        }.toString()
-                                        conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
-                                        val stream = if (conn.responseCode in 200..299) conn.inputStream else conn.errorStream
-                                        val raw = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                                        val json = if (raw.isNotBlank()) JSONObject(raw) else JSONObject()
-                                        val msg = json.optString("message", "If an account exists for $em, a 6-digit reset code has been emailed.")
-                                        mainHandler.post {
-                                            Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
-                                        }
-                                    } finally {
-                                        conn.disconnect()
-                                    }
-                                }
-                            }
+                            sendPasswordResetCodeFor(em)
                         }
                     }
                 })
             }
 
             val submitLabel = when {
-                isRegister -> "Create Account  →"
+                isRegister -> "Create Free Account  →"
                 isReset -> "Save New Password  →"
-                else -> "Continue  →"
+                else -> "Sign In  →"
             }
             card.addView(label(submitLabel, 16f, Color.WHITE, bold = true).apply {
                 gravity = Gravity.CENTER
@@ -5027,22 +5258,26 @@ class MainActivity : Activity() {
                 }
 
                 var (ok, json) = sendAuthRequest(action)
-                if (!ok && action == "login" && json.optString("error").contains("No account found", ignoreCase = true)) {
-                    val regResult = sendAuthRequest("register")
-                    ok = regResult.first
-                    json = regResult.second
+                if (!ok && action == "register" && json.optString("error").contains("already", ignoreCase = true)) {
+                    val loginResult = sendAuthRequest("login")
+                    ok = loginResult.first
+                    json = loginResult.second
                 }
 
                 if (ok) {
                     val tok = json.optString("token", "")
                     val usr = json.optJSONObject("user")
                     val resolvedName = usr?.optString("displayName", fallbackName) ?: fallbackName
+                    val emailVerified = usr?.optBoolean("emailVerified", provider != "email") ?: (provider != "email")
+                    val createdNow = json.optBoolean("created", false)
+                    val verEmailSent = json.optBoolean("verificationEmailSent", true)
                     ScanApi.saveEntitlementSnapshot(this@MainActivity, usr)
                     prefs.edit()
                         .putString("auth_email", email)
                         .putString("auth_name", resolvedName)
                         .putString("auth_provider", provider)
                         .putString("auth_token", tok)
+                        .putBoolean("auth_email_verified", emailVerified)
                         .apply()
                     ScanApi.trackEvent(
                         this@MainActivity,
@@ -5053,7 +5288,17 @@ class MainActivity : Activity() {
                         if (isDestroyed || isFinishing) return@post
                         onSuccess?.invoke()
                         renderScreen()
-                        Toast.makeText(this@MainActivity, "👋 Welcome, $resolvedName! Account synced.", Toast.LENGTH_LONG).show()
+                        if (createdNow && provider == "email" && !emailVerified) {
+                            val notice = if (verEmailSent) {
+                                "Account created! Check $email for your 6-digit verification code."
+                            } else {
+                                "Account created! Verification email is currently unavailable — you can tap Resend later."
+                            }
+                            Toast.makeText(this@MainActivity, notice, Toast.LENGTH_LONG).show()
+                            showGoCoCoLoginDialog()
+                        } else {
+                            Toast.makeText(this@MainActivity, "👋 Welcome, $resolvedName! Account synced.", Toast.LENGTH_LONG).show()
+                        }
                     }
                 } else {
                     val errMsg = json.optString("error", "Could not sign in. Please check your credentials.")

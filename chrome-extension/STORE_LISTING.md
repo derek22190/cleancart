@@ -13,5 +13,5 @@ Instant 0–100 ingredient health scores, additive explanations, and 1-tap clean
 - **Storage Permission (`chrome.storage`):** Stores your API endpoint setting, trip cart items, and watchlist preferences locally in your browser.
 - **No Background Tracking:** HeyBroc never reads passwords, form inputs, checkout fields, or browsing history outside the 12 supported grocery domains.
 
-## Affiliate Link Disclosure (Chrome Web Store Policy Compliance)
-When you explicitly click a **"Swap Item"** or **"Find Clean Swap"** button inside the HeyBroc overlay, the resulting store link may include retail affiliate attribution parameters or route through an affiliate partner link (such as Walmart Impact or Amazon Associates) at no additional cost to you. HeyBroc never injects affiliate cookies, modifies store URLs automatically, or opens affiliate links without your explicit click.
+## Clean Retailer Links Disclosure (Chrome Web Store Policy Compliance)
+When you explicitly click a **"Swap Item"** or **"Find Clean Swap"** button inside the HeyBroc Chrome Extension overlay, HeyBroc opens a clean, direct retailer search or product URL with zero affiliate tracking parameters, zero affiliate redirect wrappers, and zero injected cookies. HeyBroc never modifies store URLs automatically or opens links without your explicit click.

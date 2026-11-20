@@ -77,16 +77,27 @@ export default function GoogleOAuthCallbackPage() {
         return;
       }
 
+      let returnTarget = "/?login=1";
+      try {
+        const savedReturn = (window.sessionStorage.getItem("heybroc_oauth_return_to") || "").trim();
+        window.sessionStorage.removeItem("heybroc_oauth_return_to");
+        if (savedReturn.startsWith("/") && !savedReturn.startsWith("//")) {
+          returnTarget = savedReturn;
+        }
+      } catch {
+        // ignore storage errors
+      }
+
       if (idToken && state && !err) {
         window.sessionStorage.setItem("heybroc_pending_google_id_token", idToken);
         window.sessionStorage.setItem("heybroc_pending_google_state", state);
-        window.location.replace("/?login=1");
+        window.location.replace(returnTarget);
         return;
       }
 
       setStatus(err ? "Google sign-in was cancelled. Redirecting back to HeyBroc…" : "No Google token returned. Redirecting back to HeyBroc…");
       setTimeout(() => {
-        window.location.replace("/?login=1");
+        window.location.replace(returnTarget);
       }, 1500);
     } catch {
       window.location.replace("/?login=1");

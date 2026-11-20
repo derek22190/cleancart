@@ -35,7 +35,11 @@ function buildBridgeHtml(payload: {
     displayName: payload.displayName,
     email: payload.email,
     error: payload.error,
-  }).replace(/</g, "\\u003c");
+  })
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
 
   const html = `<!doctype html>
 <html lang="en">
@@ -85,6 +89,14 @@ function buildBridgeHtml(payload: {
           return;
         } catch (e) {}
       }
+      var returnTarget = "/?login=1";
+      try {
+        var savedReturn = sessionStorage.getItem("heybroc_oauth_return_to") || "";
+        sessionStorage.removeItem("heybroc_oauth_return_to");
+        if (savedReturn && savedReturn.charAt(0) === "/" && savedReturn.indexOf("//") !== 0) {
+          returnTarget = savedReturn;
+        }
+      } catch (e) {}
       if (data.idToken) {
         try {
           sessionStorage.setItem("heybroc_pending_apple_id_token", data.idToken);
@@ -94,7 +106,7 @@ function buildBridgeHtml(payload: {
           if (data.email) sessionStorage.setItem("heybroc_pending_apple_email", data.email);
         } catch (e) {}
       }
-      window.location.replace("/?login=1");
+      window.location.replace(returnTarget);
     })();
   </script>
 </body>

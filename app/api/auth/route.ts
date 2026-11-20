@@ -93,10 +93,7 @@ export async function GET(request: Request) {
     );
   }
   const authHeader = request.headers.get("authorization") || "";
-  const tokenParam =
-    (authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "") ||
-    searchParams.get("token") ||
-    "";
+  const tokenParam = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
   const deviceId = normalizeRealDeviceId(searchParams.get("deviceId")) || undefined;
 
   if (!tokenParam) {

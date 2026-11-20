@@ -28,7 +28,11 @@ import {
   verifyDeviceSecret,
   type UserDeviceIndexRecord,
 } from "./referrals";
-import { sendPasswordResetEmail, sendVerificationEmail } from "./email";
+import {
+  isEmailDeliveryConfigured,
+  sendPasswordResetEmail,
+  sendVerificationEmail,
+} from "./email";
 
 export type AuthProvider = "email" | "google" | "apple";
 
@@ -586,6 +590,7 @@ export async function registerOrLoginEmail(params: {
   token?: string;
   user?: PublicUserProfile;
   created?: boolean;
+  verificationEmailSent?: boolean;
 }> {
   const email = normalizeEmail(params.email);
   if (!isValidEmail(email)) {
@@ -708,12 +713,15 @@ export async function registerOrLoginEmail(params: {
   });
   const token = createSessionToken(newUser);
   await saveUser(newUser);
-  await sendVerificationEmail(email, verificationCode).catch(() => {});
+  const emailRes = await sendVerificationEmail(email, verificationCode).catch(() => ({
+    ok: false,
+  }));
   return {
     ok: true,
     token,
     user: profile,
     created: true,
+    verificationEmailSent: Boolean(emailRes.ok),
   };
 }
 
@@ -1419,6 +1427,12 @@ export async function requestPasswordReset(rawEmail: string): Promise<{
   if (!isValidEmail(email)) {
     return { ok: false, error: "Enter your account email first so we can reset your password." };
   }
+  if (!isEmailDeliveryConfigured()) {
+    return {
+      ok: false,
+      error: "Password reset emails are temporarily unavailable on this server. Please email support@heybroc.com for help.",
+    };
+  }
   const code = String(crypto.randomInt(100000, 1000000));
   const existing = await getUserByEmail(email);
   if (existing) {
@@ -1426,9 +1440,12 @@ export async function requestPasswordReset(rawEmail: string): Promise<{
     existing.resetExpiresAt = Date.now() + 15 * 60 * 1000;
     existing.resetAttempts = 0;
     await saveUser(existing);
-    await sendPasswordResetEmail(email, code).catch(() => {});
+    const sendRes = await sendPasswordResetEmail(email, code).catch(() => ({ ok: false }));
+    if (!sendRes.ok) {
+      console.error("[auth] Failed to deliver password reset email");
+    }
   }
-  // Never leak resetCode in the HTTP response
+  // Never leak resetCode or whether an account exists in the HTTP response
   return {
     ok: true,
     message: `If an account exists for ${email}, a 6-digit reset code has been sent to that email.`,

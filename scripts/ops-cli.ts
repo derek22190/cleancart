@@ -418,6 +418,40 @@ async function main() {
         ok: Boolean(process.env.GOOGLE_CLIENT_ID?.trim() || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim()),
         where: "https://console.cloud.google.com/apis/credentials -> Create OAuth 2.0 Web Client ID (Authorized redirect URI: https://www.heybroc.com/auth/google-callback)",
       },
+      {
+        name: "APPLE_SERVICE_ID (Web Sign in with Apple)",
+        ok: Boolean(process.env.APPLE_SERVICE_ID?.trim() || process.env.APPLE_CLIENT_ID?.trim() || process.env.NEXT_PUBLIC_APPLE_CLIENT_ID?.trim()),
+        where: "https://developer.apple.com/account/resources/identifiers/list/serviceId -> Configure Sign in with Apple Return URL: https://www.heybroc.com/api/auth/apple-callback",
+      },
+      {
+        name: "AUTH_SECRET (Session Token Signing)",
+        ok: Boolean(process.env.AUTH_SECRET?.trim()),
+        where: "Generate 32-byte hex secret (`openssl rand -hex 32`) and set AUTH_SECRET in Vercel Project Settings",
+      },
+      {
+        name: "RESEND_API_KEY (Verification & Password Reset Emails)",
+        ok: Boolean(process.env.RESEND_API_KEY?.trim()),
+        where: "https://resend.com/api-keys -> Create sending key for heybroc.com (optional EMAIL_FROM / EMAIL_REPLY_TO overrides)",
+      },
+      {
+        name: "AMAZON_PARTNER_TAG (Web Amazon Associates, optional)",
+        ok: Boolean(process.env.AMAZON_PARTNER_TAG?.trim() || process.env.NEXT_PUBLIC_AMAZON_TAG?.trim()),
+        where: "https://affiliate-program.amazon.com -> Store ID (automatically suppressed on iOS & browser extensions)",
+      },
+      {
+        name: "IMPACT_*_BASE_URL (Walmart/Target/Instacart/ALDI Impact, optional)",
+        ok: Boolean(
+          process.env.IMPACT_WALMART_BASE_URL?.trim() ||
+            process.env.NEXT_PUBLIC_IMPACT_WALMART_BASE_URL?.trim() ||
+            process.env.IMPACT_TARGET_BASE_URL?.trim() ||
+            process.env.NEXT_PUBLIC_IMPACT_TARGET_BASE_URL?.trim() ||
+            process.env.IMPACT_INSTACART_BASE_URL?.trim() ||
+            process.env.NEXT_PUBLIC_IMPACT_INSTACART_BASE_URL?.trim() ||
+            process.env.IMPACT_ALDI_BASE_URL?.trim() ||
+            process.env.NEXT_PUBLIC_IMPACT_ALDI_BASE_URL?.trim()
+        ),
+        where: "https://app.impact.com -> Partner Tracking Links (automatically suppressed on iOS & browser extensions)",
+      },
     ];
     console.log("==============================================================");
     console.log("🚀 HEYBROC STORE-PACKAGING PRODUCTION KEYS PRE-FLIGHT CHECK");
