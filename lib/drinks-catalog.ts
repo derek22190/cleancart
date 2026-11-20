@@ -1370,10 +1370,10 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     brand: "OWYN",
     category: "Pre-Workouts & Fitness",
     description:
-      "Zero-sugar 32g plant-based protein shake formulated with pea protein, organic pumpkin seed protein, chickpea protein, sunflower oil, soluble corn fiber, greens blend, and monk fruit extract — 0g sugar and no cane sugar.",
+      "Zero-sugar 32g plant-based protein shake formulated with pea protein, organic pumpkin seed protein, flaxseed oil, soluble fiber, sunflower oil, greens blend, and monk fruit extract — 0g sugar and no cane sugar.",
     keywords: ["owyn pro elite", "owyn 32g", "owyn zero sugar"],
     ingredients:
-      "Water, OWYN Protein Blend (Pea Protein, Organic Pumpkin Seed Protein, Chickpea Protein), Sunflower Oil, Soluble Corn Fiber, Natural Flavor, Greens Blend (Broccoli, Kale, Spinach), Acacia Gum, Gellan Gum, Sea Salt, Monk Fruit Extract.",
+      "Water, OWYN Protein Blend (Pea Protein, Organic Pumpkin Seed Protein, Flaxseed Oil), Soluble Fiber, Sunflower Oil, Sunflower Lecithin, Gellan Gum/Acacia Gum Blend, Guar Gum, Natural Flavor, Monk Fruit Extract, Himalayan Pink Sea Salt, Greens Blend (Spinach, Kale, Broccoli).",
     nutrition: {
       caloriesKcal100g: 56,
       sugarsG100g: 0,
@@ -1386,7 +1386,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isWholeFood: false,
     },
     sourceUrl: "https://liveowyn.com/products/pro-elite-protein-shakes/",
-    verifiedAt: "2026-11-08",
+    verifiedAt: "2026-11-20",
     match: /\b(owyn.*pro\s+elite|pro\s+elite.*owyn)\b/i,
   },
   {
@@ -1398,7 +1398,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       "100% plant-based, Top-9-allergen-free 20g protein shake sweetened with organic cane sugar and monk fruit extract — zero dairy, soy, gluten, or artificial sweeteners.",
     keywords: ["owyn", "only what you need", "plant based protein shake", "vegan protein shake", "protein shake"],
     ingredients:
-      "Water, OWYN Protein Blend (Pea Protein, Organic Pumpkin Seed Protein, Organic Flaxseed Oil), Cane Sugar, High Oleic Sunflower Oil, Alkalized Cocoa Powder, Guar Gum, Monk Fruit Extract, Natural Flavors, Sea Salt, Greens Blend (Spinach, Kale, Broccoli), Vitamin & Mineral Blend.",
+      "Water, OWYN Protein Blend (Pea Protein, Organic Pumpkin Seed Protein, Organic Flax Oil), Contains 2% or less of the following: Soluble Fiber, Organic Cane Sugar, Sunflower Oil and/or Safflower Oil, Cocoa Powder, Sunflower Lecithin, Natural Flavors, Himalayan Pink Salt, Greens Blend (Broccoli, Spinach, Kale), Monk Fruit Extract, Guar Gum, Gellan Gum.",
     nutrition: {
       caloriesKcal100g: 50,
       sugarsG100g: 1.1,
@@ -1411,7 +1411,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isWholeFood: false,
     },
     sourceUrl: "https://liveowyn.com/products/protein-shakes/",
-    verifiedAt: "2026-11-08",
+    verifiedAt: "2026-11-20",
     match: /^(?=.*\b(owyn|only\s+what\s+you\s+need)\b)(?!.*\bpro\s+elite\b).*$/i,
   },
   {

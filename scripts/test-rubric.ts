@@ -12013,6 +12013,62 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         iosBrowserSrc.includes("Use Email / Phone Here") &&
         toolsClientSrc.includes("{!isIosClient && ("),
     );
+
+    // 13. Full Catalog Ingredient Audit & Unified 🌱 Pesticide Icon Parity (v2.6.3)
+    const { INSTANT_GROCERY_CATALOG: instantCatAudit } = await import("../lib/lookup");
+    const folgersCoffeeRes = scoreYukaReg(
+      "100% Pure Coffee.",
+      {},
+      [],
+      {
+        productTitle: "Folgers Classic Roast Coffee",
+        caloriesKcal100g: 0,
+        sugarsG100g: 0,
+        saturatedFatG100g: 0,
+        sodiumMg100g: 0,
+        fiberG100g: 0,
+        proteinG100g: 0,
+        fruitsVegNutsPct: 0,
+        nutriScoreGrade: "a",
+        isWholeFood: false,
+        isOrganic: false,
+      },
+    );
+    const chips365Entry = instantCatAudit.find((e) =>
+      e.title.includes("365 by Whole Foods Market Organic Classic Sea Salt Potato Chips"),
+    );
+    const chromeExtSrc = fsNode.readFileSync("chrome-extension/content.js", "utf8");
+    const safariExtSrc = fsNode.readFileSync("ios-app/SafariExtension/Resources/content.js", "utf8");
+    const scanTsAuditSrc = fsNode.readFileSync("lib/scan.ts", "utf8");
+    const overlaySvcAuditSrc = fsNode.readFileSync(
+      "android-app/app/src/main/java/com/cleancart/overlay/OverlayWindowService.kt",
+      "utf8",
+    );
+
+    check(
+      "Full Ingredient Audit & Unified 🌱 Pesticide Icon (v2.6.3): Sweet Potatoes (Clean Fifteen), <2% bell pepper/celery tails, cultured celery juice, dehydrated bell pepper, and apple extract do not trigger Dirty Dozen alerts; Whole Grain Wheat (Triscuit) triggers conventional grain alert; Folgers 100% Pure Coffee scores 90/100; 365 Organic Classic Sea Salt Potato Chips regex matches its own title; isCartDrawer scopes checkout CTA check to overlays; horizontal carousel shifts unpin tapped badges; and 🌱 is unified across Android, iOS, Extension, and Scan API without duplicate ⚠️ 🌱 headers",
+      detectPestReg("Jackson's Sea Salt Sweet Potato Chips", "Sweet Potatoes, Avocado Oil, Sea Salt.") === null &&
+        detectPestReg("Doritos Simply NKD Nacho Cheese Tortilla Chips", "Corn, Vegetable Oil, Corn Maltodextrin, and Less than 2% of Salt, Garlic Powder, Sugar, Red and Green Bell Peppers, and Yeast Extract.") === null &&
+        detectPestReg("Member's Mark Grilled Chicken Bites", "Chicken Breast Meat, Water, Seasoning (Spices, Dehydrated Red Bell Pepper, Natural Flavor), Salt.") === null &&
+        detectPestReg("Oscar Mayer Deli Fresh Smoked Turkey Breast", "Turkey Breast, Water, Contains Less than 2% of Salt, Vinegar, Cultured Celery Juice, Sodium Phosphates.") === null &&
+        detectPestReg("Beyond Meat Plant-Based Burger Patties", "Water, Pea Protein, Canola Oil, Potato Starch, Apple Extract, Pomegranate Extract, Salt.") === null &&
+        detectPestReg("Pepperidge Farm Goldfish Cheddar", "Enriched Wheat Flour, Cheddar Cheese, Vegetable Oils, Salt, Contains 2% Or Less Of: Yeast, Spices, Celery, Onion Powder.")?.category === "conventional_grain_legume" &&
+        detectPestReg("Triscuit Original Crackers", "Whole Grain Wheat, Canola Oil, Sea Salt.")?.category === "conventional_grain_legume" &&
+        folgersCoffeeRes.score === 90 &&
+        Boolean(chips365Entry && chips365Entry.match.test(chips365Entry.title)) &&
+        androidDetectorSrc.includes("var isOverlayDrawer = Boolean(") &&
+        androidDetectorSrc.includes("hbPinnedRectLeft") &&
+        iosBrowserSrc.includes("var isOverlayDrawer = Boolean(") &&
+        iosBrowserSrc.includes("hbPinnedRectLeft") &&
+        !androidBrowserSrc.includes('label("⚠️ ${alert.label}"') &&
+        androidBrowserSrc.includes('if (alerts.all { it.id == "pesticide_risk" }) "🌱" else "⚠️"') &&
+        overlaySvcAuditSrc.includes('if (dietaryAlerts.all { it.id == "pesticide_risk" }) "🌱" else "⚠️"') &&
+        iosBrowserSrc.includes('summary.dietaryAlerts.allSatisfy({ $0.id == "pesticide_risk" }) ? "🌱" : "⚠️"') &&
+        chromeExtSrc === safariExtSrc &&
+        chromeExtSrc.includes('isPesticideOnly ? "🌱" : "⚠️"') &&
+        chromeExtSrc.includes('rootMargin: "180px 340px"') &&
+        scanTsAuditSrc.includes('dietaryAlerts.every((a) => a.id === "pesticide_risk") ? "🌱" : "⚠️"'),
+    );
   }
 
   console.log("Checks executed:", checks);

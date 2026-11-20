@@ -1400,11 +1400,17 @@ export function scoreProductYuka(
       .every((c) => PURE_WATER_CLAUSE_RE.test(c) || PURE_MINERAL_ONLY_CLAUSE_RE.test(c) || UNSWEETENED_FLAVOR_WATER_CLAUSE_RE.test(c)) &&
     !isSolidTitleExcluded;
 
+  const isPlainCoffeeBeverage =
+    !/\bcreamer\b/i.test(productTitleText) &&
+    (/\b(?:100%\s+)?(?:pure|ground|instant|roast(?:ed)?|classic\s+roast|medium\s+roast|dark\s+roast|light\s+roast|breakfast\s+blend|brewed|black)\s+coffee\b/i.test(titleAndIng) ||
+      /^\s*(?:100%\s+)?(?:pure\s+)?(?:arabic?a\s+)?coffee\.?\s*$/i.test(rawIngredients));
+
   const isBeverage =
     !isSolidBaseFirstIngredient &&
     (hasJuiceBeverageCue ||
       hasRtdShakeCue ||
       isUnsweetenedWaterIngredients ||
+      isPlainCoffeeBeverage ||
       /\b(capri\s*sun|hi-?c|kool-?aid|hawaiian\s+punch|sunny\s*d|tang|tampico|fruit\s+punch|juice\s+pouch\w*|juice\s+drink|orange\s+juice|apple\s+juice|grape\s+juice|cranberry\s+juice|pineapple\s+juice|grapefruit\s+juice|pomegranate\s+juice|tart\s+cherry\s+juice|tropicana|simply\s+orange|simply\s+lemonade|minute\s+maid|uncle\s+matt'?s|mott'?s|martinelli'?s|welch'?s|ocean\s+spray|pom\s+wonderful|lakewood|knudsen|honest\s+kids|naked\s+juice|bolthouse|suja|v8|nature'?s\s+nectar|lemonade|limeade|smoothies?|kefir|lassi|eggnog|egg\s+nog|yogurt\s+drinks?|drinkable\s+yogurts?|drinking\s+yogurts?|probiotic\s+(?:yogurt\s+|dairy\s+|cultured\s+)?drinks?|sweet\s+tea|iced\s+tea|green\s+tea|black\s+tea|yerba\s+mate|guayaki|guayakí|clean\s+cause|guru|arizona|arnold\s+palmer|mucho\s+mango|pure\s+leaf|gold\s+peak|snapple|brisk|milo'?s|ito\s+en|just\s+ice\s+tea|cold\s+brew|stok|frappuccino|doubleshot|dunkin|la\s+colombe|oatmilk|almondmilk|soymilk|coconutmilk|cashewmilk|almond\s+beverage|oat\s+beverage|soy\s+beverage|coconut\s+beverage|(?<!baking\s+)soda(?!\s+crackers?)|cola|pepsi|coke|coca[- ]?cola|mountain\s+dew|mtn\s+dew|baja\s+blast|sprite|dr\.?\s*pepper|fanta|root\s+beer|a\s*&\s*w|barq'?s|mug\s+root\s+beer|ginger\s+ale|canada\s+dry|schweppes|seagram'?s|7\s*up|crush|sunkist|starry|squirt|fresca|jarritos|zevia|culture\s+pop|gatorade|gatorlyte|powerade|bodyarmor|prime|red\s*bull|monster|celsius|alani|ghost\s+(?:energy|legend)|c4\s+(?:energy|performance|smart|original|ultimate|pre)|bang\s+energy|reign|rockstar|5[- ]?hour\s+energy|zoa|nos\s+energy|full\s+throttle|pre[- ]?workout|preworkout|gorilla\s+mode|ryse|bucked\s+up|total\s+war|sports?\s+drink|energy\s+drink|electrolyte|liquid\s+i\.?v\.?|lmnt|pedialyte|electrolit|biolyte|nuun|propel|vitamin\s*water|sparkling\s+ice|bai|kombucha|olipop|poppi|spindrift|la\s*croix|waterloo|bubly|polar\s+seltzer|nixie|hint\s+water|fiji|evian|smart\s*water|dasani|aquafina|essentia|core\s+hydration|liquid\s+death|pure\s+life|poland\s+spring|deer\s+park|ice\s+mountain|zephyrhills|ozarka|arrowhead|crystal\s+geyser|waiakea|san\s+pellegrino|perrier|topo\s+chico|saratoga|spring\s+water|mineral\s+water|artesian\s+water|purified\s+water|drinking\s+water|filtered\s+water|mountain\s+water|electrolyte\s+water|flavored\s+water|distilled\s+water|alkaline\s+water|coconut\s+water|harmless\s+harvest|vita\s+coco|sparkling\s+water|seltzer|club\s+soda)\b/i.test(titleAndIng)) &&
     !isSolidTitleExcluded;
 

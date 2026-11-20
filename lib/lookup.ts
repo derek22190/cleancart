@@ -2809,9 +2809,9 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Member's Mark Grilled Chicken Bites",
     keywords: ["members mark", "grilled", "chicken bites", "frozen", "boneless"],
     ingredients: "Chicken Breast Meat with Rib Meat, Water, Seasoning (Flavor [Salt, Autolyzed Yeast, Yeast, Chicken Fat, Chicken Broth, Natural Flavor], Brown Sugar, Flavoring, Spices, Smoked Paprika, Citric Acid, Mushroom Powder, Dried Lemon Peel Powder, Dehydrated Red Bell Pepper, Natural Flavor), Contains 2% or Less of Modified Food Starch, Sodium Bicarbonate and/or Potassium Bicarbonate, Natural Flavor, Sodium Phosphates, Soybean Oil.",
-    nutrition: { sugarsG100g: 1.2, fiberG100g: 0, proteinG100g: 18.8, sodiumMg100g: 741, fruitsVegNutsPct: 0, isOrganic: false, isWholeFood: false },
+    nutrition: { caloriesKcal100g: 129, sugarsG100g: 1.2, saturatedFatG100g: 0.6, fiberG100g: 0, proteinG100g: 18.8, sodiumMg100g: 741, fruitsVegNutsPct: 0, isOrganic: false, isWholeFood: false },
     sourceUrl: "https://www.samsclub.com/ip/members-mark-grilled-chicken-bites-frozen-3-lbs/13885002883",
-    verifiedAt: "2026-11-19",
+    verifiedAt: "2026-11-20",
   },
   {
     match: /^(?!.*\b(?:turkey|canadian|uncured|bits|crumbled|wrapped|dip|macaroni|thick)\b).*\bmember'?s\s+mark\b.*\bhickory\s+smoked\b.*\bbacon\b/i,
@@ -4572,7 +4572,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     verifiedAt: "2026-11-18",
   },
   {
-    match: /^(?!.*\b(?:bbq|barbecue|sour\s+cream|cheddar|salt\s+and\s+vinegar|vinegar|jalapeno|unsalted|sweet\s+potato|tortilla)\b).*\b365\b.*\borganic\b.*\bpotato\s+chips\b.*\bsea\s+salt\b/i,
+    match: /^(?!.*\b(?:bbq|barbecue|sour\s+cream|cheddar|salt\s+and\s+vinegar|vinegar|jalapeno|unsalted|sweet\s+potato|tortilla)\b)(?=.*\b365\b)(?=.*\borganic\b)(?=.*\bsea\s+salt\b)(?=.*\bpotato\s+chips?\b).*$/i,
     brand: "365 by Whole Foods Market",
     title: "365 by Whole Foods Market Organic Classic Sea Salt Potato Chips",
     ingredients: "Organic Potatoes, Organic Safflower and or Organic Sunflower Oil, Sea Salt.",

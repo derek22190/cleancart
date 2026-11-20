@@ -1326,7 +1326,8 @@ class OverlayWindowService : Service() {
             ok && dietaryAlerts.isNotEmpty() -> {
                 val badgeSummary = dietaryAlerts.take(2).joinToString(" + ") { it.shortBadge }
                 val extraCount = if (dietaryAlerts.size > 2) " +${dietaryAlerts.size - 2}" else ""
-                "⚠️ $badgeSummary$extraCount  •  $effectiveScore/100"
+                val alertEmoji = if (dietaryAlerts.all { it.id == "pesticide_risk" }) "🌱" else "⚠️"
+                "$alertEmoji $badgeSummary$extraCount  •  $effectiveScore/100"
             }
             ok && !currentIsSinglePdp -> {
                 val prodTitle = cleanCartTitle(data?.optJSONObject("product")?.optString("title").orEmpty())

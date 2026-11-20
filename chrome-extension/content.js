@@ -1880,7 +1880,7 @@
 
   /* ---------------- Multi-Product Grid Card Hover / Focus & Photo Badges ---------------- */
   const NON_FOOD_GRID_HARD_TITLE_RE =
-    /\b(?:paper\s+towels?|toilet\s+(?:paper|tissue)|bath\s+tissue|facial\s+tissues?|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|parchment\s+paper|plastic\s+wrap|paper\s+plates?|laundry\s+(?:detergent|pods?|sanitizer)|fabric\s+softener|dryer\s+sheets?|dish\s+(?:soap|detergent)|dishwasher\s+(?:pods?|pac?ks?|detergent)|disinfecting\s+wipes?|bleach|all[- ]purpose\s+cleaner|glass\s+cleaner|toilet\s+bowl\s+cleaner|air\s+freshener|diapers?|pull[- ]ups?|baby\s+wipes?|cat\s+litter|dog\s+(?:food|treats?|pads?)|cat\s+(?:food|treats?)|pet\s+food|alkaline\s+batteries|aa\s+batteries|aaa\s+batteries|motor\s+oil|windshield\s+washer|light\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|body\s+wash|deodorant|antiperspirant|razor\s+blades?|shaving\s+cream|sunscreen|tampons?|maxi\s+pads?|pantiliners?)\b/i;
+    /\b(?:paper\s+towels?|toilet\s+(?:paper|tissue)|bath\s+tissue|facial\s+tissues?|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|parchment\s+paper|plastic\s+wrap|paper\s+plates?|laundry\s+(?:detergent|pods?|sanitizer)|fabric\s+softener|dryer\s+sheets?|dish\s+(?:soap|detergent)|dishwasher\s+(?:pods?|pac?ks?|detergent)|disinfecting\s+wipes?|bleach|all[- ]purpose\s+cleaner|glass\s+cleaner|toilet\s+bowl\s+cleaner|air\s+freshener|diapers?|pull[- ]ups?|baby\s+wipes?|cat\s+litter|dog\s+(?:food|treats?|pads?)|cat\s+(?:food|treats?)|pet\s+food|alkaline\s+batteries|aa\s+batteries|aaa\s+batteries|motor\s+oil|windshield\s+washer|light\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|body\s+wash|deodorant|antiperspirant|razor\s+blades?|shaving\s+cream|sunscreen|tampons?|maxi\s+pads?|pantiliners?|power\s+bank|air\s+fryer|jigsaw\s+puzzle|piece\s+puzzle|hopper\s+ball|bouncer|heated\s+(?:vest|clothing|jacket)|sippy\s+cups?|toddler\s+cups?|training\s+cups?|water\s+bottle\s+(?:with\s+straw|insulated|stainless))\b/i;
   const AMBIGUOUS_PACKAGING_GRID_TITLE_RE = /\b(?:storage\s+bags?|freezer\s+bags?|sandwich\s+bags?|paper\s+cups?)\b/i;
   const FOOD_CONTEXT_FOR_PACKAGING_RE =
     /\b(?:chicken|beef|pork|turkey|salmon|tilapia|cod|tuna|fish|shrimp|scallops?|sausage|bacon|meatballs?|steak|burger|patties|nuggets?|tenders?|strips?|wings?|fries|tater|tots|hash\s*browns?|peas|corn|broccoli|spinach|vegetables?|veggies|berries|strawberries|blueberries|raspberries|mango|fruit|edamame|pizza|burritos?|taquitos?|dumplings?|potstickers?|ravioli|pierogies|waffles?|pancakes?|ice\s+cream|gelato|sorbet|peanut\s+butter|almond\s+butter|chocolate|reese'?s|candy|fudge|muffins?|cupcakes?|coffee|tea|k[- ]?cups?|oatmeal|soup|ramen|noodles|mac(?:aroni)?|cheese)\b/i;
@@ -3907,8 +3907,10 @@
               brand: item.brand,
             });
             const qty = clampQty(item.quantity);
+            const itemAlertEmoji =
+              itemHasAlert && item.dietaryAlerts.every((a) => a.id === "pesticide_risk") ? "🌱" : "⚠️";
             const alertBadges = itemHasAlert
-              ? ` · ⚠️ ${item.dietaryAlerts.map((a) => esc(a.shortBadge)).join(", ")}`
+              ? ` · ${itemAlertEmoji} ${item.dietaryAlerts.map((a) => esc(a.shortBadge)).join(", ")}`
               : "";
 
             let subLine = "";
@@ -4198,8 +4200,10 @@
               ? "red"
               : "yellow"
             : pillScoreTone;
+      const pillAlertEmoji =
+        pillHasAlerts && state.data.dietaryAlerts.every((a) => a.id === "pesticide_risk") ? "🌱" : "⚠️";
       const alertChip = pillHasAlerts
-        ? `<span class="cc-pill-alert">⚠️ ${esc(state.data.dietaryAlerts[0].shortBadge)}</span>`
+        ? `<span class="cc-pill-alert">${pillAlertEmoji} ${esc(state.data.dietaryAlerts[0].shortBadge)}</span>`
         : "";
       const cartChip = avg !== null ? `Cart: ${avg}/100 (${totalUnits})` : `${activeBucket.label} Cart: --`;
       const alignedTitle =
@@ -5179,7 +5183,11 @@
     const severity = resolveBadgeAlertSeverity(resp);
     const scoreTone = safeScore >= 75 ? "green" : safeScore >= 50 ? "yellow" : "red";
     const tone = severity === "allergen" ? "red" : scoreTone;
-    const icon = severity === "none" ? "🥦" : "⚠️";
+    const isPesticideOnly =
+      Array.isArray(resp.dietaryAlerts) &&
+      resp.dietaryAlerts.length > 0 &&
+      resp.dietaryAlerts.every((a) => a && a.id === "pesticide_risk");
+    const icon = severity === "none" ? "🥦" : isPesticideOnly ? "🌱" : "⚠️";
     badgeEl.classList.remove(
       "cc-photo-badge--loading",
       "cc-photo-badge--green",
@@ -5616,7 +5624,7 @@
           processVisiblePhotoBadgeCard(entry.target);
         }
       },
-      { rootMargin: "180px 0px" }
+      { rootMargin: "180px 340px" }
     );
     return photoBadgeObserver;
   }
@@ -5878,7 +5886,6 @@
 
     for (const card of candidates) {
       if (!isElementVisible(card)) continue;
-      if (card.closest('#sc-saved-cart, [data-testid*="saved-for-later" i], [data-test*="savedForLater" i]')) continue;
       if (isCartDrawerElement(card.closest('[role="dialog"], aside, section'))) continue;
       const cr = card.getBoundingClientRect();
       if (cr.height < 54 || cr.height > 780 || cr.width < 90) continue;

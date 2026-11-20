@@ -1090,9 +1090,11 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
   }
 
   const alertSeverity = classifyDietaryAlertSeverity(dietaryAlerts);
+  const pillAlertEmoji =
+    dietaryAlerts.length > 0 && dietaryAlerts.every((a) => a.id === "pesticide_risk") ? "🌱" : "⚠️";
   const pillText =
     dietaryAlerts.length > 0
-      ? `⚠️ ${dietaryAlerts.slice(0, 2).map((a) => a.shortBadge).join(" + ")} • ${result.score}/100`
+      ? `${pillAlertEmoji} ${dietaryAlerts.slice(0, 2).map((a) => a.shortBadge).join(" + ")} • ${result.score}/100`
       : `${result.score}/100 • Tap to Inspect`;
 
   return {
@@ -1183,7 +1185,7 @@ const BATCH_ENTITLEMENT_TIMEOUT_MS = 900;
 const BATCH_WALL_BUDGET_MS = 4800;
 
 export const NON_FOOD_GRID_ITEM_RE =
-  /\b(?:paper\s+towels?|toilet\s+(?:paper|tissue)|bath\s+tissue|facial\s+tissues?|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|parchment\s+paper|plastic\s+wrap|paper\s+plates?|laundry\s+(?:detergent|pods?|sanitizer)|fabric\s+softener|dryer\s+sheets?|dish\s+(?:soap|detergent)|dishwasher\s+(?:pods?|pac?ks?|detergent)|disinfecting\s+wipes?|bleach|all[- ]purpose\s+cleaner|glass\s+cleaner|toilet\s+bowl\s+cleaner|air\s+freshener|diapers?|pull[- ]ups?|baby\s+wipes?|cat\s+litter|dog\s+(?:food|treats?|pads?)|cat\s+(?:food|treats?)|pet\s+food|alkaline\s+batteries|aa\s+batteries|aaa\s+batteries|motor\s+oil|windshield\s+washer|light\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|body\s+wash|deodorant|antiperspirant|razor\s+blades?|shaving\s+cream|sunscreen|tampons?|maxi\s+pads?|pantiliners?)\b/i;
+  /\b(?:paper\s+towels?|toilet\s+(?:paper|tissue)|bath\s+tissue|facial\s+tissues?|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|parchment\s+paper|plastic\s+wrap|paper\s+plates?|laundry\s+(?:detergent|pods?|sanitizer)|fabric\s+softener|dryer\s+sheets?|dish\s+(?:soap|detergent)|dishwasher\s+(?:pods?|pac?ks?|detergent)|disinfecting\s+wipes?|bleach|all[- ]purpose\s+cleaner|glass\s+cleaner|toilet\s+bowl\s+cleaner|air\s+freshener|diapers?|pull[- ]ups?|baby\s+wipes?|cat\s+litter|dog\s+(?:food|treats?|pads?)|cat\s+(?:food|treats?)|pet\s+food|alkaline\s+batteries|aa\s+batteries|aaa\s+batteries|motor\s+oil|windshield\s+washer|light\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|body\s+wash|deodorant|antiperspirant|razor\s+blades?|shaving\s+cream|sunscreen|tampons?|maxi\s+pads?|pantiliners?|power\s+bank|air\s+fryer|jigsaw\s+puzzle|piece\s+puzzle|hopper\s+ball|bouncer|heated\s+(?:vest|clothing|jacket)|sippy\s+cups?|toddler\s+cups?|training\s+cups?|water\s+bottle\s+(?:with\s+straw|insulated|stainless))\b/i;
 
 const PACKAGED_FOOD_CONTEXT_RE =
   /\b(?:chicken|beef|pork|turkey|fish|shrimp|salmon|tuna|sausage|bacon|meatballs?|peas|corn|berries|strawberries|blueberries|raspberries|fruit|vegetables?|broccoli|fries|tots|nuggets?|strips?|tenders?|wings?|pizza|burritos?|waffles?|pancakes?|peanut\s+butter|almond\s+butter|reese'?s|hershey'?s|chocolate|candy|fudge|caramel|ice\s+cream|gelato|sorbet|yogurt|pudding|oatmeal|oats|granola|cereal|soup|broth|rice|pasta|ravioli|dumplings?|popcorn|pretzels?|crackers?|cookies?|chips)\b/i;

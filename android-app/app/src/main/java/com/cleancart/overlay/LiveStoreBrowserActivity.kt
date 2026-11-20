@@ -1683,8 +1683,9 @@ class LiveStoreBrowserActivity : Activity() {
         if (alerts.isNotEmpty()) {
             val bubbleBg = if (severity == "allergen") 0xF5DC2626.toInt() else scoreBg
             val bubbleStroke = if (severity == "allergen") 0x44FFFFFF else 0xFFFBBF24.toInt()
+            val alertEmoji = if (alerts.all { it.id == "pesticide_risk" }) "🌱" else "⚠️"
             floatingBubble.background = pillBackground(bubbleBg, bubbleStroke)
-            bubbleBadgeLabel.text = "⚠️ ${alerts.first().shortBadge} • $score/100"
+            bubbleBadgeLabel.text = "$alertEmoji ${alerts.first().shortBadge} • $score/100"
             bubbleSubLabel.text = if (lastDetectedIsCard && shortTitle.isNotEmpty()) {
                 "$shortTitle • Tap"
             } else if (hasSwap) {
@@ -2072,6 +2073,10 @@ class LiveStoreBrowserActivity : Activity() {
                                             put("score", hit.score)
                                             put("hasAlert", hit.dietaryAlerts.isNotEmpty())
                                             put("alertSeverity", hit.alertSeverity)
+                                            put(
+                                                "alertIcon",
+                                                if (hit.dietaryAlerts.isNotEmpty() && hit.dietaryAlerts.all { it.id == "pesticide_risk" }) "🌱" else "⚠️"
+                                            )
                                             put("isCategoryEstimate", hit.isCategoryEstimate)
                                         })
                                     } else {
@@ -2414,7 +2419,7 @@ class LiveStoreBrowserActivity : Activity() {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply { topMargin = dp(10) }
-                addView(label("⚠️ ${alert.label}", 13f, headCol, bold = true))
+                addView(label(alert.label, 13f, headCol, bold = true))
                 if (alert.reason.isNotBlank()) {
                     addView(label(alert.reason, 12f, bodyCol).apply {
                         setPadding(0, dp(2), 0, 0)

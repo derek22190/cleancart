@@ -89,17 +89,31 @@ export function detectPesticideRisk(
     return null;
   }
 
-  // Strip explicitly organic sub-ingredient clauses (never "non-organic ...") and flavor/pectin/vinegar trace terms
-  const stripOrganicAndFlavorNoise = (s: string) =>
-    s
+  // Strip explicitly organic sub-ingredient clauses (never "non-organic ..."), Clean Fifteen sweet potatoes,
+  // and trace dehydrated spice/curing/extract derivatives so seasonings never trigger fresh-produce Dirty Dozen warnings
+  const stripOrganicAndFlavorNoise = (s: string) => {
+    const cleaned = s
       .replace(
         /(?<!\bnon[\s-]+)\b(?:100%\s+)?organic\s+[a-z0-9\s'’-]+?(?=\s*(?:[,;():[\]&]|\.|$|\band\b|\bnon[\s-]+organic\b|\bconventional\b))/gi,
         " ",
       )
+      .replace(/\bsweet\s+potato(?:es)?\b/gi, " ")
+      .replace(/\b(?:modified\s+)?potato\s+(?:starch|flour|maltodextrin|protein|fiber)\b/gi, " ")
       .replace(
-        /\b(?:natural|artificial)\s+[a-z\s]{0,20}flavors?\b|\b(?:apple\s+cider\s+vinegar|apple\s+pectin|fruit\s+pectin|citrus\s+pectin|tomato\s+lycopene|grape\s+skin\s+extract|rosemary\s+extract)\b|\b(?:(?:red|green|yellow|sweet|jalape[nñ]o|hot|chili|chilli)\s+(?:(?:and|&|\/)\s+(?:red|green|yellow|sweet)\s+)?)?(?:bell\s+peppers?|sweet\s+peppers?|jalape[nñ]o\s+peppers?|hot\s+peppers?|celery|tomato(?:es)?)\s+(?:powder|seed|seeds|salt|extract|oleoresin|oil|flakes?)\b/gi,
+        /\b(?:natural|artificial)\s+[a-z\s]{0,20}flavors?\b|\b(?:apple\s+cider\s+vinegar|apple\s+pectin|fruit\s+pectin|citrus\s+pectin|tomato\s+lycopene|grape\s+skin\s+extract|rosemary\s+extract)\b|\b(?:cultured\s+)?celery\s+(?:powder|seed|seeds|salt|extract|oleoresin|oil|flakes?|juice(?:\s+powder)?|concentrate)\b|\b(?:dehydrated|dried|freeze[\s-]*dried)\s+(?:(?:red|green|yellow|sweet|jalape[nñ]o|hot|chili|chilli)\s+(?:(?:and|&|\/)\s+(?:red|green|yellow|sweet)\s+)?)?(?:bell\s+peppers?|sweet\s+peppers?|jalape[nñ]o\s+peppers?|hot\s+peppers?)\b|\b(?:(?:red|green|yellow|sweet|jalape[nñ]o|hot|chili|chilli)\s+(?:(?:and|&|\/)\s+(?:red|green|yellow|sweet)\s+)?)?(?:bell\s+peppers?|sweet\s+peppers?|jalape[nñ]o\s+peppers?|hot\s+peppers?|tomato(?:es)?|apple|cherry|pomegranate|grape|blueberry|strawberry|peach|pear|spinach|kale)\s+(?:powder|seed|seeds|salt|extract|oleoresin|oil|flakes?)\b/gi,
         " ",
       );
+    // Inside "<2%" trace seasoning tails (e.g. Doritos "Less than 2% of ... Red and Green Bell Peppers",
+    // Goldfish "Contains 2% or Less of ... Spices, Celery"), strip trace dried bell pepper & celery seasoning words
+    return cleaned.replace(
+      /\b(?:contains\s+(?:less\s+than\s+)?2%\s+or\s+less\s+of|contains\s+2\s+percent\s+or\s+less\s+of|less\s+than\s+2%\s+of)\b[\s\S]*$/i,
+      (tail) =>
+        tail.replace(
+          /\b(?:(?:red|green|yellow|sweet)\s+(?:(?:and|&|\/)\s+(?:red|green|yellow|sweet)\s+)?)?bell\s+peppers?\b|\bcelery\b/gi,
+          " ",
+        ),
+    );
+  };
 
   const cleanTitle = stripOrganicAndFlavorNoise(productTitle || "");
   const cleanIng = stripOrganicAndFlavorNoise(ingredients || "");
@@ -124,7 +138,7 @@ export function detectPesticideRisk(
 
   // 2) Conventional grains & legumes where synthetic herbicides / pre-harvest desiccants (such as glyphosate) are permitted in non-organic farming
   const grainLegumeMatch = cleanCombined.match(
-    /\b(rolled\s+oats?|steel[\s-]*cut\s+oats?|whole\s+grain\s+oats?|instant\s+oats?|oatmeal|oat\s+flour|oat\s+bran|oat\s*milk|granola|oats|whole\s+wheat(?:\s+flour)?|enriched\s+(?:wheat\s+)?flour|bleached\s+(?:wheat\s+)?flour|unbleached\s+(?:wheat\s+)?flour|graham\s+flour|durum\s+wheat|semolina|wheat\s+flour|chickpeas?|garbanzo\s+beans?|hummus|red\s+lentils?|green\s+lentils?|brown\s+lentils?|lentils?|pinto\s+beans?|black\s+beans?|navy\s+beans?|kidney\s+beans?)\b/i,
+    /\b(rolled\s+oats?|steel[\s-]*cut\s+oats?|whole\s+grain\s+oats?|instant\s+oats?|oatmeal|oat\s+flour|oat\s+bran|oat\s*milk|granola|oats|whole\s+(?:grain\s+)?wheat(?:\s+flour)?|enriched\s+(?:wheat\s+)?flour|bleached\s+(?:wheat\s+)?flour|unbleached\s+(?:wheat\s+)?flour|graham\s+flour|durum\s+wheat|semolina|wheat\s+flour|chickpeas?|garbanzo\s+beans?|hummus|red\s+lentils?|green\s+lentils?|brown\s+lentils?|lentils?|pinto\s+beans?|black\s+beans?|navy\s+beans?|kidney\s+beans?)\b/i,
   );
   if (grainLegumeMatch) {
     const crop = grainLegumeMatch[0].toLowerCase();

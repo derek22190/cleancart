@@ -835,6 +835,12 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             if (!el) return false;
             var meta = (el.id || '') + ' ' + (el.className || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('data-testid') || '');
             if (/\\b(cart[-_ ]?(?:drawer|modal|panel|flyout|sidebar)|shopping[-_ ]?cart|mini[-_ ]?cart|bag[-_ ]?drawer)\\b/i.test(meta)) return true;
+            var isOverlayDrawer = Boolean(
+              (el.matches && el.matches('[role="dialog"], [aria-modal="true"], aside')) ||
+              /\\b(?:drawer|modal|panel|flyout|sidebar|dialog|sheet|popover)\\b/i.test(meta) ||
+              (window.getComputedStyle && window.getComputedStyle(el).position === 'fixed')
+            );
+            if (!isOverlayDrawer) return false;
             var h = el.querySelector('h1, h2, h3, [role="heading"]');
             var ht = clean(h ? h.textContent : '');
             if (ht && ht.length <= 80 && /\\b(?:cart|bag|basket)(?:\\s*\\(\\d+.*\\))?$/i.test(ht)) return true;
@@ -1350,6 +1356,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           var hbPinnedCardId = '';
           var hbPinnedScrollY = 0;
           var hbPinnedScrollX = 0;
+          var hbPinnedRectLeft = 0;
+          var hbPinnedRectTop = 0;
           window.__heybrocClearPinnedCard = function() {
             hbPinnedCardId = '';
           };
@@ -2190,8 +2198,9 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             var tone = severity === 'allergen' ? 'red' : scoreTone;
             var extraCls = (hasAlert && severity !== 'allergen') ? ' hb-photo-badge--advisory' : '';
             var overlayCls = badge.classList.contains('hb-photo-badge--overlay') ? ' hb-photo-badge--overlay' : '';
+            var badgeIcon = hasAlert ? (entry.alertIcon || '⚠️') : '🥦';
             badge.className = 'hb-photo-badge hb-photo-badge--' + tone + extraCls + overlayCls;
-            setHbBadgeContent(badge, hasAlert ? '⚠️' : '🥦', String(sc));
+            setHbBadgeContent(badge, badgeIcon, String(sc));
             badge.setAttribute('aria-label', 'HeyBroc score ' + sc + ' out of 100' + (labelTitle ? ' for ' + labelTitle : ''));
           }
 
@@ -2451,7 +2460,13 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                   continue;
                 }
               }
-              var nearVp = cardRect.height > 0 && cardRect.bottom >= -140 && cardRect.top <= vh + 180;
+              var vwNow = Math.max(280, window.innerWidth || 412);
+              var nearVp =
+                cardRect.height > 0 &&
+                cardRect.bottom >= -140 &&
+                cardRect.top <= vh + 180 &&
+                cardRect.right >= -340 &&
+                cardRect.left <= vwNow + 340;
               actions.push({
                 kind: nearVp ? 'process' : 'observe',
                 card: card,
@@ -2602,6 +2617,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                     score: entry.score,
                     hasAlert: Boolean(entry.hasAlert),
                     alertSeverity: entry.alertSeverity,
+                    alertIcon: entry.alertIcon || '',
                     isCategoryEstimate: false
                   });
                 }
@@ -2637,12 +2653,15 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             e.stopImmediatePropagation();
             var cardId = badge.getAttribute('data-hb-card-id') || '';
             var badgeSig = badge.getAttribute('data-hb-sig') || '';
+            var ownerCard = (cardId && hbOwnerCardById[cardId]) ? hbOwnerCardById[cardId] : (badge.closest ? badge.closest(CARD_SEL) : null);
             if (cardId) {
               hbPinnedCardId = cardId;
               hbPinnedScrollY = window.scrollY || 0;
               hbPinnedScrollX = window.scrollX || 0;
+              var pinRect = (ownerCard && ownerCard.getBoundingClientRect) ? ownerCard.getBoundingClientRect() : badge.getBoundingClientRect();
+              hbPinnedRectLeft = pinRect ? pinRect.left : 0;
+              hbPinnedRectTop = pinRect ? pinRect.top : 0;
             }
-            var ownerCard = (cardId && hbOwnerCardById[cardId]) ? hbOwnerCardById[cardId] : (badge.closest ? badge.closest(CARD_SEL) : null);
             var st = (ownerCard && hbCardState) ? hbCardState.get(ownerCard) : null;
             var liveInfo = ownerCard ? readCardInfo(ownerCard) : null;
             if (ownerCard && liveInfo && badgeSig && liveInfo.sig !== badgeSig) {
@@ -2895,7 +2914,17 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             if (hbPinnedCardId) {
               var dy = Math.abs((window.scrollY || 0) - hbPinnedScrollY);
               var dx = Math.abs((window.scrollX || 0) - hbPinnedScrollX);
-              if (dy > 28 || dx > 28) hbPinnedCardId = '';
+              var pinnedEl = hbOwnerCardById[hbPinnedCardId];
+              var shifted = false;
+              if (!pinnedEl || !pinnedEl.isConnected) {
+                shifted = true;
+              } else if (pinnedEl.getBoundingClientRect) {
+                var prNow = pinnedEl.getBoundingClientRect();
+                if (Math.abs(prNow.left - hbPinnedRectLeft) > 28 || Math.abs(prNow.top - hbPinnedRectTop) > 28) {
+                  shifted = true;
+                }
+              }
+              if (dy > 28 || dx > 28 || shifted) hbPinnedCardId = '';
             }
             if (scrollTimer) clearTimeout(scrollTimer);
             scrollTimer = setTimeout(extractProductData, 200);
@@ -3160,7 +3189,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         }
 
         if let firstAlert = summary.dietaryAlerts.first {
-            bubbleBadgeLabel.text = "⚠️ \(firstAlert.shortBadge) • \(summary.score)/100"
+            let alertEmoji = summary.dietaryAlerts.allSatisfy({ $0.id == "pesticide_risk" }) ? "🌱" : "⚠️"
+            bubbleBadgeLabel.text = "\(alertEmoji) \(firstAlert.shortBadge) • \(summary.score)/100"
             bubbleSubLabel.text = lastDetectedIsCard
                 ? "\(shortItemTitle) • Tap"
                 : (summary.swap != nil ? "Tap for Organic / Clean Swap" : "Tap to inspect alert")
@@ -3658,11 +3688,13 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                                (id == self.lastDetectedCardId || (reqItem["productTitle"] ?? "").caseInsensitiveCompare(self.lastDetectedTitle) == .orderedSame) {
                                 self.applySummaryToBubble(sum)
                             }
+                            let isPesticideOnly = !sum.dietaryAlerts.isEmpty && sum.dietaryAlerts.allSatisfy({ $0.id == "pesticide_risk" })
                             jsMap[id] = [
                                 "ok": true,
                                 "score": sum.score,
                                 "hasAlert": !sum.dietaryAlerts.isEmpty,
                                 "alertSeverity": sum.alertSeverity,
+                                "alertIcon": isPesticideOnly ? "🌱" : "⚠️",
                                 "isCategoryEstimate": sum.isCategoryEstimate
                             ]
                         } else {

@@ -1096,10 +1096,20 @@ object ScanApi {
                 Regex("\\borganic\\s+(?:whole\\s+grain\\s+|rolled\\s+|steel[\\s-]*cut\\s+|sprouted\\s+|gluten[\\s-]*free\\s+|unbleached\\s+|enriched\\s+|durum\\s+|baby\\s+|fresh\\s+|frozen\\s+)?[a-z]+(?:\\s+(?:oats?|wheat|flour|strawberr\\w*|blueberr\\w*|spinach|kale|apples?|grapes?|peaches?|pears?|peppers?|cherries|beans?|potatoes?|celery|tomatoes?|chickpeas?|lentils?|semolina))?", RegexOption.IGNORE_CASE),
                 " "
             )
+            .replace(Regex("\\bsweet\\s+potato(?:es)?\\b", RegexOption.IGNORE_CASE), " ")
+            .replace(Regex("\\b(?:modified\\s+)?potato\\s+(?:starch|flour|maltodextrin|protein|fiber)\\b", RegexOption.IGNORE_CASE), " ")
             .replace(
-                Regex("\\b(?:natural|artificial)\\s+[a-z\\s]{0,20}flavors?\\b|\\b(?:apple\\s+cider\\s+vinegar|apple\\s+pectin|fruit\\s+pectin|citrus\\s+pectin|tomato\\s+lycopene|grape\\s+skin\\s+extract|rosemary\\s+extract)\\b|\\b(?:(?:red|green|yellow|sweet|jalape[nñ]o|hot|chili|chilli)\\s+(?:(?:and|&|/)\\s+(?:red|green|yellow|sweet)\\s+)?)?(?:bell\\s+peppers?|sweet\\s+peppers?|jalape[nñ]o\\s+peppers?|hot\\s+peppers?|celery|tomato(?:es)?)\\s+(?:powder|seed|seeds|salt|extract|oleoresin|oil|flakes?)\\b", RegexOption.IGNORE_CASE),
+                Regex("\\b(?:natural|artificial)\\s+[a-z\\s]{0,20}flavors?\\b|\\b(?:apple\\s+cider\\s+vinegar|apple\\s+pectin|fruit\\s+pectin|citrus\\s+pectin|tomato\\s+lycopene|grape\\s+skin\\s+extract|rosemary\\s+extract)\\b|\\b(?:cultured\\s+)?celery\\s+(?:powder|seed|seeds|salt|extract|oleoresin|oil|flakes?|juice(?:\\s+powder)?|concentrate)\\b|\\b(?:dehydrated|dried|freeze[\\s-]*dried)\\s+(?:(?:red|green|yellow|sweet|jalape[nñ]o|hot|chili|chilli)\\s+(?:(?:and|&|/)\\s+(?:red|green|yellow|sweet)\\s+)?)?(?:bell\\s+peppers?|sweet\\s+peppers?|jalape[nñ]o\\s+peppers?|hot\\s+peppers?)\\b|\\b(?:(?:red|green|yellow|sweet|jalape[nñ]o|hot|chili|chilli)\\s+(?:(?:and|&|/)\\s+(?:red|green|yellow|sweet)\\s+)?)?(?:bell\\s+peppers?|sweet\\s+peppers?|jalape[nñ]o\\s+peppers?|hot\\s+peppers?|tomato(?:es)?|apple|cherry|pomegranate|grape|blueberry|strawberry|peach|pear|spinach|kale)\\s+(?:powder|seed|seeds|salt|extract|oleoresin|oil|flakes?)\\b", RegexOption.IGNORE_CASE),
                 " "
             )
+            .replace(
+                Regex("\\b(?:contains\\s+(?:less\\s+than\\s+)?2%\\s+or\\s+less\\s+of|contains\\s+2\\s+percent\\s+or\\s+less\\s+of|less\\s+than\\s+2%\\s+of)\\b[\\s\\S]*$", RegexOption.IGNORE_CASE)
+            ) { mr ->
+                mr.value.replace(
+                    Regex("\\b(?:(?:red|green|yellow|sweet)\\s+(?:(?:and|&|/)\\s+(?:red|green|yellow|sweet)\\s+)?)?bell\\s+peppers?\\b|\\bcelery\\b", RegexOption.IGNORE_CASE),
+                    " "
+                )
+            }
         val produceMatch = Regex(
             "\\b(strawberries|strawberry|baby\\s+spinach|spinach|kale|collard\\s+greens?|mustard\\s+greens?|seedless\\s+grapes?|grapes?|raisins?|peaches|peach|pears|pear|nectarines?|applesauce|apples?|bell\\s+peppers?|sweet\\s+peppers?|hot\\s+peppers?|cherries|blueberries|blueberry|green\\s+beans?|string\\s+beans?|potatoes|celery|tomatoes)\\b",
             RegexOption.IGNORE_CASE
@@ -1113,7 +1123,7 @@ object ScanApi {
             )
         }
         val grainMatch = Regex(
-            "\\b(rolled\\s+oats?|steel[\\s-]*cut\\s+oats?|whole\\s+grain\\s+oats?|instant\\s+oats?|oatmeal|oat\\s+flour|oat\\s+bran|oat\\s*milk|granola|oats|whole\\s+wheat(?:\\s+flour)?|enriched\\s+(?:wheat\\s+)?flour|bleached\\s+(?:wheat\\s+)?flour|unbleached\\s+(?:wheat\\s+)?flour|graham\\s+flour|durum\\s+wheat|semolina|wheat\\s+flour|chickpeas?|garbanzo\\s+beans?|hummus|lentils?|pinto\\s+beans?|black\\s+beans?|navy\\s+beans?|kidney\\s+beans?)\\b",
+            "\\b(rolled\\s+oats?|steel[\\s-]*cut\\s+oats?|whole\\s+grain\\s+oats?|instant\\s+oats?|oatmeal|oat\\s+flour|oat\\s+bran|oat\\s*milk|granola|oats|whole\\s+(?:grain\\s+)?wheat(?:\\s+flour)?|enriched\\s+(?:wheat\\s+)?flour|bleached\\s+(?:wheat\\s+)?flour|unbleached\\s+(?:wheat\\s+)?flour|graham\\s+flour|durum\\s+wheat|semolina|wheat\\s+flour|chickpeas?|garbanzo\\s+beans?|hummus|lentils?|pinto\\s+beans?|black\\s+beans?|navy\\s+beans?|kidney\\s+beans?)\\b",
             RegexOption.IGNORE_CASE
         ).find(cleaned)
         if (grainMatch != null) {

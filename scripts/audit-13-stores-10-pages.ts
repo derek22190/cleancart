@@ -1397,7 +1397,7 @@ async function auditStoreAll10Pages(
 
           for (const b of resolved) {
             const txt = (b.textContent || '').replace(/\\s+/g, '').trim();
-            const m = txt.match(/^(?:🥦|⚠️)(100|[1-9]?\\d)$/);
+            const m = txt.match(/^(?:🥦|⚠️|🌱)(100|[1-9]?\\d)$/);
             if (!m) {
               invalidTexts.push(txt || '<empty>');
             } else if (!firstLowBadgeCardId && Number(m[1]) < 75) {
