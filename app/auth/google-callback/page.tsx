@@ -88,7 +88,11 @@ export default function GoogleOAuthCallbackPage() {
           !/[\x00-\x1f\x7f]/.test(savedReturn)
         ) {
           const parsedRet = new URL(savedReturn, window.location.origin);
-          if (parsedRet.origin === window.location.origin) {
+          if (
+            parsedRet.origin === window.location.origin &&
+            !parsedRet.pathname.startsWith("/api/auth/") &&
+            !parsedRet.pathname.startsWith("/auth/")
+          ) {
             returnTarget = `${parsedRet.pathname}${parsedRet.search}${parsedRet.hash}`;
           }
         }

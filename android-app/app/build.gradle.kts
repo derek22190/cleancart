@@ -19,8 +19,8 @@ android {
         applicationId = "com.cleancart.overlay"
         minSdk = 26
         targetSdk = 36
-        versionCode = 56
-        versionName = "2.6.5"
+        versionCode = 57
+        versionName = "2.6.6"
         buildConfigField("String", "API_BASE", "\"$apiBase\"")
         buildConfigField("boolean", "CLEANCART_AMAZON_MOBILE_APPROVED", "$amazonMobileApproved")
     }

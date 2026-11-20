@@ -4277,7 +4277,7 @@ class MainActivity : Activity() {
                             val tok = prefs.getString("auth_token", "") ?: ""
                             io.execute {
                                 val deleted = runCatching {
-                                    val conn = (URL("https://www.heybroc.com/api/auth").openConnection() as HttpURLConnection).apply {
+                                    val conn = (URL(authApiEndpoint()).openConnection() as HttpURLConnection).apply {
                                         requestMethod = "POST"
                                         doOutput = true
                                         setRequestProperty("Content-Type", "application/json")
@@ -5260,7 +5260,7 @@ class MainActivity : Activity() {
         io.execute {
             runCatching {
                 fun sendAuthRequest(reqAction: String): Pair<Boolean, JSONObject> {
-                    val conn = (URL("https://www.heybroc.com/api/auth").openConnection() as HttpURLConnection).apply {
+                    val conn = (URL(authApiEndpoint()).openConnection() as HttpURLConnection).apply {
                         requestMethod = "POST"
                         doOutput = true
                         setRequestProperty("Content-Type", "application/json")

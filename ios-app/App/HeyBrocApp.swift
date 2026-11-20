@@ -285,16 +285,23 @@ enum OfflineIngredientAnalyzer {
            ["corn syrup", "cane sugar", "dextrose", "maltodextrin"].contains(where: { lower.contains($0) }) {
             badges.append("SUGAR")
         }
-        if dietaryWatchlist.contains("pesticide_risk"),
-           !lower.contains("organic") {
-            let dirtyProduce = ["strawberr", "spinach", "kale", "collard green", "mustard green", "grape", "raisin", "peach", "pear", "nectarine", "apple", "bell pepper", "jalapeno pepper", "hot pepper", "cherr", "blueberr", "green bean", "potato", "celery", "tomato"]
-            let convGrains = ["rolled oats", "whole grain oats", "oat flour", "wheat flour", "enriched wheat", "whole wheat", "barley", "lentil", "chickpea", "garbanzo", "hummus"]
-            if dirtyProduce.contains(where: { lower.contains($0) }) {
-                badges.append("PESTICIDE")
-                score = max(4, score - 25)
-            } else if convGrains.contains(where: { lower.contains($0) }) {
-                badges.append("PESTICIDE")
-                score = max(4, score - 20)
+        if dietaryWatchlist.contains("pesticide_risk") {
+            let isWholeProductOrganic =
+                title.lowercased().contains("organic") ||
+                lower.contains("usda organic") ||
+                lower.contains("certified organic")
+            if !isWholeProductOrganic {
+                let cleaned = lower
+                    .replacingOccurrences(of: "\\b(sweet\\s+potato(?:es)?|pineapples?|grapefruits?|grapeseed|spearmint)\\b", with: " ", options: .regularExpression)
+                let producePattern = "\\b(strawberries|strawberry|baby\\s+spinach|spinach|kale|collard\\s+greens?|mustard\\s+greens?|seedless\\s+grapes?|grapes?|raisins?|peaches|peach|pears|pear|nectarines?|applesauce|apples?|bell\\s+peppers?|sweet\\s+peppers?|jalape[nñ]o\\s+peppers?|hot\\s+peppers?|cherries|blueberries|blueberry|green\\s+beans?|string\\s+beans?|potatoes|celery|tomatoes)\\b"
+                let grainPattern = "\\b(whole\\s+grain\\s+(?:rolled\\s+)?oats?|rolled\\s+oats?|steel\\s+cut\\s+oats?|oat\\s+flour|oats|enriched\\s+(?:bleached\\s+|unbleached\\s+)?wheat\\s+flour|whole\\s+wheat\\s+flour|wheat\\s+flour|barley|lentils?|chickpeas?|garbanzo\\s+beans?|hummus)\\b"
+                if cleaned.range(of: producePattern, options: .regularExpression) != nil {
+                    badges.append("PESTICIDE")
+                    score = max(4, score - 25)
+                } else if cleaned.range(of: grainPattern, options: .regularExpression) != nil {
+                    badges.append("PESTICIDE")
+                    score = max(4, score - 20)
+                }
             }
         }
 

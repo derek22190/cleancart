@@ -12113,24 +12113,31 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         !authModalAuditSrc.includes('includes("no account found")') &&
         appleCbSrc.includes("heybroc_oauth_return_to") &&
         appleCbSrc.includes("parsedRet.origin === window.location.origin") &&
+        appleCbSrc.includes('parsedRet.pathname.indexOf("/api/auth/") !== 0') &&
         appleCbSrc.includes('\\u2028') &&
         googleCbSrc.includes("heybroc_oauth_return_to") &&
         googleCbSrc.includes("parsedRet.origin === window.location.origin") &&
+        googleCbSrc.includes('!parsedRet.pathname.startsWith("/api/auth/")') &&
         iosShortcutsAuditSrc.includes('https://www.heybroc.com/api/referral') &&
         !iosShortcutsAuditSrc.includes('https://www.heybroc.com/api/entitlements') &&
         referralRouteAuditSrc.includes('request.headers.get("x-heybroc-platform")') &&
         iosAppSwiftSrc.includes('id: "pesticide_risk"') &&
         iosAppSwiftSrc.includes('dietaryWatchlist.contains("pesticide_risk")') &&
+        iosAppSwiftSrc.includes("pineapples?|grapefruits?|grapeseed|spearmint") &&
         iosAppSwiftSrc.includes('isPesticide ? "🌱" : "⚠️"') &&
         androidMainAuthSrc.includes('addModeTab("Create Free Account"') &&
         androidMainAuthSrc.includes('Send / Resend 6-Digit Reset Code') &&
         androidMainAuthSrc.includes('auth_email_verified') &&
         androidMainAuthSrc.includes('activeEmailInput') &&
         !androidMainAuthSrc.includes('contains("No account found"') &&
+        !androidMainAuthSrc.includes('URL("https://www.heybroc.com/api/auth")') &&
         androidScanApiAuditSrc.includes("jalape[nñ]o") &&
-        androidDetectorSrc.includes('[class*="CardTemplate-Horizontal"]') &&
-        iosBrowserSrc.includes('[class*="CardTemplate-Horizontal"]') &&
-        chromeExtSrc.includes('[class*="CardTemplate-Horizontal"]') &&
+        androidDetectorSrc.includes(".CardTemplate-Horizontal") &&
+        !androidDetectorSrc.includes('[class*="CardTemplate-Horizontal"]') &&
+        iosBrowserSrc.includes(".CardTemplate-Horizontal") &&
+        !iosBrowserSrc.includes('[class*="CardTemplate-Horizontal"]') &&
+        chromeExtSrc.includes(".CardTemplate-Horizontal") &&
+        !chromeExtSrc.includes('[class*="CardTemplate-Horizontal"]') &&
         !extListingSrc.includes("Amazon Associates") &&
         iosWorkflowSrc.includes('codesign --entitlements "ios-app/build/HeyBroc/HeyBroc.entitlements" --force --sign "-" "$ARCHIVE_APP"') &&
         iosWorkflowSrc.includes("IDEDistribution.standard.log"),

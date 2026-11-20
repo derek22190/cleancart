@@ -101,7 +101,11 @@ function buildBridgeHtml(payload: {
           !/[\\x00-\\x1f\\x7f]/.test(savedReturn)
         ) {
           var parsedRet = new URL(savedReturn, window.location.origin);
-          if (parsedRet.origin === window.location.origin) {
+          if (
+            parsedRet.origin === window.location.origin &&
+            parsedRet.pathname.indexOf("/api/auth/") !== 0 &&
+            parsedRet.pathname.indexOf("/auth/") !== 0
+          ) {
             returnTarget = parsedRet.pathname + parsedRet.search + parsedRet.hash;
           }
         }
