@@ -143,6 +143,7 @@ class LiveStoreBrowserActivity : Activity() {
 
         private val ALLOWED_SSO_HOST_SUFFIXES = listOf(
             "uber.com",
+            "challenges.cloudflare.com",
             "accounts.google.com",
             "accounts.youtube.com",
             "gstatic.com",
@@ -198,6 +199,36 @@ class LiveStoreBrowserActivity : Activity() {
             if (host.isEmpty()) return false
             return ALLOWED_RETAILER_HOST_SUFFIXES.any { suffix ->
                 host == suffix || host.endsWith(".$suffix")
+            }
+        }
+
+        fun urlMatchesStore(storeKey: String, rawUrl: String?): Boolean {
+            val trimmed = rawUrl?.trim().orEmpty()
+            if (trimmed.isEmpty()) return false
+            val uri = runCatching { Uri.parse(trimmed) }.getOrNull() ?: return false
+            val host = uri.host?.lowercase().orEmpty()
+            if (host.isEmpty()) return false
+            fun hostMatches(suffix: String): Boolean = host == suffix || host.endsWith(".$suffix")
+            val fullLower = trimmed.lowercase()
+            val isWholeFoodsAmazonUrl = hostMatches("amazon.com") && (
+                fullLower.contains("wholefoods") ||
+                    fullLower.contains("dob2xliezvb2rz")
+            )
+            return when (normalizeStoreKey(storeKey)) {
+                "walmart" -> hostMatches("walmart.com")
+                "instacart" -> hostMatches("instacart.com")
+                "target" -> hostMatches("target.com")
+                "amazon" -> hostMatches("amazon.com") && !isWholeFoodsAmazonUrl
+                "wholefoods" -> hostMatches("wholefoodsmarket.com") || isWholeFoodsAmazonUrl
+                "costco" -> hostMatches("costco.com")
+                "sams" -> hostMatches("samsclub.com")
+                "kroger" -> KROGER_BANNER_HOST_SUFFIXES.any { hostMatches(it) }
+                "aldi" -> hostMatches("aldi.us")
+                "bjs" -> hostMatches("bjs.com")
+                "shipt" -> hostMatches("shipt.com")
+                "doordash" -> hostMatches("doordash.com")
+                "ubereats" -> hostMatches("ubereats.com")
+                else -> false
             }
         }
 
@@ -362,7 +393,7 @@ class LiveStoreBrowserActivity : Activity() {
               if (!document.getElementById('hb-app-banner-suppressor')) {
                 var st = document.createElement('style');
                 st.id = 'hb-app-banner-suppressor';
-                st.textContent = '#branch-banner-iframe, .branch-journeys-top, [id^="branch-banner"], [class*="branch-animation"], .smartbanner, [id*="smartbanner" i], smart-banner, [data-testid="smart-banner"], [data-testid="app-banner"], [data-testid="download-app-banner"], [data-automation-id="app-banner"], [data-automation-id="smart-banner"], [data-test="smartBanner"], [data-test="appBanner"], [data-hb-app-banner-hidden="1"] { display: none !important; visibility: hidden !important; height: 0 !important; min-height: 0 !important; pointer-events: none !important; overflow: hidden !important; }';
+                st.textContent = '#branch-banner-iframe, .branch-journeys-top, [id^="branch-banner"], [class*="branch-animation"], .smartbanner, [id*="smartbanner" i], smart-banner, [data-testid="smart-banner"], [data-testid="app-banner"], [data-testid="download-app-banner"], [data-testid*="SmartAppBanner" i], [data-testid*="app-download" i], [data-testid*="AppDownload" i], [data-testid*="open-app" i], [data-anchor-id*="AppBanner" i], [data-anchor-id*="DownloadApp" i], [data-anchor-id*="OpenApp" i], [aria-label="Open App" i], [aria-label="Open in app" i], [aria-label="Get the app" i], [data-automation-id="app-banner"], [data-automation-id="smart-banner"], [data-test="smartBanner"], [data-test="appBanner"], [data-hb-app-banner-hidden="1"] { display: none !important; visibility: hidden !important; height: 0 !important; min-height: 0 !important; pointer-events: none !important; overflow: hidden !important; }';
                 head.appendChild(st);
               }
               if (/(?:^|\.)samsclub\.com$/i.test(location.hostname || '') && !document.getElementById('hb-sams-search-fix')) {
@@ -437,6 +468,9 @@ class LiveStoreBrowserActivity : Activity() {
     private fun saveLastStoreUrl(storeKey: String, rawUrl: String?) {
         if (!isPersistableBrowseUrl(rawUrl)) return
         val safe = validatedRetailerUrl(rawUrl) ?: return
+        // Never poison one store's saved URL with another store's domain (e.g. DoorDash SPA
+        // firing history/finish callbacks right after switching tabs to Uber Eats).
+        if (!urlMatchesStore(storeKey, safe)) return
         getSharedPreferences(PREFS_LIVE_STORE_STATE, Context.MODE_PRIVATE)
             .edit()
             .putString("last_url_$storeKey", safe)
@@ -446,7 +480,12 @@ class LiveStoreBrowserActivity : Activity() {
     private fun loadLastStoreUrl(storeKey: String): String? {
         val raw = getSharedPreferences(PREFS_LIVE_STORE_STATE, Context.MODE_PRIVATE)
             .getString("last_url_$storeKey", null)
-        return if (isPersistableBrowseUrl(raw)) validatedRetailerUrl(raw) else null
+        val safe = if (isPersistableBrowseUrl(raw)) validatedRetailerUrl(raw) else null
+        if (safe == null || !urlMatchesStore(storeKey, safe)) {
+            if (raw != null) clearLastStoreUrl(storeKey)
+            return null
+        }
+        return safe
     }
 
     private fun clearLastStoreUrl(storeKey: String) {
@@ -979,8 +1018,10 @@ class LiveStoreBrowserActivity : Activity() {
         setBubbleIdleState()
         if (wasAlreadyActive) {
             clearLastStoreUrl(chosen.key)
+            storeWebView?.stopLoading()
             storeWebView?.loadUrl(chosen.homeUrl)
         } else {
+            storeWebView?.stopLoading()
             storeWebView?.loadUrl(loadLastStoreUrl(chosen.key) ?: chosen.homeUrl)
         }
     }
@@ -1303,6 +1344,12 @@ class LiveStoreBrowserActivity : Activity() {
         )
 
         val settings = wv.settings
+        val defaultUa = settings.userAgentString.orEmpty()
+        if (defaultUa.isNotEmpty()) {
+            settings.userAgentString = defaultUa
+                .replace("; wv)", ")")
+                .replace(Regex("""\bVersion/\d+(?:\.\d+)*\s+"""), "")
+        }
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
         settings.databaseEnabled = true
@@ -1859,6 +1906,45 @@ class LiveStoreBrowserActivity : Activity() {
                     ScanApi.applyLocalWatchlistToData(this, parsed)
                     if (!isCardScan) {
                         runCatching { ScanHistoryStore.recordScan(this, parsed, apiStore) }
+                        if (!parsed.optBoolean("isCategoryEstimate", false)) {
+                            val verifiedJsonStr = parsed.toString()
+                            ScanApi.cacheVerifiedScreenScan(
+                                ctx = appCtx,
+                                productTitle = title,
+                                barcode = barcode.ifBlank { null },
+                                rawJsonStr = verifiedJsonStr,
+                                store = apiStore,
+                                storeBucket = bucket,
+                                instacartRetailerSlug = instacartSlug
+                            )
+                            val resolvedProdTitle = parsed.optJSONObject("product")?.optString("title").orEmpty().trim()
+                            if (resolvedProdTitle.isNotEmpty() && !resolvedProdTitle.equals(title, ignoreCase = true)) {
+                                ScanApi.cacheVerifiedScreenScan(
+                                    ctx = appCtx,
+                                    productTitle = resolvedProdTitle,
+                                    barcode = barcode.ifBlank { null },
+                                    rawJsonStr = verifiedJsonStr,
+                                    store = apiStore,
+                                    storeBucket = bucket,
+                                    instacartRetailerSlug = instacartSlug
+                                )
+                            }
+                            val resObj = parsed.optJSONObject("result")
+                            if (resObj != null && resObj.has("score")) {
+                                val alerts = ScanApi.evaluateDietaryAlerts(this, parsed.optJSONObject("product"), resObj, parsed)
+                                val entryJs = JSONObject().apply {
+                                    put("ok", true)
+                                    put("score", resObj.optInt("score", 0).coerceIn(0, 100))
+                                    put("hasAlert", alerts.isNotEmpty())
+                                    put("alertSeverity", ScanApi.classifyAlertSeverity(alerts))
+                                    put("alertIcon", if (alerts.isNotEmpty() && alerts.all { it.id == "pesticide_risk" }) "🌱" else "⚠️")
+                                }
+                                storeWebView?.evaluateJavascript(
+                                    "window.__heybrocCacheTitleScore && window.__heybrocCacheTitleScore(${JSONObject.quote(title)}, $entryJs);",
+                                    null
+                                )
+                            }
+                        }
                     }
                     val finalStoreImg = safeStoreImg.ifEmpty {
                         if (lastDetectedTitle.equals(title, ignoreCase = true)) {
@@ -2080,9 +2166,12 @@ class LiveStoreBrowserActivity : Activity() {
                                             put("isCategoryEstimate", hit.isCategoryEstimate)
                                         })
                                     } else {
+                                        val itemTransient = outcome.transientFailure || (reqItem.id in outcome.transientIds)
+                                        val itemNonFood = reqItem.id in outcome.nonFoodIds
                                         jsMap.put(reqItem.id, JSONObject().apply {
                                             put("ok", false)
-                                            if (outcome.transientFailure) put("transient", true)
+                                            if (itemNonFood) put("isNonFood", true)
+                                            if (itemTransient && !itemNonFood) put("transient", true)
                                             outcome.retryAfterSec?.let { put("retryAfterMs", it * 1000L) }
                                         })
                                     }
@@ -2165,6 +2254,14 @@ class LiveStoreBrowserActivity : Activity() {
                                     }
                                 }
                             }
+                        }
+                    }
+                    "openCardUrl" -> {
+                        val rawUrl = obj.optString("url").trim()
+                        val targetUri = runCatching { Uri.parse(rawUrl) }.getOrNull()
+                        if (targetUri != null && targetUri.scheme?.lowercase() == "https" && isAllowedRetailerHost(targetUri.host)) {
+                            setBubbleScanningState()
+                            storeWebView?.loadUrl(rawUrl)
                         }
                     }
                 }

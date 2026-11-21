@@ -166,6 +166,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     ]
 
     private static let allowedSsoDomains: [String] = [
+        "challenges.cloudflare.com",
         "gstatic.com",
         "googleusercontent.com",
         "login.target.com",
@@ -207,6 +208,62 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         }
     }
 
+    private static let krogerBannerDomains: [String] = [
+        "kroger.com",
+        "ralphs.com",
+        "fredmeyer.com",
+        "frysfood.com",
+        "kingsoopers.com",
+        "smithsfoodanddrug.com",
+        "qfc.com",
+        "harristeeter.com",
+        "marianos.com",
+        "picknsave.com",
+        "metro-market.net",
+        "metromarket.net",
+        "dillons.com",
+        "citymarket.com",
+        "bakersplus.com",
+        "gerbes.com",
+        "jaycfoods.com",
+        "pay-less.com",
+        "food4less.com",
+        "foodsco.net",
+        "foodscomarket.com",
+        "owensmarket.com",
+        "rulerfoods.com"
+    ]
+
+    private static func urlMatchesStore(_ url: URL, storeKey: String) -> Bool {
+        guard let rawHost = url.host?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              !rawHost.isEmpty else {
+            return false
+        }
+        func hostMatches(_ suffix: String) -> Bool {
+            return rawHost == suffix || rawHost.hasSuffix(".\(suffix)")
+        }
+        let fullLower = url.absoluteString.lowercased()
+        let isWholeFoodsAmazonURL = hostMatches("amazon.com") && (
+            fullLower.contains("wholefoods") || fullLower.contains("dob2xliezvb2rz")
+        )
+        switch normalizeStoreKey(storeKey) {
+        case "walmart": return hostMatches("walmart.com")
+        case "instacart": return hostMatches("instacart.com")
+        case "target": return hostMatches("target.com")
+        case "amazon": return hostMatches("amazon.com") && !isWholeFoodsAmazonURL
+        case "wholefoods": return hostMatches("wholefoodsmarket.com") || isWholeFoodsAmazonURL
+        case "costco": return hostMatches("costco.com")
+        case "sams": return hostMatches("samsclub.com")
+        case "kroger": return krogerBannerDomains.contains { hostMatches($0) }
+        case "aldi": return hostMatches("aldi.us")
+        case "bjs": return hostMatches("bjs.com")
+        case "shipt": return hostMatches("shipt.com")
+        case "doordash": return hostMatches("doordash.com")
+        case "ubereats": return hostMatches("ubereats.com")
+        default: return false
+        }
+    }
+
     private static func isPersistableBrowseURL(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "https",
               let host = url.host,
@@ -224,14 +281,18 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     }
 
     private static func saveLastStoreURL(_ url: URL, for storeKey: String) {
-        guard isPersistableBrowseURL(url) else { return }
+        guard isPersistableBrowseURL(url), urlMatchesStore(url, storeKey: storeKey) else { return }
         UserDefaults.standard.set(url.absoluteString, forKey: "hb_last_live_url_\(storeKey)")
     }
 
     private static func loadLastStoreURL(for storeKey: String) -> URL? {
-        guard let raw = UserDefaults.standard.string(forKey: "hb_last_live_url_\(storeKey)"),
-              let url = validatedHTTPURL(raw),
-              isPersistableBrowseURL(url) else {
+        guard let raw = UserDefaults.standard.string(forKey: "hb_last_live_url_\(storeKey)") else {
+            return nil
+        }
+        guard let url = validatedHTTPURL(raw),
+              isPersistableBrowseURL(url),
+              urlMatchesStore(url, storeKey: storeKey) else {
+            UserDefaults.standard.removeObject(forKey: "hb_last_live_url_\(storeKey)")
             return nil
         }
         return url
@@ -686,12 +747,24 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             return r.width > 2 && r.height > 2;
           }
 
-          var APP_INSTALL_CTA_RE = /^(?:get\\s+the\\s+app|open\\s+in\\s+(?:the\\s+)?(?:walmart\\s+|target\\s+|instacart\\s+|sam'?s\\s+club\\s+|bj'?s\\s+|kroger\\s+|amazon\\s+|aldi\\s+|costco\\s+)?app|open\\s+app|use\\s+(?:the\\s+)?app|download\\s+(?:the\\s+)?app|continue\\s+in\\s+app|shop\\s+in\\s+(?:the\\s+)?app)$/i;
-          var APP_INSTALL_HREF_RE = /(?:apps|itunes)\\.apple\\.com|\\.onelink\\.me|\\.app\\.link|\\bbnc\\.lt\\b|app\\.adjust\\.com|\\.adj\\.st|\\.smart\\.link/i;
+          var APP_INSTALL_CTA_RE = /^(?:get\\s+the\\s+app|open\\s+in\\s+(?:the\\s+)?(?:walmart\\s+|target\\s+|instacart\\s+|sam'?s\\s+club\\s+|bj'?s\\s+|kroger\\s+|amazon\\s+|aldi\\s+|costco\\s+|doordash\\s+|uber\\s*eats\\s+|shipt\\s+)?app|open\\s+app|use\\s+(?:the\\s+)?app|download\\s+(?:the\\s+)?app|continue\\s+in\\s+(?:the\\s+)?app|shop\\s+in\\s+(?:the\\s+)?app|view\\s+in\\s+(?:the\\s+)?app)$/i;
+          var APP_GENERIC_OPEN_CTA_RE = /^(?:open|get|install|download|view)$/i;
+          var APP_UPSELL_BANNER_RE = /\\b(?:browse|shop|order|get\\s+it|checkout)\\s+faster\\s+in\\s+(?:the\\s+)?app\\b|\\bopen\\s+in\\s+(?:the\\s+)?(?:doordash|uber\\s*eats|walmart|target|instacart|costco|kroger|shipt|aldi|sam'?s(?:\\s+club)?|bj'?s|amazon|whole\\s+foods)?\\s*app\\b|\\bget\\s+the\\s+(?:doordash|uber\\s*eats|walmart|target|instacart|costco|kroger|shipt|aldi|sam'?s(?:\\s+club)?|bj'?s|amazon|whole\\s+foods)?\\s*(?:free\\s+)?app\\b|\\bdownload\\s+the\\s+(?:doordash|uber\\s*eats|walmart|target|instacart|costco|kroger|shipt|aldi|sam'?s(?:\\s+club)?|bj'?s|amazon|whole\\s+foods)?\\s*(?:free\\s+)?app\\b|\\buse\\s+the\\s+(?:doordash|uber\\s*eats|walmart|target|instacart|costco|kroger|shipt|aldi|sam'?s(?:\\s+club)?|bj'?s|amazon|whole\\s+foods)?\\s*app\\b|\\bcontinue\\s+in\\s+(?:the\\s+)?app\\b|\\bexperience\\s+(?:the\\s+)?(?:full\\s+)?app\\b|\\b(?:app\\s+store|google\\s+play)\\b.*\\bapp\\b/i;
+          var APP_RATINGS_WITH_APP_RE = /\\b\\d+(?:\\.\\d+)?[mk]\\+?\\s+ratings?\\b/i;
+          var APP_INSTALL_HREF_RE = /(?:apps|itunes)\\.apple\\.com|\\.onelink\\.me|\\.app\\.link|\\bbnc\\.lt\\b|app\\.adjust\\.com|\\.adj\\.st|\\.smart\\.link|^(?:doordash|ubereats|walmart|target|instacart|costco|kroger|shipt|samsclub):\\/\\//i;
           var SENSITIVE_BANNER_PATH_RE = /\\/(?:cart|bag|basket|checkout|gp\\/cart|store\\/cart|shop\\/cart|login|signin|sign-in|account|auth|register)(?:\\/|$)/i;
-          var BANNER_FORBIDDEN_TEXT_RE = /\\$\\s*\\d|\\b(?:cart|bag|basket|checkout|subtotal|total|pickup|delivery|shipping|address|zip\\s*code|sign\\s*in|log\\s*in|account|password|verification|filter|sort|search\\s+results)\\b/i;
+          var BANNER_FORBIDDEN_TEXT_RE = /\\$\\s*\\d|\\b(?:cart|bag|basket|checkout|subtotal|total|pickup|delivery|shipping|address|zip\\s*code|sign\\s*in|log\\s*in|login|account|password|verification|filter|sort|search\\s+results)\\b/i;
+          var APP_BANNER_STRICT_FORBIDDEN_RE = /\\b(?:cart|bag|basket|checkout|subtotal|sign\\s*in|log\\s*in|login|account|password|verification|search\\s+results|enter\\s+delivery\\s+address|your\\s+addr|zip\\s*code)\\b/i;
           var hbBannerLastHref = location.href;
-          var hbBannerScanDeadline = Date.now() + 2600;
+          var hbBannerScanDeadline = Date.now() + 8000;
+
+          function hideBannerNode(el) {
+            if (!el || el.getAttribute('data-hb-app-banner-hidden') === '1') return;
+            el.setAttribute('data-hb-app-banner-hidden', '1');
+            el.style.setProperty('display', 'none', 'important');
+            el.style.setProperty('visibility', 'hidden', 'important');
+            el.style.setProperty('pointer-events', 'none', 'important');
+          }
 
           function ensureAppBannerSuppressorStyles() {
             var meta = document.querySelector('meta[name="apple-itunes-app"]');
@@ -701,7 +774,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             if (!document.getElementById('hb-app-banner-suppressor')) {
               var st = document.createElement('style');
               st.id = 'hb-app-banner-suppressor';
-              st.textContent = '#branch-banner-iframe, .branch-journeys-top, [id^="branch-banner"], [class*="branch-animation"], smart-banner, [data-testid="smart-banner"], [data-testid="app-banner"], [data-testid="download-app-banner"], [data-automation-id="app-banner"], [data-automation-id="smart-banner"], [data-test="smartBanner"], [data-test="appBanner"], [data-hb-app-banner-hidden="1"] { display: none !important; visibility: hidden !important; height: 0 !important; min-height: 0 !important; pointer-events: none !important; overflow: hidden !important; }';
+              st.textContent = '#branch-banner-iframe, .branch-journeys-top, [id^="branch-banner"], [class*="branch-animation"], smart-banner, [data-testid="smart-banner"], [data-testid="app-banner"], [data-testid="download-app-banner"], [data-testid*="SmartAppBanner" i], [data-testid*="app-download" i], [data-testid*="AppDownload" i], [data-testid*="open-app" i], [data-anchor-id*="AppBanner" i], [data-anchor-id*="DownloadApp" i], [data-anchor-id*="OpenApp" i], [aria-label="Open App" i], [aria-label="Open in app" i], [aria-label="Get the app" i], [data-automation-id="app-banner"], [data-automation-id="smart-banner"], [data-test="smartBanner"], [data-test="appBanner"], [data-hb-app-banner-hidden="1"] { display: none !important; visibility: hidden !important; height: 0 !important; min-height: 0 !important; pointer-events: none !important; overflow: hidden !important; }';
               head.appendChild(st);
             }
             if (/(?:^|\\.)samsclub\\.com$/i.test(location.hostname || '') && !document.getElementById('hb-sams-search-fix')) {
@@ -725,7 +798,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             ensureAppBannerSuppressorStyles();
             if (location.href !== hbBannerLastHref) {
               hbBannerLastHref = location.href;
-              hbBannerScanDeadline = Date.now() + 2600;
+              hbBannerScanDeadline = Date.now() + 8000;
             }
             if (Date.now() > hbBannerScanDeadline) return;
             if (SENSITIVE_BANNER_PATH_RE.test(location.pathname || '')) return;
@@ -735,16 +808,18 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             var vh = Math.max(400, window.innerHeight || 844);
             for (var i = 0; i < ctas.length; i++) {
               var cta = ctas[i];
-              if (!cta || (cta.closest && cta.closest('[data-hb-app-banner-hidden="1"], header, nav, footer, [role="contentinfo"], form, [role="dialog"], [aria-modal="true"]'))) continue;
+              if (!cta || (cta.closest && cta.closest('[data-hb-app-banner-hidden="1"], footer, [role="contentinfo"], form, [role="dialog"], [aria-modal="true"]'))) continue;
               var ctaText = clean(cta.textContent || '');
               var href = String((cta.getAttribute && cta.getAttribute('href')) || '');
-              var matchesCta = APP_INSTALL_CTA_RE.test(ctaText) || (cta.tagName === 'A' && APP_INSTALL_HREF_RE.test(href));
-              if (!matchesCta) continue;
+              var isExplicitAppCta = APP_INSTALL_CTA_RE.test(ctaText) || (cta.tagName === 'A' && APP_INSTALL_HREF_RE.test(href));
+              var isGenericOpenCta = !isExplicitAppCta && APP_GENERIC_OPEN_CTA_RE.test(ctaText);
+              if (!isExplicitAppCta && !isGenericOpenCta) continue;
 
+              var inHeaderOrNav = Boolean(cta.closest && cta.closest('header, nav'));
               var bannerEl = null;
               var cur = cta.parentElement;
               var depth = 0;
-              while (cur && depth < 6) {
+              while (cur && depth < 7) {
                 var tag = (cur.tagName || '').toUpperCase();
                 var cid = String(cur.id || '');
                 var role = String((cur.getAttribute && cur.getAttribute('role')) || '').toLowerCase();
@@ -759,9 +834,18 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                   var curText = clean(cur.textContent || '');
                   var txtLen = curText.length;
                   var hasProtectedNodes = Boolean(cur.querySelector && cur.querySelector('header, nav, footer, [role="contentinfo"], form, input, select, textarea, h1, [role="dialog"], [aria-modal="true"]'));
-                  var hasForbiddenCopy = BANNER_FORBIDDEN_TEXT_RE.test(curText);
-                  var anchoredEdge = (pos === 'fixed' || pos === 'sticky' || r.bottom >= vh - 96 || r.top <= 96);
-                  if (!hasProtectedNodes && !hasForbiddenCopy && txtLen <= 320 && r.height >= 36 && r.height <= 240 && r.width >= vw * 0.60 && anchoredEdge) {
+                  var isExplicitUpsellStrip = APP_UPSELL_BANNER_RE.test(curText) || (/\\bapp\\b/i.test(curText) && APP_RATINGS_WITH_APP_RE.test(curText));
+                  if (isGenericOpenCta && !isExplicitUpsellStrip) {
+                    cur = cur.parentElement;
+                    depth++;
+                    continue;
+                  }
+                  var hasForbiddenCopy = isExplicitUpsellStrip
+                    ? APP_BANNER_STRICT_FORBIDDEN_RE.test(curText)
+                    : BANNER_FORBIDDEN_TEXT_RE.test(curText);
+                  var anchoredEdge = (pos === 'fixed' || pos === 'sticky' || r.bottom >= vh - 110 || r.top <= 160);
+                  var maxH = inHeaderOrNav ? 135 : 240;
+                  if (!hasProtectedNodes && !hasForbiddenCopy && txtLen <= 320 && r.height >= 34 && r.height <= maxH && r.width >= vw * 0.60 && anchoredEdge) {
                     bannerEl = cur;
                     break;
                   }
@@ -771,7 +855,6 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               }
 
               if (bannerEl && bannerEl.getAttribute('data-hb-app-banner-hidden') !== '1') {
-                bannerEl.setAttribute('data-hb-app-banner-hidden', '1');
                 var btns = bannerEl.querySelectorAll('button, [role="button"]');
                 for (var b = 0; b < btns.length; b++) {
                   var btn = btns[b];
@@ -787,9 +870,9 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                     break;
                   }
                 }
-                bannerEl.style.setProperty('display', 'none', 'important');
-                bannerEl.style.setProperty('visibility', 'hidden', 'important');
-                bannerEl.style.setProperty('pointer-events', 'none', 'important');
+                hideBannerNode(bannerEl);
+              } else if (inHeaderOrNav && isExplicitAppCta && ctaText.length <= 28) {
+                hideBannerNode(cta);
               }
             }
           }
@@ -1179,6 +1262,53 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             return (m && m[1]) ? humanizeProductSlug(m[1]) : '';
           }
 
+          var hbWmNextDataHref = '';
+          var hbWmNextDataMap = null;
+          function getWalmartNextDataMap() {
+            if (!/(?:^|\\.)walmart\\.com$/i.test(String(location.hostname || ''))) return null;
+            if (hbWmNextDataMap && hbWmNextDataHref === location.href) return hbWmNextDataMap;
+            hbWmNextDataHref = location.href;
+            hbWmNextDataMap = {};
+            try {
+              var scriptEl = document.getElementById('__NEXT_DATA__');
+              if (!scriptEl || !scriptEl.textContent) return hbWmNextDataMap;
+              var root = JSON.parse(scriptEl.textContent);
+              var stack = [root];
+              var visited = 0;
+              while (stack.length > 0 && visited < 5000) {
+                var cur = stack.pop();
+                if (!cur || typeof cur !== 'object') continue;
+                visited++;
+                if (Array.isArray(cur)) {
+                  for (var ai = 0; ai < cur.length && stack.length < 4000; ai++) {
+                    if (cur[ai] && typeof cur[ai] === 'object') stack.push(cur[ai]);
+                  }
+                  continue;
+                }
+                var rawId = cur.usItemId || cur.itemId || (typeof cur.id === 'string' && /^\\d{6,14}$/.test(cur.id) ? cur.id : '');
+                var rawName = typeof cur.name === 'string' ? cur.name : (typeof cur.title === 'string' ? cur.title : '');
+                var rawUpc = typeof cur.upc === 'string' ? cur.upc : (typeof cur.gtin === 'string' ? cur.gtin : (typeof cur.gtin13 === 'string' ? cur.gtin13 : ''));
+                if (rawId && (rawUpc || rawName)) {
+                  var keyId = String(rawId).trim();
+                  var prevRec = hbWmNextDataMap[keyId] || {};
+                  var cleanUpc = String(rawUpc || '').replace(/\\D/g, '');
+                  if (cleanUpc.length === 14 && cleanUpc.indexOf('00') === 0) cleanUpc = cleanUpc.slice(2);
+                  else if (cleanUpc.length === 14 && cleanUpc.indexOf('0') === 0) cleanUpc = cleanUpc.slice(1);
+                  hbWmNextDataMap[keyId] = {
+                    upc: (cleanUpc && isValidGs1Barcode(cleanUpc)) ? cleanUpc : (prevRec.upc || ''),
+                    name: (rawName && rawName.length > (prevRec.name || '').length) ? clean(rawName) : (prevRec.name || '')
+                  };
+                }
+                var keys = Object.keys(cur);
+                for (var ki = 0; ki < keys.length && stack.length < 4000; ki++) {
+                  var v = cur[keys[ki]];
+                  if (v && typeof v === 'object') stack.push(v);
+                }
+              }
+            } catch (_) {}
+            return hbWmNextDataMap;
+          }
+
           function recoverFromCardLinks(cardEl, visibleTitle) {
             var outTitle = visibleTitle || '';
             var hrefKey = '';
@@ -1200,6 +1330,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               }
             }
             var needFullTitle = !outTitle || /(?:\\.\\.\\.|…|[,(\\/-])\\s*$|\\([^)]*$/.test(outTitle);
+            var wmItemId = String((cardEl.getAttribute && cardEl.getAttribute('data-item-id')) || '').trim();
             var links = cardEl.querySelectorAll('a[href]');
             for (var i = 0; i < links.length; i++) {
               var a = links[i];
@@ -1210,6 +1341,10 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               var cleanPath = unwrapped.split('#')[0].split('?')[0];
               if (!hrefKey && cleanPath && cleanPath !== '/' && !/^\\/sp\\/track\\b/i.test(cleanPath)) {
                 hrefKey = cleanPath.slice(0, 140);
+              }
+              if (!wmItemId && cleanPath) {
+                var wmMatch = cleanPath.match(/\\/ip\\/(?:[^/?#]+\\/)?(\\d{6,14})(?:[/?#]|$)/i);
+                if (wmMatch && wmMatch[1]) wmItemId = wmMatch[1];
               }
               if (!barcode && cleanPath) {
                 var bm = cleanPath.match(/(?:^|\\/)(\\d{12,14})(?:[/?#.]|$)/);
@@ -1236,6 +1371,23 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 }
               }
             }
+            if (wmItemId) {
+              var wmMap = getWalmartNextDataMap();
+              var wmEntry = wmMap && wmMap[wmItemId];
+              if (wmEntry) {
+                if (!barcode && wmEntry.upc) barcode = wmEntry.upc;
+                if (
+                  wmEntry.name &&
+                  wmEntry.name.length >= 5 &&
+                  !NON_TITLE_RE.test(wmEntry.name) &&
+                  !CARD_CTA_NOISE_RE.test(wmEntry.name) &&
+                  (needFullTitle || (outTitle && wmEntry.name.length > outTitle.length + 3 && titlesShareTokens(outTitle, wmEntry.name)))
+                ) {
+                  outTitle = wmEntry.name;
+                  needFullTitle = false;
+                }
+              }
+            }
             if (!hrefKey && links.length > 0) {
               hrefKey = String(links[0].getAttribute('href') || '').split('#')[0].split('?')[0].slice(0, 140);
             }
@@ -1258,7 +1410,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               if (best) break;
             }
             if (best && /(?:\\.\\.\\.|…)\\s*$/.test(best)) {
-              var fullSels = ['[data-automation-id*="product-title" i]', 'a[link-identifier]', 'a[aria-label]', '[title]', 'span.w_iUH7', '[class*="w_iUH7"]'];
+              var fullSels = ['[data-test="product-title"]', '[data-test="product-card-title"]', '[data-automation-id*="product-title" i]', 'a[link-identifier]', 'a[aria-label]', '[title]', 'span.w_iUH7', '[class*="w_iUH7"]'];
               var stem = best.replace(/(?:\\.\\.\\.|…)\\s*$/, '').trim().toLowerCase().slice(0, 24);
               for (var fs = 0; fs < fullSels.length; fs++) {
                 var fullEls = cardEl.querySelectorAll(fullSels[fs]);
@@ -1668,7 +1820,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             if (document.getElementById('hb-photo-badge-styles')) return;
             var st = document.createElement('style');
             st.id = 'hb-photo-badge-styles';
-            st.textContent = '.hb-photo-badge-slot{display:flex!important;justify-content:center!important;align-items:center!important;width:100%!important;margin:7px 0 4px 0!important;padding:0!important;position:relative!important;z-index:20!important;pointer-events:none!important;flex:0 0 auto!important;}.hb-photo-badge{position:relative!important;z-index:20!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;min-height:34px!important;gap:6px!important;padding:6px 15px!important;border-radius:999px!important;font:900 17px/1.1 -apple-system,BlinkMacSystemFont,sans-serif!important;font-variant-numeric:tabular-nums!important;letter-spacing:-0.015em!important;color:#fff!important;border:2px solid rgba(255,255,255,0.96)!important;box-shadow:0 4px 12px rgba(15,23,42,0.28)!important;cursor:pointer!important;user-select:none!important;-webkit-user-select:none!important;pointer-events:auto!important;text-decoration:none!important;white-space:nowrap!important;}.hb-photo-badge--overlay{position:absolute!important;bottom:6px!important;left:50%!important;transform:translateX(-50%)!important;}.hb-photo-badge__ic{font-size:20px!important;line-height:1!important;display:inline-block!important;}.hb-photo-badge--green{background:rgba(22,163,74,0.97)!important;}.hb-photo-badge--yellow{background:rgba(217,119,6,0.97)!important;}.hb-photo-badge--red{background:rgba(220,38,38,0.97)!important;}.hb-photo-badge--advisory{box-shadow:0 0 0 2.5px #fbbf24,0 4px 12px rgba(15,23,42,0.3)!important;}.hb-photo-badge--loading{background:rgba(15,23,42,0.82)!important;opacity:0.92!important;}';
+            st.textContent = '.hb-photo-badge-slot{display:flex!important;justify-content:center!important;align-items:center!important;width:100%!important;margin:10px 0 6px 0!important;padding:0!important;position:relative!important;z-index:2147483640!important;pointer-events:none!important;flex:0 0 auto!important;}.hb-photo-badge{position:relative!important;z-index:2147483640!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;min-height:34px!important;gap:6px!important;padding:6px 15px!important;border-radius:999px!important;font:900 17px/1.1 -apple-system,BlinkMacSystemFont,sans-serif!important;font-variant-numeric:tabular-nums!important;letter-spacing:-0.015em!important;color:#fff!important;border:2px solid rgba(255,255,255,0.96)!important;box-shadow:0 4px 12px rgba(15,23,42,0.28)!important;cursor:pointer!important;user-select:none!important;-webkit-user-select:none!important;pointer-events:auto!important;text-decoration:none!important;white-space:nowrap!important;}.hb-photo-badge::before{content:""!important;position:absolute!important;inset:-6px!important;border-radius:999px!important;}.hb-photo-badge--overlay{position:absolute!important;bottom:6px!important;left:50%!important;transform:translateX(-50%)!important;}.hb-photo-badge__ic{font-size:20px!important;line-height:1!important;display:inline-block!important;}.hb-photo-badge--green{background:rgba(22,163,74,0.97)!important;}.hb-photo-badge--yellow{background:rgba(217,119,6,0.97)!important;}.hb-photo-badge--red{background:rgba(220,38,38,0.97)!important;}.hb-photo-badge--advisory{box-shadow:0 0 0 2.5px #fbbf24,0 4px 12px rgba(15,23,42,0.3)!important;}.hb-photo-badge--loading{background:rgba(15,23,42,0.82)!important;opacity:0.92!important;}.hb-photo-badge--check{background:rgba(51,65,85,0.92)!important;font-size:14px!important;font-weight:800!important;padding:5px 12px!important;letter-spacing:0!important;}';
             (document.head || document.documentElement).appendChild(st);
           }
 
@@ -1894,6 +2046,20 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                   photoUnit = cur;
                   break;
                 }
+                var curParentIsVerticalSlotHost =
+                  !isHorizontalCarouselTrack(nextP) &&
+                  !(nextP.closest && nextP.closest('a, button')) &&
+                  containerStacksVertically(nextP);
+                var nextParentIsVertical =
+                  nextP.parentElement &&
+                  nextP.parentElement !== document.body &&
+                  !isHorizontalCarouselTrack(nextP.parentElement) &&
+                  !(nextP.parentElement.closest && nextP.parentElement.closest('a, button')) &&
+                  containerStacksVertically(nextP.parentElement);
+                if (curParentIsVerticalSlotHost && !nextParentIsVertical) {
+                  photoUnit = cur;
+                  break;
+                }
                 var nr = nextP.getBoundingClientRect();
                 if (nr.width >= 44 && nr.height <= maxMediaH) {
                   photoUnit = nextP;
@@ -1976,11 +2142,18 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             if (chosenImg && fallbackAnchor) {
               var ancRect = fallbackAnchor.getBoundingClientRect();
               var liveImgRect = chosenImg.getBoundingClientRect();
-              if (liveImgRect.height >= 40 && ancRect.height > liveImgRect.height + 90) {
-                var relTop = Math.max(6, Math.round((liveImgRect.bottom - ancRect.top) - 40));
-                if (relTop < ancRect.height - 36) {
-                  badge.style.setProperty('top', relTop + 'px', 'important');
+              if (liveImgRect.height >= 40) {
+                var spaceBelowImg = ancRect.bottom - liveImgRect.bottom;
+                if (spaceBelowImg >= 42) {
+                  var belowTop = Math.max(6, Math.round((liveImgRect.bottom - ancRect.top) + 8));
+                  badge.style.setProperty('top', belowTop + 'px', 'important');
                   badge.style.setProperty('bottom', 'auto', 'important');
+                } else if (ancRect.height > liveImgRect.height + 90) {
+                  var relTop = Math.max(6, Math.round((liveImgRect.bottom - ancRect.top) - 40));
+                  if (relTop < ancRect.height - 36) {
+                    badge.style.setProperty('top', relTop + 'px', 'important');
+                    badge.style.setProperty('bottom', 'auto', 'important');
+                  }
                 }
               }
             }
@@ -2149,7 +2322,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 if (!qe.cardEl || !qe.cardEl.isConnected) continue;
                 var qr = qe.cardEl.getBoundingClientRect();
                 if (qr.bottom > 40 && qr.top < vhNow - 20 && qr.right > 0 && qr.left < vwNow) onScreen.push(qe);
-                else if (qr.bottom > -220 && qr.top < vhNow + 260 && qr.right > -340 && qr.left < vwNow + 340) nearScreen.push(qe);
+                else if (qr.bottom > -180 && qr.top < vhNow + 220 && qr.right > -120 && qr.left < vwNow + 140) nearScreen.push(qe);
                 else offScreen.push(qe);
               }
               hbPendingQueue = onScreen.concat(nearScreen, offScreen);
@@ -2204,6 +2377,13 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             badge.setAttribute('aria-label', 'HeyBroc score ' + sc + ' out of 100' + (labelTitle ? ' for ' + labelTitle : ''));
           }
 
+          function applyCheckBadgeAppearance(badge, labelTitle) {
+            var overlayCls = badge.classList.contains('hb-photo-badge--overlay') ? ' hb-photo-badge--overlay' : '';
+            badge.className = 'hb-photo-badge hb-photo-badge--check' + overlayCls;
+            setHbBadgeContent(badge, '🥦', 'Check');
+            badge.setAttribute('aria-label', 'Open product page to read live ingredients for ' + (labelTitle || 'this item'));
+          }
+
           function processVisibleCard(cardEl) {
             if (!cardEl || !cardEl.isConnected || isCheckoutUrl()) return;
             var info = readCardInfo(cardEl);
@@ -2226,7 +2406,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             }
             var cachedScore = readTitleBadgeScore(info.title);
             if (cachedScore) {
-              if (cachedScore.isCategoryEstimate) {
+              if (cachedScore.suppressedNonFood) {
                 if (hbCardState) {
                   hbCardState.set(cardEl, {
                     id: '',
@@ -2239,6 +2419,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                     slotEl: null,
                     resolved: true,
                     suppressedEstimate: true,
+                    isCheckBadge: false,
                     retryCount: 0,
                     retryAfter: 0,
                     openOnResolve: false
@@ -2254,7 +2435,12 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               cb.setAttribute('tabindex', '0');
               cb.setAttribute('data-hb-card-id', cachedCardId);
               cb.setAttribute('data-hb-sig', info.sig);
-              applyScoredBadgeAppearance(cb, cachedScore, info.title);
+              var isCachedCheck = Boolean(cachedScore.checkLabel || cachedScore.isCategoryEstimate);
+              if (isCachedCheck) {
+                applyCheckBadgeAppearance(cb, info.title);
+              } else {
+                applyScoredBadgeAppearance(cb, cachedScore, info.title);
+              }
               var cSlot = mountBadgeUnderOrOnPhoto(info.chosenImg, cardEl, cb, info.anchor);
               if (hbCardState) {
                 hbCardState.set(cardEl, {
@@ -2268,6 +2454,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                   slotEl: cSlot,
                   resolved: true,
                   suppressedEstimate: false,
+                  isCheckBadge: isCachedCheck,
                   retryCount: 0,
                   retryAfter: 0,
                   openOnResolve: false
@@ -2364,7 +2551,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                   hbIntersectionObs.unobserve(entries[i].target);
                   processVisibleCard(entries[i].target);
                 }
-              }, { rootMargin: '220px 340px' });
+              }, { rootMargin: '180px 120px' });
             }
             var onPdp = Boolean(findOpenProductModal()) || looksLikeProductUrl(location.href);
             var maxCardW = onPdp ? 360 : Math.max(580, (window.innerWidth || 390) + 32);
@@ -2465,8 +2652,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 cardRect.height > 0 &&
                 cardRect.bottom >= -140 &&
                 cardRect.top <= vh + 180 &&
-                cardRect.right >= -340 &&
-                cardRect.left <= vwNow + 340;
+                cardRect.right >= -120 &&
+                cardRect.left <= vwNow + 140;
               actions.push({
                 kind: nearVp ? 'process' : 'observe',
                 card: card,
@@ -2543,33 +2730,40 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
               var entry = badgeMap[id];
               if (!entry || !entry.ok) {
-                removeBadgeDom(badge, st ? st.slotEl : null);
+                var isTransient = Boolean(entry && entry.transient);
+                var isConfirmedNonFood = Boolean(entry && entry.isNonFood);
+                if (isConfirmedNonFood) {
+                  removeBadgeDom(badge, st ? st.slotEl : null);
+                  if (st) {
+                    st.openOnResolve = false;
+                    st.badgeEl = null;
+                    st.slotEl = null;
+                    st.suppressedEstimate = true;
+                    if (st.title) cacheTitleBadgeScore(st.title, { suppressedNonFood: true });
+                  }
+                  continue;
+                }
+                if (isTransient && st && (st.retryCount || 0) < 4) {
+                  removeBadgeDom(badge, st.slotEl);
+                  st.badgeEl = null;
+                  st.slotEl = null;
+                  st.retryCount = (st.retryCount || 0) + 1;
+                  var serverRetryMs = Number(entry && entry.retryAfterMs) || 0;
+                  var fallbackDelay = st.retryCount === 1 ? 2200 : (st.retryCount === 2 ? 4800 : 8500);
+                  var delay = serverRetryMs > 0 ? Math.min(62000, Math.max(2200, serverRetryMs)) : fallbackDelay;
+                  st.retryAfter = Date.now() + delay;
+                  if (!earliestRetryMs || delay < earliestRetryMs) earliestRetryMs = delay;
+                  continue;
+                }
+                var unindexedTitle = st ? st.title : '';
+                applyCheckBadgeAppearance(badge, unindexedTitle);
+                if (unindexedTitle) cacheTitleBadgeScore(unindexedTitle, { checkLabel: true });
                 if (st) {
                   var wantOpenFail = Boolean(st.openOnResolve);
                   st.openOnResolve = false;
-                  st.badgeEl = null;
-                  st.slotEl = null;
-                  var prevRetries = st.retryCount || 0;
-                  var isTransient = Boolean(entry && entry.transient);
-                  var isConfirmedNonFood = Boolean(entry && entry.isNonFood);
-                  if (isTransient && prevRetries < 4) {
-                    st.retryCount = prevRetries + 1;
-                    var serverRetryMs = Number(entry && entry.retryAfterMs) || 0;
-                    var fallbackDelay = st.retryCount === 1 ? 2200 : (st.retryCount === 2 ? 4800 : 8500);
-                    var delay = serverRetryMs > 0 ? Math.min(62000, Math.max(2200, serverRetryMs)) : fallbackDelay;
-                    st.retryAfter = Date.now() + delay;
-                    if (!earliestRetryMs || delay < earliestRetryMs) earliestRetryMs = delay;
-                  } else if (!isConfirmedNonFood && prevRetries < 1) {
-                    st.retryCount = prevRetries + 1;
-                    var missDelay = 18000;
-                    st.retryAfter = Date.now() + missDelay;
-                    if (!earliestRetryMs || missDelay < earliestRetryMs) earliestRetryMs = missDelay;
-                  } else {
-                    st.suppressedEstimate = true;
-                    if (isConfirmedNonFood && st.title) {
-                      cacheTitleBadgeScore(st.title, { isCategoryEstimate: true });
-                    }
-                  }
+                  st.resolved = true;
+                  st.isCheckBadge = true;
+                  st.suppressedEstimate = false;
                   if (wantOpenFail && st.title) {
                     window.webkit.messageHandlers.heybrocStoreBridge.postMessage({
                       kind: 'inspectCard',
@@ -2584,16 +2778,15 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               }
 
               if (entry.isCategoryEstimate) {
-                if (st && st.title) {
-                  cacheTitleBadgeScore(st.title, { isCategoryEstimate: true });
-                }
-                removeBadgeDom(badge, st ? st.slotEl : null);
+                var estTitle = st ? st.title : '';
+                applyCheckBadgeAppearance(badge, estTitle);
+                if (estTitle) cacheTitleBadgeScore(estTitle, { checkLabel: true });
                 if (st) {
                   var wantOpenEst = Boolean(st.openOnResolve);
                   st.openOnResolve = false;
-                  st.badgeEl = null;
-                  st.slotEl = null;
-                  st.suppressedEstimate = true;
+                  st.resolved = true;
+                  st.isCheckBadge = true;
+                  st.suppressedEstimate = false;
                   if (wantOpenEst && st.title) {
                     window.webkit.messageHandlers.heybrocStoreBridge.postMessage({
                       kind: 'inspectCard',
@@ -2611,6 +2804,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               applyScoredBadgeAppearance(badge, entry, labelTitle);
               if (st) {
                 st.resolved = true;
+                st.isCheckBadge = false;
                 if (st.title) {
                   cacheTitleBadgeScore(st.title, {
                     cardId: id,
@@ -2646,6 +2840,73 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             scanPhotoBadges();
           };
 
+          window.__heybrocCacheTitleScore = function(title, entry) {
+            if (!title || !entry || !entry.ok) return;
+            var key = makeTitleScoreKey(title);
+            if (!key) return;
+            cacheTitleBadgeScore(title, {
+              score: entry.score,
+              hasAlert: Boolean(entry.hasAlert),
+              alertSeverity: entry.alertSeverity || 'none',
+              alertIcon: entry.alertIcon || '',
+              isCategoryEstimate: false
+            });
+            var mounted = document.querySelectorAll('.hb-photo-badge--check, .hb-photo-badge--loading');
+            for (var mi = 0; mi < mounted.length; mi++) {
+              var mb = mounted[mi];
+              var mcid = mb.getAttribute('data-hb-card-id') || '';
+              var mOwner = mcid ? hbOwnerCardById[mcid] : null;
+              var mSt = (mOwner && hbCardState) ? hbCardState.get(mOwner) : null;
+              if (mSt && mSt.title && makeTitleScoreKey(mSt.title) === key) {
+                applyScoredBadgeAppearance(mb, entry, mSt.title);
+                mSt.resolved = true;
+                mSt.isCheckBadge = false;
+              }
+            }
+          };
+
+          var hbAllowCheckNavUntil = 0;
+
+          function openCardProductPage(ownerCard) {
+            if (!ownerCard) return false;
+            var links = ownerCard.querySelectorAll ? ownerCard.querySelectorAll('a[href]') : [];
+            var chosenLink = null;
+            for (var i = 0; i < links.length; i++) {
+              var a = links[i];
+              if (a.closest && a.closest('.hb-photo-badge, .hb-photo-badge-slot')) continue;
+              var rawHref = String(a.getAttribute('href') || '').trim();
+              if (!rawHref || rawHref === '#' || /^javascript:/i.test(rawHref)) continue;
+              if (isRealProductHrefPath(unwrapProductHref(rawHref))) {
+                chosenLink = a;
+                break;
+              }
+              if (!chosenLink) chosenLink = a;
+            }
+            if (chosenLink) {
+              var fullUrl = chosenLink.href || '';
+              try {
+                hbAllowCheckNavUntil = Date.now() + 400;
+                chosenLink.click();
+                return true;
+              } catch (_) {}
+              if (fullUrl && /^https:\\/\\//i.test(fullUrl)) {
+                window.webkit.messageHandlers.heybrocStoreBridge.postMessage({
+                  kind: 'openCardUrl',
+                  url: fullUrl
+                });
+                return true;
+              }
+            }
+            if (ownerCard.getAttribute && (ownerCard.getAttribute('role') === 'button' || ownerCard.tagName === 'BUTTON')) {
+              try {
+                hbAllowCheckNavUntil = Date.now() + 400;
+                ownerCard.click();
+                return true;
+              } catch (_) {}
+            }
+            return false;
+          }
+
           function activateHbPhotoBadge(badge, e) {
             if (!badge) return;
             e.preventDefault();
@@ -2654,6 +2915,10 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             var cardId = badge.getAttribute('data-hb-card-id') || '';
             var badgeSig = badge.getAttribute('data-hb-sig') || '';
             var ownerCard = (cardId && hbOwnerCardById[cardId]) ? hbOwnerCardById[cardId] : (badge.closest ? badge.closest(CARD_SEL) : null);
+            var st = (ownerCard && hbCardState) ? hbCardState.get(ownerCard) : null;
+            if ((badge.classList && badge.classList.contains('hb-photo-badge--check')) || (st && st.isCheckBadge)) {
+              if (openCardProductPage(ownerCard)) return;
+            }
             if (cardId) {
               hbPinnedCardId = cardId;
               hbPinnedScrollY = window.scrollY || 0;
@@ -2662,7 +2927,6 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               hbPinnedRectLeft = pinRect ? pinRect.left : 0;
               hbPinnedRectTop = pinRect ? pinRect.top : 0;
             }
-            var st = (ownerCard && hbCardState) ? hbCardState.get(ownerCard) : null;
             var liveInfo = ownerCard ? readCardInfo(ownerCard) : null;
             if (ownerCard && liveInfo && badgeSig && liveInfo.sig !== badgeSig) {
               if (st) removeCardBadgeState(ownerCard, st);
@@ -2707,8 +2971,23 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           }
 
           function badgeFromEvent(e) {
+            if (Date.now() < hbAllowCheckNavUntil) return null;
             var el = eventTargetEl(e);
-            return (el && el.closest) ? el.closest('.hb-photo-badge') : null;
+            var direct = (el && el.closest) ? el.closest('.hb-photo-badge') : null;
+            if (direct) return direct;
+            var pt = (e && e.changedTouches && e.changedTouches[0]) || (e && e.touches && e.touches[0]) || e;
+            var cx = pt && typeof pt.clientX === 'number' ? pt.clientX : null;
+            var cy = pt && typeof pt.clientY === 'number' ? pt.clientY : null;
+            if (cx !== null && cy !== null && (cx !== 0 || cy !== 0)) {
+              var allBadges = document.querySelectorAll('.hb-photo-badge');
+              for (var bi = 0; bi < allBadges.length; bi++) {
+                var br = allBadges[bi].getBoundingClientRect();
+                if (br.width > 0 && br.height > 0 && cx >= br.left - 6 && cx <= br.right + 6 && cy >= br.top - 6 && cy <= br.bottom + 6) {
+                  return allBadges[bi];
+                }
+              }
+            }
+            return null;
           }
 
           function stopBadgePointerEvent(e) {
@@ -2718,7 +2997,9 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             }
           }
 
+          document.addEventListener('touchstart', stopBadgePointerEvent, true);
           document.addEventListener('pointerdown', stopBadgePointerEvent, true);
+          document.addEventListener('pointerup', stopBadgePointerEvent, true);
           document.addEventListener('mousedown', stopBadgePointerEvent, true);
           document.addEventListener('mouseup', stopBadgePointerEvent, true);
           document.addEventListener('touchend', stopBadgePointerEvent, true);
@@ -2732,8 +3013,23 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
           document.addEventListener('click', function(e) {
             var badge = badgeFromEvent(e);
-            if (!badge) return;
-            activateHbPhotoBadge(badge, e);
+            if (badge) {
+              activateHbPhotoBadge(badge, e);
+              return;
+            }
+            var t = e && e.target;
+            if (t && t.nodeType === 3) t = t.parentElement;
+            var cta = t && t.closest ? t.closest('a, button, [role="button"]') : null;
+            if (cta) {
+              var ctaHref = String((cta.getAttribute && cta.getAttribute('href')) || '');
+              var ctaTxt = clean(cta.textContent || '');
+              if ((cta.tagName === 'A' && APP_INSTALL_HREF_RE.test(ctaHref)) || (ctaTxt.length <= 28 && APP_INSTALL_CTA_RE.test(ctaTxt))) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                hideBannerNode(cta);
+              }
+            }
           }, true);
 
           document.addEventListener('keydown', function(e) {
@@ -3288,6 +3584,9 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         guard let key = sender.accessibilityIdentifier,
               let chosen = Self.stores.first(where: { $0.key == key }) else { return }
         let wasAlreadyActive = (chosen.key == activeStore.key)
+        if !wasAlreadyActive, let curURL = storeWebView?.url {
+            Self.saveLastStoreURL(curURL, for: activeStore.key)
+        }
         activeStore = chosen
         HeyBrocSharedPrefs.activeStore = chosen.apiStoreKey
         onPreferencesUpdated?()
@@ -3309,6 +3608,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             : (Self.loadLastStoreURL(for: chosen.key) ?? URL(string: chosen.homeURL))
         if let url = targetURL {
             if didStartInitialLoad && view.window != nil {
+                storeWebView?.stopLoading()
                 storeWebView?.load(URLRequest(url: url))
             } else {
                 pendingInitialURL = url
@@ -3461,6 +3761,29 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                         self.setBubbleIdleState()
                     }
                 } else {
+                    if !isPassiveCard && !summary.isCategoryEstimate {
+                        HeyBrocNativeScannerAPI.cacheVerifiedScreenScan(title: title, barcode: barcode, summary: summary)
+                        if !summary.title.isEmpty && summary.title.caseInsensitiveCompare(title) != .orderedSame {
+                            HeyBrocNativeScannerAPI.cacheVerifiedScreenScan(title: summary.title, barcode: barcode, summary: summary)
+                        }
+                        let isPestOnly = !summary.dietaryAlerts.isEmpty && summary.dietaryAlerts.allSatisfy({ $0.id == "pesticide_risk" })
+                        let entryObj: [String: Any] = [
+                            "ok": true,
+                            "score": summary.score,
+                            "hasAlert": !summary.dietaryAlerts.isEmpty,
+                            "alertSeverity": summary.alertSeverity,
+                            "alertIcon": isPestOnly ? "🌱" : "⚠️"
+                        ]
+                        if let titleData = try? JSONSerialization.data(withJSONObject: [title]),
+                           let titleArrStr = String(data: titleData, encoding: .utf8),
+                           let entryData = try? JSONSerialization.data(withJSONObject: entryObj),
+                           let entryStr = String(data: entryData, encoding: .utf8) {
+                            self.storeWebView?.evaluateJavaScript(
+                                "window.__heybrocCacheTitleScore && window.__heybrocCacheTitleScore((\(titleArrStr))[0], \(entryStr));",
+                                completionHandler: nil
+                            )
+                        }
+                    }
                     self.applySummaryToBubble(summary)
                 }
             case .failure:
@@ -3698,10 +4021,15 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                                 "isCategoryEstimate": sum.isCategoryEstimate
                             ]
                         } else {
+                            let itemNonFood = outcome.nonFoodIds.contains(id)
+                            let itemTransient = !itemNonFood && (outcome.isTransientError || outcome.transientIds.contains(id))
                             var failEntry: [String: Any] = [
                                 "ok": false,
-                                "transient": outcome.isTransientError
+                                "transient": itemTransient
                             ]
+                            if itemNonFood {
+                                failEntry["isNonFood"] = true
+                            }
                             if let retrySec = outcome.retryAfterSec, retrySec > 0 {
                                 failEntry["retryAfterMs"] = retrySec * 1000
                             }
@@ -3770,6 +4098,15 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                             self.setBubbleIdleState()
                         }
                     }
+                }
+            } else if kind == "openCardUrl" {
+                let rawUrl = ((body["url"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if let url = URL(string: rawUrl),
+                   url.scheme?.lowercased() == "https",
+                   let host = url.host,
+                   Self.isAllowedRetailerHost(host) {
+                    self.setBubbleScanningState()
+                    self.storeWebView?.load(URLRequest(url: url))
                 }
             }
         }

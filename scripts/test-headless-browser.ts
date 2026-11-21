@@ -2883,6 +2883,367 @@ async function main() {
     );
     console.log("   ✓ Instacart slide-over Cart Drawer suppresses background scanning with 0 flicker!");
 
+    // 6C: 2D Horizontal Carousel Viewport Gating (off-screen horizontal cards wait until scrolled into view)
+    const carouselHtml = `
+      <main style="padding:8px; margin:0;">
+        <div id="hb-test-carousel" style="display:flex; flex-direction:row; gap:10px; overflow-x:auto; width:374px; padding:4px 0;">
+          ${Array.from({ length: 8 }, (_, idx) => `
+            <div data-testid="item-card" style="flex:0 0 170px; width:170px; min-height:220px; display:flex; flex-direction:column;">
+              <img src="https://i5.walmartimages.com/asr/car-${idx}.jpg" width="140" height="140" alt="Carousel Food ${idx}" style="width:140px;height:140px;display:block;" />
+              <a href="/ip/carousel-item-${idx}/1000${idx}">Great Value Organic Pasta Sauce Variant ${idx + 1}, 24 oz</a>
+            </div>
+          `).join("")}
+        </div>
+      </main>
+    `;
+    await storePage.navigate("https://www.walmart.com/browse/food/976759");
+    await storePage.eval(`
+      if (!document.querySelector('meta[name="viewport"]')) {
+        const mv = document.createElement('meta');
+        mv.name = 'viewport';
+        mv.content = 'width=device-width, initial-scale=1';
+        document.head.appendChild(mv);
+      }
+      document.body.innerHTML = ${JSON.stringify(carouselHtml)};
+      window.__carBatchTitles = [];
+      window.__heybrocBridgeSecret = ${JSON.stringify(androidBridgeSecret)};
+      window.heybrocAndroidBridge = {
+        postMessage: function(rawJson) {
+          const msg = JSON.parse(rawJson);
+          if (msg._hbSec !== ${JSON.stringify(androidBridgeSecret)}) return;
+          if (msg.kind === "gridBatch" && Array.isArray(msg.items)) {
+            const respMap = {};
+            for (const it of msg.items) {
+              window.__carBatchTitles.push(String(it.productTitle || it.title || ""));
+              respMap[it.id] = { ok: true, score: 88, hasAlert: false, alertSeverity: "none" };
+            }
+            setTimeout(function() {
+              window.__heybrocApplyCardBadges && window.__heybrocApplyCardBadges(respMap, msg.pageToken);
+            }, 30);
+          }
+        }
+      };
+    `);
+    await storePage.eval(androidDetectorJS, false);
+    await sleep(750);
+    const carBefore = await storePage.eval<{ count: number; hasCard7: boolean; hasCard8: boolean }>(`({
+      count: (window.__carBatchTitles || []).length,
+      hasCard7: (window.__carBatchTitles || []).some((t) => t.includes("Variant 7")),
+      hasCard8: (window.__carBatchTitles || []).some((t) => t.includes("Variant 8")),
+    })`);
+    assert(
+      carBefore.count >= 1 && !carBefore.hasCard7 && !carBefore.hasCard8,
+      `2D horizontal carousel gating failed: far off-screen cards queued prematurely: ${JSON.stringify(carBefore)}`,
+    );
+    await storePage.eval(`
+      const car = document.getElementById("hb-test-carousel");
+      if (car) {
+        car.scrollLeft = 1050;
+        car.dispatchEvent(new Event("scroll", { bubbles: true }));
+      }
+      window.dispatchEvent(new Event("scroll"));
+    `);
+    await sleep(750);
+    const carAfter = await storePage.eval<{ hasCard7: boolean; hasCard8: boolean }>(`({
+      hasCard7: (window.__carBatchTitles || []).some((t) => t.includes("Variant 7")),
+      hasCard8: (window.__carBatchTitles || []).some((t) => t.includes("Variant 8")),
+    })`);
+    assert(
+      carAfter.hasCard7 || carAfter.hasCard8,
+      `2D horizontal carousel did not queue newly revealed cards after horizontal scroll: ${JSON.stringify(carAfter)}`,
+    );
+    console.log("   ✓ 2D horizontal carousel viewport gating holds far off-screen cards and scans upon horizontal swipe!");
+
+    // 6D: Sam's Club 2-Column List Card Below-Photo Placement & Stretched-Link Tap-Hijack Immunity
+    const samsCrabHtml = `
+      <main style="padding:10px; margin:0; width:370px;">
+        <div class="sc-pc-medium-desktop-card-canary" style="position:relative; display:flex; flex-direction:row; gap:12px; padding:10px; border:1px solid #e2e8f0; border-radius:12px; background:#fff;">
+          <div id="sams-crab-photo-col" style="position:relative; display:flex; flex-direction:column; width:136px; flex:0 0 136px;">
+            <img id="sams-crab-img" src="https://scene7.samsclub.com/is/image/samsclub/crab-cakes.jpg" width="136" height="136" alt="Member's Mark Wild Caught Handmade Crab Cakes" style="width:136px;height:136px;display:block;object-fit:contain;" />
+            <a id="sams-stretched-link" href="/p/members-mark-wild-caught-handmade-crab-cakes/prod999111" style="position:absolute; inset:0; z-index:50; display:block;" aria-label="Member's Mark Wild Caught Handmade Crab Cakes, Frozen, 6 ct."></a>
+          </div>
+          <div style="flex:1 1 auto; display:flex; flex-direction:column; gap:6px;">
+            <a href="/p/members-mark-wild-caught-handmade-crab-cakes/prod999111" style="font-size:15px; font-weight:600; color:#0f172a; text-decoration:none;">
+              Member's Mark Wild Caught Handmade Crab Cakes, Frozen, 6 ct.
+            </a>
+            <div style="font-size:14px; color:#334155;">Frozen Seafood · 6 ct.</div>
+          </div>
+        </div>
+      </main>
+    `;
+    await storePage.navigate("https://www.samsclub.com/s/crab%20cakes");
+    await storePage.eval(`
+      document.body.innerHTML = ${JSON.stringify(samsCrabHtml)};
+      window.__samsBatchItems = [];
+      window.__samsPageToken = "";
+      window.__samsInspects = [];
+      window.__samsNavigated = false;
+      window.__heybrocBridgeSecret = ${JSON.stringify(androidBridgeSecret)};
+      window.heybrocAndroidBridge = {
+        postMessage: function(rawJson) {
+          const msg = JSON.parse(rawJson);
+          if (msg._hbSec !== ${JSON.stringify(androidBridgeSecret)}) return;
+          if (msg.kind === "gridBatch" && Array.isArray(msg.items)) {
+            window.__samsPageToken = msg.pageToken || "";
+            window.__samsBatchItems.push(...msg.items);
+          } else if (msg.kind === "inspectCard") {
+            window.__samsInspects.push(msg);
+          }
+        }
+      };
+      document.getElementById("sams-stretched-link")?.addEventListener("click", function(ev) {
+        if (!ev.defaultPrevented) {
+          window.__samsNavigated = true;
+          ev.preventDefault();
+        }
+      });
+    `);
+    await storePage.eval(androidDetectorJS, false);
+    await storePage.waitFor(`(window.__samsBatchItems || []).length >= 1`, "Sam's Club Crab Cakes card to queue");
+    const samsCrabCheck = await storePage.eval<{
+      isOverlay: boolean;
+      inSlot: boolean;
+      belowImage: boolean;
+      badgeTop: number;
+      imgBottom: number;
+      inspectCount: number;
+      inspectTitle: string;
+      navigated: boolean;
+      clickPrevented: boolean;
+    }>(`(() => {
+      const item = window.__samsBatchItems[0];
+      const map = {};
+      map[item.id] = { ok: true, score: 18, hasAlert: false, alertSeverity: "none" };
+      window.__heybrocApplyCardBadges(map, window.__samsPageToken);
+      const badge = document.querySelector('.hb-photo-badge[data-hb-card-id="' + item.id + '"]');
+      const img = document.getElementById("sams-crab-img");
+      const stretchedLink = document.getElementById("sams-stretched-link");
+      const br = badge.getBoundingClientRect();
+      const ir = img.getBoundingClientRect();
+      // Simulate tapping directly at the badge center, dispatched on the stretched <a> overlay!
+      const clickEv = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        clientX: br.left + br.width / 2,
+        clientY: br.top + br.height / 2,
+      });
+      stretchedLink.dispatchEvent(clickEv);
+      return {
+        isOverlay: badge.classList.contains("hb-photo-badge--overlay"),
+        inSlot: Boolean(badge.closest(".hb-photo-badge-slot")),
+        belowImage: br.top >= ir.bottom - 2,
+        badgeTop: Math.round(br.top),
+        imgBottom: Math.round(ir.bottom),
+        inspectCount: window.__samsInspects.length,
+        inspectTitle: String(window.__samsInspects[0]?.title || ""),
+        navigated: Boolean(window.__samsNavigated),
+        clickPrevented: Boolean(clickEv.defaultPrevented),
+      };
+    })()`);
+    assert(
+      !samsCrabCheck.isOverlay && samsCrabCheck.inSlot && samsCrabCheck.belowImage,
+      `Sam's Club Crab Cakes badge must mount cleanly BELOW the photo (not overlay): ${JSON.stringify(samsCrabCheck)}`,
+    );
+    assert(
+      samsCrabCheck.inspectCount >= 1 &&
+        /Crab Cakes/i.test(samsCrabCheck.inspectTitle) &&
+        !samsCrabCheck.navigated &&
+        samsCrabCheck.clickPrevented,
+      `Sam's Club stretched-link tap-hijack protection failed: ${JSON.stringify(samsCrabCheck)}`,
+    );
+    console.log(
+      `   ✓ Sam's Club Crab Cakes mounts cleanly below photo (imgBottom=${samsCrabCheck.imgBottom}px, badgeTop=${samsCrabCheck.badgeTop}px) & blocks stretched-link tap hijack!`,
+    );
+
+    // 6E: Option A "🥦 Check" Pill vs Blank Non-Food + Per-Item Transient Fast-Retry + PDP Hydration
+    const optionAHtml = `
+      <main style="padding:10px; display:grid; grid-template-columns:1fr 1fr; gap:10px; width:370px;">
+        <div data-testid="item-card" style="display:flex; flex-direction:column;">
+          <img src="https://i5.walmartimages.com/asr/nonfood.jpg" width="130" height="130" alt="Glass Jar" />
+          <a href="/ip/ball-mason-jar/2001">Ball Wide Mouth Glass Canning Jar, 32 oz</a>
+        </div>
+        <div data-testid="item-card" style="display:flex; flex-direction:column;">
+          <img src="https://i5.walmartimages.com/asr/unindexed.jpg" width="130" height="130" alt="Artisan Dip" />
+          <a id="unindexed-food-link" href="/ip/local-artisan-garlic-dip/2002">Small Batch Local Artisan Roasted Garlic Dip, 8 oz</a>
+        </div>
+        <div data-testid="item-card" style="display:flex; flex-direction:column;">
+          <img src="https://i5.walmartimages.com/asr/transient.jpg" width="130" height="130" alt="Organic Salsa" />
+          <a href="/ip/transient-salsa/2003">Mesa Verde Organic Fire Roasted Salsa, 16 oz</a>
+        </div>
+      </main>
+    `;
+    await storePage.navigate("https://www.walmart.com/search?q=dips");
+    await storePage.eval(`
+      if (!document.querySelector('meta[name="viewport"]')) {
+        const mv = document.createElement('meta');
+        mv.name = 'viewport';
+        mv.content = 'width=device-width, initial-scale=1';
+        document.head.appendChild(mv);
+      }
+      document.body.innerHTML = ${JSON.stringify(optionAHtml)};
+      window.__optABatch = [];
+      window.__optAPageToken = "";
+      window.__optAOpenUrls = [];
+      window.__optALinkClicked = false;
+      window.__heybrocBridgeSecret = ${JSON.stringify(androidBridgeSecret)};
+      window.heybrocAndroidBridge = {
+        postMessage: function(rawJson) {
+          const msg = JSON.parse(rawJson);
+          if (msg._hbSec !== ${JSON.stringify(androidBridgeSecret)}) return;
+          if (msg.kind === "gridBatch" && Array.isArray(msg.items)) {
+            window.__optAPageToken = msg.pageToken || "";
+            window.__optABatch.push(...msg.items);
+          } else if (msg.kind === "openCardUrl") {
+            window.__optAOpenUrls.push(msg.url);
+          }
+        }
+      };
+      document.getElementById("unindexed-food-link")?.addEventListener("click", function(ev) {
+        window.__optALinkClicked = true;
+        ev.preventDefault();
+      });
+    `);
+    await storePage.eval(androidDetectorJS, false);
+    await storePage.waitFor(`(window.__optABatch || []).length >= 3`, "Option A cards to queue");
+    const optACheck = await storePage.eval<{
+      nonFoodBadgeRemoved: boolean;
+      checkPillRendered: boolean;
+      checkPillText: string;
+      checkExcludedFromVisibleIds: boolean;
+      checkTapNavigatedToPdp: boolean;
+      upgradedScoreTextAfterPdpCache: string;
+      transientClearedForRetry: boolean;
+    }>(`(() => {
+      const byTitle = (sub) => window.__optABatch.find((it) => String(it.productTitle || it.title || "").includes(sub));
+      const nonFood = byTitle("Canning Jar");
+      const unindexed = byTitle("Artisan Roasted Garlic Dip");
+      const trans = byTitle("Fire Roasted Salsa");
+      const map = {};
+      map[nonFood.id] = { ok: false, isNonFood: true, transient: false };
+      map[unindexed.id] = { ok: false, isNonFood: false, transient: false };
+      map[trans.id] = { ok: false, isNonFood: false, transient: true };
+      window.__heybrocApplyCardBadges(map, window.__optAPageToken);
+
+      const nonFoodBadge = document.querySelector('.hb-photo-badge[data-hb-card-id="' + nonFood.id + '"]');
+      const checkBadge = document.querySelector('.hb-photo-badge[data-hb-card-id="' + unindexed.id + '"]');
+      const visIds = window.__heybrocGetVisibleCardIds ? window.__heybrocGetVisibleCardIds() : [];
+      const checkExcludedFromVisibleIds = !visIds.includes(unindexed.id);
+      const checkPillRendered = Boolean(checkBadge && checkBadge.classList.contains("hb-photo-badge--check"));
+      const checkPillText = String(checkBadge?.textContent || "").trim();
+
+      // Tap "Check" pill -> should trigger card product link click (or openCardUrl)
+      if (checkBadge) checkBadge.click();
+      const checkTapNavigatedToPdp = Boolean(window.__optALinkClicked || window.__optAOpenUrls.length > 0);
+
+      // Simulate PDP verified scan hydrating the grid cache
+      window.__heybrocCacheTitleScore(unindexed.productTitle || unindexed.title, { ok: true, score: 84, hasAlert: false, alertSeverity: "none" });
+      const upgradedBadge = document.querySelector('.hb-photo-badge[data-hb-card-id="' + unindexed.id + '"]');
+      const upgradedScoreTextAfterPdpCache = String(upgradedBadge?.textContent || "").trim();
+
+      // Confirm transient card removed its loading badge and scheduled a retry (not stuck on Check)
+      const transBadgeBeforeRetry = document.querySelector('.hb-photo-badge[data-hb-card-id="' + trans.id + '"]');
+      window.__optATransientOrigId = trans.id;
+      window.__optABatchCountBeforeRetry = window.__optABatch.length;
+
+      return {
+        nonFoodBadgeRemoved: !nonFoodBadge,
+        checkPillRendered,
+        checkPillText,
+        checkExcludedFromVisibleIds,
+        checkTapNavigatedToPdp,
+        upgradedScoreTextAfterPdpCache,
+        transientClearedForRetry: !transBadgeBeforeRetry,
+      };
+    })()`);
+    assert(
+      optACheck.nonFoodBadgeRemoved &&
+        optACheck.checkPillRendered &&
+        /Check/i.test(optACheck.checkPillText) &&
+        optACheck.checkExcludedFromVisibleIds &&
+        optACheck.checkTapNavigatedToPdp &&
+        /84/.test(optACheck.upgradedScoreTextAfterPdpCache) &&
+        optACheck.transientClearedForRetry,
+      `Option A Check pill / blank non-food / PDP hydration check failed: ${JSON.stringify(optACheck)}`,
+    );
+    // Wait for the real 2.2s transient fast-retry batch to fire for Fire Roasted Salsa
+    await storePage.waitFor(
+      `window.__optABatch.slice(window.__optABatchCountBeforeRetry).some((it) => String(it.productTitle || it.title || "").includes("Fire Roasted Salsa"))`,
+      "Transient Fire Roasted Salsa fast-retry gridBatch",
+      5000,
+    );
+    const transResolvedText = await storePage.eval<string>(`(() => {
+      const retryItem = window.__optABatch.slice(window.__optABatchCountBeforeRetry).find((it) => String(it.productTitle || it.title || "").includes("Fire Roasted Salsa"));
+      const retryMap = {};
+      retryMap[retryItem.id] = { ok: true, score: 91, hasAlert: false, alertSeverity: "none" };
+      window.__heybrocApplyCardBadges(retryMap, window.__optAPageToken);
+      const transBadge = document.querySelector('.hb-photo-badge[data-hb-card-id="' + retryItem.id + '"]');
+      return String(transBadge?.textContent || "").trim();
+    })()`);
+    assert(/91/.test(transResolvedText), `Transient card fast-retry did not upgrade to 91: ${transResolvedText}`);
+    console.log("   ✓ Option A 🥦 Check pill, blank non-food, PDP score hydration (Check -> 84), and real 2.2s transient fast-retry (91) verified!");
+
+    // 6F: DoorDash Smart App Banner ("Browse faster in the app | $0 delivery fee | 20M ratings | Open") & Header "Open App" Suppression
+    const doorDashBannerHtml = `
+      <div id="dd-smart-app-banner" style="display:flex; align-items:center; justify-content:space-between; width:390px; height:76px; padding:8px 12px; background:#fff; border-bottom:1px solid #e2e8f0;">
+        <div>
+          <div style="font-weight:700;">Browse faster in the app</div>
+          <div>$0 delivery fee on first order</div>
+          <div>20M ratings</div>
+        </div>
+        <button id="dd-smart-open-btn" type="button">Open</button>
+      </div>
+      <header id="dd-main-header" style="display:flex; align-items:center; justify-content:space-between; width:390px; height:54px; padding:0 12px; background:#fff;">
+        <span id="dd-logo">DoorDash</span>
+        <div style="display:flex; gap:8px;">
+          <button id="dd-login-btn" type="button">Login</button>
+          <a id="dd-header-open-app" href="https://doordash.onelink.me/12345">Open App</a>
+        </div>
+      </header>
+      <main style="padding:12px;">
+        <div id="dd-address-bar">Your Addr...</div>
+        <h1>Grocery Delivery</h1>
+      </main>
+    `;
+    await storePage.navigate("https://www.doordash.com/grocery");
+    await storePage.eval(`
+      if (!document.querySelector('meta[name="viewport"]')) {
+        const mv = document.createElement('meta');
+        mv.name = 'viewport';
+        mv.content = 'width=device-width, initial-scale=1';
+        document.head.appendChild(mv);
+      }
+      document.body.innerHTML = ${JSON.stringify(doorDashBannerHtml)};
+      window.__heybrocBridgeSecret = ${JSON.stringify(androidBridgeSecret)};
+      window.heybrocAndroidBridge = { postMessage: function() {} };
+    `);
+    await storePage.eval(androidDetectorJS, false);
+    await sleep(300);
+    const ddBannerCheck = await storePage.eval<{
+      smartBannerHidden: boolean;
+      headerOpenAppHidden: boolean;
+      loginStillVisible: boolean;
+      headerStillVisible: boolean;
+    }>(`(() => {
+      const sb = document.getElementById("dd-smart-app-banner");
+      const oa = document.getElementById("dd-header-open-app");
+      const login = document.getElementById("dd-login-btn");
+      const hdr = document.getElementById("dd-main-header");
+      return {
+        smartBannerHidden: sb?.getAttribute("data-hb-app-banner-hidden") === "1" || getComputedStyle(sb).display === "none",
+        headerOpenAppHidden: oa?.getAttribute("data-hb-app-banner-hidden") === "1" || getComputedStyle(oa).display === "none",
+        loginStillVisible: getComputedStyle(login).display !== "none" && getComputedStyle(login).visibility !== "hidden",
+        headerStillVisible: getComputedStyle(hdr).display !== "none",
+      };
+    })()`);
+    assert(
+      ddBannerCheck.smartBannerHidden &&
+        ddBannerCheck.headerOpenAppHidden &&
+        ddBannerCheck.loginStillVisible &&
+        ddBannerCheck.headerStillVisible,
+      `DoorDash smart app banner & header Open App suppression failed: ${JSON.stringify(ddBannerCheck)}`,
+    );
+    console.log("   ✓ DoorDash 'Browse faster in the app' smart banner & header 'Open App' pill suppressed while Login/Header stay intact!");
+
     storePage.close();
 
     // =========================================================================

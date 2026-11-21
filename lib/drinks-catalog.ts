@@ -2012,6 +2012,41 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     match: /\b(fresca)\b/i,
   },
   {
+    id: "olipop-caramel-apple",
+    title: "OLIPOP Caramel Apple Prebiotic Soda, 12 fl oz",
+    brand: "OLIPOP",
+    category: "Sodas & Prebiotic Sodas",
+    description:
+      "Seasonal prebiotic botanical soda with 9g plant fiber, 50 kcal, and 5g sugar per 12 fl oz can — made with apple juice concentrate, cassava root syrup, natural flavors, and stevia leaf.",
+    keywords: [
+      "olipop",
+      "caramel apple",
+      "caramel",
+      "apple",
+      "prebiotic soda",
+      "refrigerated",
+      "soda",
+      "aluminum",
+    ],
+    ingredients:
+      "Carbonated Water, OLISMART (Cassava Root Fiber, Chicory Root Inulin, Jerusalem Artichoke Inulin, Nopal Cactus Extract, Marshmallow Root Extract, Calendula Flower Extract, Kudzu Root Extract), Apple Juice Concentrate, Cassava Root Syrup, Lemon Juice Concentrate, Natural Flavors, Stevia Leaf Extract, Himalayan Pink Salt, Malic Acid.",
+    nutrition: {
+      caloriesKcal100g: 14,
+      sugarsG100g: 1.4,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 8,
+      fiberG100g: 2.5,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 9,
+      nutriScoreGrade: "b",
+      isOrganic: false,
+      isWholeFood: false,
+    },
+    sourceUrl: "https://drinkolipop.com/products/caramel-apple",
+    verifiedAt: "2026-11-20",
+    match: /\bolipop\b.*\bcaramel\s+apple\b|\bcaramel\s+apple\b.*\bolipop\b/i,
+  },
+  {
     id: "olipop-prebiotic-soda",
     title: "OLIPOP Vintage Cola Prebiotic Soda, 12 fl oz",
     brand: "OLIPOP",
@@ -2044,7 +2079,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://drinkolipop.com/products/vintage-cola",
     verifiedAt: "2026-11-08",
-    match: /\b(olipop)\b/i,
+    match: /^(?!.*\bcaramel\s+apple\b).*\b(olipop)\b/i,
   },
   {
     id: "poppi-prebiotic-soda",
@@ -4444,7 +4479,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.bolthouse.com/product/green-goodness/",
     verifiedAt: "2026-11-08",
-    match: /\b(bolthouse\s+farms.*(?:smoothie|green\s+goodness|berry\s+boost|strawberry\s+banana)|green\s+goodness)\b/i,
+    match: /^(?!.*\b(?:berry\s+boost|strawberry\s+banana|blue\s+goodness|mango|protein|chocolate|vanilla|chai)\b).*\b(bolthouse(?:\s+farms)?.*green\s+goodness|green\s+goodness)\b/i,
   },
   {
     id: "naked-bolthouse-smoothie",
@@ -4452,12 +4487,12 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     brand: "Naked Juice",
     category: "Juices, Smoothies & Lemonades",
     description:
-      "Bottled fruit-puree and juice-concentrate smoothie containing 0g added cane sugar, but packing 53g–57g concentrated fruit sugar per 15.2 oz bottle with minimal intact fiber.",
+      "Bottled fruit-puree and juice-concentrate smoothie containing 0g added cane sugar, packing concentrated fruit sugar with spirulina and greens.",
     keywords: [
       "naked juice",
-      "mighty mango",
+      "naked",
       "green machine",
-      "blue machine",
+      "boosted",
       "fruit smoothie",
       "smoothie",
       "juice",
@@ -4477,7 +4512,151 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.nakedjuice.com/our-products/green-machine/",
     verifiedAt: "2026-11-08",
-    match: /\b(naked\s+(?:juice|mighty\s+mango|green\s+machine|blue\s+machine|strawberry\s+banana)|mighty\s+mango|green\s+machine)\b/i,
+    match: /^(?!.*\b(?:tropical\s+greens|fiber|protein|mighty\s+mango|blue\s+machine|red\s+machine|berry\s+blast|strawberry\s+banana|strawberry\s+lemon|pineapple\s+orange|rainbow\s+machine|power\s+c)\b).*\b(?:naked(?:\s+juice)?.*green\s+machine|green\s+machine)\b/i,
+  },
+  {
+    id: "naked-tropical-greens-fiber",
+    title: "Naked Juice Tropical Greens Fiber Smoothie, 15.2 fl oz",
+    brand: "Naked Juice",
+    category: "Juices, Smoothies & Lemonades",
+    description:
+      "Lower-sugar fiber smoothie boosted with 9g dietary fiber (orange fiber and inulin), white grape juice, banana, kiwi, orange pulp, pineapple, greens powders, gellan gum, and stevia extract.",
+    barcode: "00082592012050",
+    keywords: [
+      "naked juice",
+      "naked",
+      "tropical greens",
+      "tropical",
+      "greens",
+      "fiber",
+      "smoothie",
+      "juice",
+    ],
+    ingredients:
+      "Water, White Grape Juice (Water, White Grape Juice Concentrate), Orange Fiber, Banana Puree, Orange Pulp, Kiwi Puree, Pineapple Juice, Inulin, Natural Flavor, Spirulina, Alfalfa Powder, Broccoli Powder, Spinach Powder, Ginger Root Powder, Parsley Powder, Kale Powder, Garlic Extract, Gellan Gum, Stevia Extract.",
+    nutrition: {
+      caloriesKcal100g: 31,
+      sugarsG100g: 5.8,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 16,
+      fiberG100g: 2.0,
+      proteinG100g: 0.2,
+      fruitsVegNutsPct: 60,
+      nutriScoreGrade: "c",
+      isOrganic: false,
+      isWholeFood: false,
+    },
+    sourceUrl: "https://www.nakedsmoothie.com/our-products/fiber/tropical-greens",
+    verifiedAt: "2026-11-20",
+    match: /\bnaked\b.*\btropical\s+greens\b/i,
+  },
+  {
+    id: "naked-strawberry-lemon-ginger-fiber",
+    title: "Naked Juice Strawberry Lemon Ginger Fiber Smoothie, 15.2 fl oz",
+    brand: "Naked Juice",
+    category: "Juices, Smoothies & Lemonades",
+    description:
+      "Fiber-boosted fruit smoothie made with white grape juice, orange fiber, banana puree, strawberry puree, orange pulp, inulin, lemon juice, natural flavors, gellan gum, and stevia extract.",
+    barcode: "00082592012040",
+    keywords: [
+      "naked juice",
+      "naked",
+      "strawberry lemon ginger",
+      "strawberry",
+      "lemon",
+      "ginger",
+      "fiber",
+      "smoothie",
+      "juice",
+    ],
+    ingredients:
+      "Water, White Grape Juice (Water, White Grape Juice Concentrate), Orange Fiber, Banana Puree, Strawberry Puree, Orange Pulp, Inulin, Lemon Juice, Fruit Juice For Color, Natural Flavors, Gellan Gum, Stevia Extract.",
+    nutrition: {
+      caloriesKcal100g: 31,
+      sugarsG100g: 5.8,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 13,
+      fiberG100g: 2.0,
+      proteinG100g: 0.2,
+      fruitsVegNutsPct: 55,
+      nutriScoreGrade: "c",
+      isOrganic: false,
+      isWholeFood: false,
+    },
+    sourceUrl: "https://giantfood.com/groceries/product/naked-strawberry-lemon-ginger-fiber-smoothie-15-2-oz-btl/393168",
+    verifiedAt: "2026-11-20",
+    match: /\bnaked\b.*\bstrawberry\s+lemon\s+ginger\b/i,
+  },
+  {
+    id: "naked-pineapple-orange-protein",
+    title: "Naked Juice Pineapple Orange Protein Smoothie, 15.2 fl oz",
+    brand: "Naked Juice",
+    category: "Juices, Smoothies & Lemonades",
+    description:
+      "20g soy-protein fruit smoothie blending apple juice concentrate, coconut water, orange pulp, pineapple juice, banana puree, soy protein isolate, inulin, gellan gum, and stevia extract.",
+    keywords: [
+      "naked juice",
+      "naked",
+      "pineapple orange",
+      "pineapple",
+      "orange",
+      "coco gauff",
+      "protein",
+      "smoothie",
+      "juice",
+    ],
+    ingredients:
+      "Apple Juice From Concentrate (Water, Apple Juice Concentrate), Water, Coconut Water (Water, Coconut Water Concentrate), Orange Pulp, Pineapple Juice, Banana Puree, Soy Protein Isolate, Orange Juice, Inulin, Natural Flavor, Ascorbic Acid (Vitamin C), Sea Salt, Gellan Gum, Beta Carotene, Stevia Extract, Vitamin E Acetate, D-Calcium Pantothenate (Vitamin B5), Pyridoxine Hydrochloride (Vitamin B6), Cyanocobalamin (Vitamin B12).",
+    nutrition: {
+      caloriesKcal100g: 60,
+      sugarsG100g: 7.5,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 55,
+      fiberG100g: 1.3,
+      proteinG100g: 4.4,
+      fruitsVegNutsPct: 60,
+      nutriScoreGrade: "c",
+      isOrganic: false,
+      isWholeFood: false,
+    },
+    sourceUrl: "https://giantfoodstores.com/groceries/product/naked-coco-gauffs-pineapple-orange-20g-protein-smoothie-15-2-oz-btl/393166",
+    verifiedAt: "2026-11-20",
+    match: /\bnaked\b.*\bpineapple\s+orange\b.*\bprotein\b|\bnaked\b.*\bcoco\s+gauff\b/i,
+  },
+  {
+    id: "pressed-juicery-acai-berry-wellness-smoothie",
+    title: "Pressed Juicery Acai Berry Wellness Smoothie, 10 fl oz",
+    brand: "Pressed Juicery",
+    category: "Juices, Smoothies & Lemonades",
+    description:
+      "Cold-pressed fruit smoothie made from apple juice, blueberries, strawberries, raspberries, acai puree, banana, lemon juice, chicory fiber, ascorbic acid, and dragon fruit with 0g added sugar.",
+    keywords: [
+      "pressed juicery",
+      "pressed",
+      "acai berry",
+      "acai",
+      "berry",
+      "wellness",
+      "smoothie",
+      "juice",
+    ],
+    ingredients:
+      "Apple Juice, Blueberries, Strawberries, Raspberries, Acai Puree (Acai Pulp, Citric Acid), Banana, Lemon Juice, Chicory Fiber, Vitamin C (Ascorbic Acid, Naturally Sourced), Dragon Fruit.",
+    nutrition: {
+      caloriesKcal100g: 49,
+      sugarsG100g: 8.4,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 6,
+      fiberG100g: 1.3,
+      proteinG100g: 0.4,
+      fruitsVegNutsPct: 95,
+      nutriScoreGrade: "c",
+      isOrganic: false,
+      isWholeFood: false,
+    },
+    sourceUrl: "https://pressed.com/products/acai-berry-wellness-smoothie",
+    verifiedAt: "2026-11-20",
+    match: /\bpressed(?:\s+juicery)?\b.*\ba[cç]a[ií]\s+berry\b/i,
   },
   {
     id: "suja-organic-uber-greens",
@@ -5287,6 +5466,42 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     match: /^(?!.*\b(starbucks|califia|chamberlain|la\s+colombe|chameleon|bizzy|wandering\s+bear)\b).*\b(stok\s+cold\s+brew|unsweetened.*cold\s+brew|cold\s+brew\s+coffee)\b/i,
   },
   {
+    id: "starbucks-pumpkin-spice-cold-brew-concentrate",
+    title: "Starbucks Pumpkin Spice Flavored Cold Brew Coffee Concentrate, 32 fl oz",
+    brand: "Starbucks",
+    category: "Coffee, Tea & Kombucha",
+    description:
+      "Multi-serve unsweetened cold brew coffee concentrate naturally flavored with pumpkin spice notes (brewed coffee and natural flavors; 0g sugar).",
+    keywords: [
+      "starbucks",
+      "pumpkin spice",
+      "pumpkin",
+      "spice",
+      "cold brew",
+      "concentrate",
+      "multi-serve",
+      "multi serve",
+      "naturally flavored",
+      "coffee",
+    ],
+    ingredients: "Brewed Coffee (Water, Coffee), Natural Flavors.",
+    nutrition: {
+      caloriesKcal100g: 6,
+      sugarsG100g: 0,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 6,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "a",
+      isOrganic: false,
+      isWholeFood: false,
+    },
+    sourceUrl: "https://www.target.com/p/starbucks-pumpkin-spice-flavored-cold-brew-concentrate-multi-serve-naturally-flavored-32-fl-oz/-/A-82288163",
+    verifiedAt: "2026-11-20",
+    match: /\bstarbucks\b.*\bpumpkin\s+spice\b.*\bcold\s+brew\b/i,
+  },
+  {
     id: "folgers-protein-instant-coffee",
     title: "Folgers Protein Instant Coffee",
     brand: "Folgers",
@@ -5843,10 +6058,6 @@ export function passesVariantGuard(query: string, candidateTitle: string, option
     [/\bsome\s+pulp\b|\blots\s+of\s+pulp\b|\bwith\s+pulp\b|\bhigh\s+pulp\b/, /\bsome\s+pulp\b|\blots\s+of\s+pulp\b|\bwith\s+pulp\b|\bhigh\s+pulp\b/],
     [/\bno\s+pulp\b|\bpulp[\s-]*free\b/, /\bno\s+pulp\b|\bpulp[\s-]*free\b/],
     [/\bunsweetened\b/, /\bunsweetened\b|\b0g\s+sugar\b/],
-    [
-      /\bno\s+(?:sugar\s+added|added\s+sugars?)\b/,
-      /\bno\s+(?:sugar\s+added|added\s+sugars?)\b|\bunsweetened\b|\bsugar[\s-]*free\b|\bzero\s+sugar\b|\bin\s+water\b|\b100%\s+(?:pure\s+)?(?:fruit\s+)?juice\b/,
-    ],
     [/\btrilogy\b/, /\btrilogy\b/],
     [/\bzero\s+sugar\b|\bsugar[\s-]*free\b|\bdiet\b/, /\bzero\b|\bsugar[\s-]*free\b|\bdiet\b|\bunsweetened\b|\blyte\b|\bultra(?![\s-]*filtered)\b/],
     [/\bdoubleshot\b/, /\bdoubleshot\b/],
@@ -5865,7 +6076,6 @@ export function passesVariantGuard(query: string, candidateTitle: string, option
     [/\bsoy\s*milk\b/, /\bsoy\s*milk\b|\bsoy\s+beverage\b/],
     [/\boat\s*milk\b/, /\boat\s*milk\b|\boat\s+beverage\b/],
     [/\balmond\s*milk\b/, /\balmond\s*milk\b|\balmond\s+beverage\b|\bmilked\s+almonds\b/],
-    [/\borganic\b/, /\borganic\b/],
     [/\bplant(?:[ -]*based)?\b/, /\bplant(?:[ -]*based)?\b/],
     [/\bketo\b/, /\bketo\b/],
     [/\b(?:low|lo)[\s-]*carb\b/, /\b(?:low|lo)[\s-]*carb\b|\bketo\b/],
@@ -5879,7 +6089,6 @@ export function passesVariantGuard(query: string, candidateTitle: string, option
     [/\bseasoned\b/, /\bseasoned\b|\bmarinated\b|\bmesquite\b|\bcajun\b|\bteriyaki\b|\bbuffalo\b|\bbarbecue\b|\bbbq\b|\bsmokehouse\b|\brotisserie\b|\bgarlic\b|\bherb\b/],
     [/\bglazed\b/, /\bglazed\b/],
     [/\bstuffed\b/, /\bstuffed\b/],
-    [/\bsmoked\b/, /\bsmoked\b|\bsmokehouse\b/],
     [/\bbuffalo\b/, /\bbuffalo\b/],
     [/\bteriyaki\b/, /\bteriyaki\b/],
     [/\bmesquite\b/, /\bmesquite\b/],
@@ -5889,13 +6098,70 @@ export function passesVariantGuard(query: string, candidateTitle: string, option
   for (const [qRe, tRe] of variantTokens) {
     if (qRe.test(q) && !tRe.test(t)) return false;
   }
-  // Enforce title-level gluten-free match except on naturally gluten-free broth/stock (where isDietaryOrVariantMismatch still checks actual ingredients for wheat/barley/rye/gluten).
+  // Enforce no-sugar-added title match except for 100% fruit juices, smoothies, and fruit pouches
+  // (where Target appends ": No Sugar Added" while USDA omits it, and isDietaryOrVariantMismatch still hard-rejects added sugars in ingredients).
+  if (
+    /\bno\s+(?:sugar\s+added|added\s+sugars?)\b/.test(q) &&
+    !/\bno\s+(?:sugar\s+added|added\s+sugars?)\b|\bunsweetened\b|\bsugar[\s-]*free\b|\bzero\s+sugar\b|\bin\s+water\b|\b100%\s+(?:pure\s+)?(?:fruit\s+)?juice\b/.test(t)
+  ) {
+    const FRUIT_SMOOTHIE_OR_JUICE_RE =
+      /\b(?:smoothies?|juices?|pouches?|naked|bolthouse|pressed\s+juicery|once\s+upon\s+a\s+farm|pom\s+wonderful|tropicana|simply\s+orange|florida'?s\s+natural|uncle\s+matt|suja|harmless\s+harvest)\b/;
+    const isFruitSmoothieMatch =
+      FRUIT_SMOOTHIE_OR_JUICE_RE.test(q) &&
+      FRUIT_SMOOTHIE_OR_JUICE_RE.test(t) &&
+      !/\b(?:cocktail|punch|ade|lemonade|limeade|soda|candy|syrup|jam|jelly|preserves)\b/.test(t);
+    if (!isFruitSmoothieMatch) return false;
+  }
+  // Enforce organic title match except when BOTH query and candidate belong to the same inherently certified-organic brand
+  // (USDA Branded titles frequently omit "Organic" on Once Upon a Farm / Cocojune / Stonyfield; organicScore still requires nutrition.isOrganic === true).
+  if (/\borganic\b/.test(q) && !/\borganic\b/.test(t)) {
+    const INHERENTLY_ORGANIC_BRAND_PATTERNS: RegExp[] = [
+      /\bonce\s+upon\s+a\s+farm\b/,
+      /\bcocojune\b/,
+      /\bstonyfield\b/,
+      /\borganic\s+valley\b/,
+      /\bsimple\s+truth\s+organic\b/,
+      /\bannie'?s\b/,
+      /\bamy'?s\b/,
+      /\bdave'?s\s+killer\b/,
+      /\blotus\s+foods\b/,
+      /\bhealth[- ]?ade\b/,
+      /\bkettle\s*&\s*fire\b/,
+      /\bmuir\s+glen\b/,
+      /\bhonest\s+kids\b/,
+      /\bharmless\s+harvest\b/,
+      /\bapplegate\s+organics\b/,
+    ];
+    const sameInherentlyOrganicBrand = INHERENTLY_ORGANIC_BRAND_PATTERNS.some((re) => re.test(q) && re.test(t));
+    if (!sameInherentlyOrganicBrand) return false;
+  }
+  // Enforce smoked title match except for inherently smoked sausage styles (summer sausage, kielbasa, andouille).
+  if (/\bsmoked\b/.test(q) && !/\bsmoked\b|\bsmokehouse\b/.test(t)) {
+    const INHERENTLY_SMOKED_SAUSAGE_RE = /\b(?:summer\s+sausage|kielbasa|andouille)\b/;
+    if (!(INHERENTLY_SMOKED_SAUSAGE_RE.test(q) && INHERENTLY_SMOKED_SAUSAGE_RE.test(t))) {
+      return false;
+    }
+  }
+  // Enforce title-level gluten-free match except on naturally gluten-free categories where Target appends ": Gluten-Free"
+  // (isDietaryOrVariantMismatch still strictly rejects any candidate containing wheat, barley, rye, malt, or gluten).
   if (
     /\bgluten[\s-]*free\b/.test(q) &&
-    !/\bgluten[\s-]*free\b|\bgrain[\s-]*free\b/.test(t) &&
-    !(/\b(?:chicken|beef|bone|vegetable|turkey)\s+(?:broth|stock)\b/.test(q) && /\b(?:broth|stock)\b/.test(t))
+    !/\bgluten[\s-]*free\b|\bgrain[\s-]*free\b/.test(t)
   ) {
-    return false;
+    const NATURALLY_GF_PAIRS: Array<[RegExp, RegExp]> = [
+      [/\b(?:chicken|beef|bone|vegetable|turkey)\s+(?:broth|stock)\b/, /\b(?:broth|stock)\b/],
+      [/\bsalsa\b/, /\bsalsa\b|\bpicante\b/],
+      [/\bguacamole\b/, /\bguacamole\b/],
+      [/\bhummus\b/, /\bhummus\b/],
+      [/\btzatziki\b/, /\btzatziki\b/],
+      [/\byogurt\b/, /\byogurt\b|\bdip\b/],
+      [/\bsmoothies?\b/, /\bsmoothies?\b|\bjuice\b/],
+      [/\b(?:yams?|sweet\s+potato(?:es)?|mashed\s+potato(?:es)?)\b/, /\b(?:yams?|sweet\s+potato(?:es)?|mashed\s+potato(?:es)?|potato(?:es)?)\b/],
+      [/\bcranberry\s+sauce\b/, /\bcranberry\s+sauce\b/],
+    ];
+    const hasGrainRisk = /\b(?:bread|pasta|noodles?|cookies?|crackers?|cereal|waffles?|pancakes?|muffins?|pizza|pretzels?|cake|cupcakes?|brownies?|granola|oats?|oatmeal|tortillas?|bagels?|buns?|rolls?|soy\s+sauce)\b/.test(q);
+    const isNaturallyGfMatch = !hasGrainRisk && NATURALLY_GF_PAIRS.some(([qr, tr]) => qr.test(q) && tr.test(t));
+    if (!isNaturallyGfMatch) return false;
   }
   // Enforce wings/drumettes match for meat queries, without falsely rejecting wing sauces/seasonings.
   if (
@@ -5930,8 +6196,12 @@ export function passesVariantGuard(query: string, candidateTitle: string, option
   const qKids = q.replace(SAFE_NON_VARIANT_KIDS_RE, " ");
   const tKids = t.replace(SAFE_NON_VARIANT_KIDS_RE, " ");
   const KIDS_VARIANT_RE = /\bkids?['’]?s?\b|\bchildren['’]?s?\b|\byokids\b/;
-  if (KIDS_VARIANT_RE.test(qKids) && !KIDS_VARIANT_RE.test(tKids)) return false;
-  if (!options?.allowCleanerSwap && KIDS_VARIANT_RE.test(tKids) && !KIDS_VARIANT_RE.test(qKids)) return false;
+  const INHERENTLY_KIDS_POUCH_BRAND_RE =
+    /\b(?:once\s+upon\s+a\s+farm|gogo\s+squeez|plum\s+organics|happy\s+tot|happy\s+baby|serenity\s+kids|gerber|beech[- ]?nut|peter\s+rabbit\s+organics)\b/;
+  const sameInherentlyKidsBrand =
+    INHERENTLY_KIDS_POUCH_BRAND_RE.test(q) && INHERENTLY_KIDS_POUCH_BRAND_RE.test(t);
+  if (!sameInherentlyKidsBrand && KIDS_VARIANT_RE.test(qKids) && !KIDS_VARIANT_RE.test(tKids)) return false;
+  if (!options?.allowCleanerSwap && !sameInherentlyKidsBrand && KIDS_VARIANT_RE.test(tKids) && !KIDS_VARIANT_RE.test(qKids)) return false;
 
   if (!options?.allowCleanerSwap) {
     if (UNSALTED_RE.test(t) && !UNSALTED_RE.test(q)) return false;

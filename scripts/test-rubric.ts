@@ -992,8 +992,8 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
 
   const lookupTs = fs.readFileSync("lib/lookup.ts", "utf8");
   check(
-    "Open Food Facts & USDA FoodData Central Resilience: DEMO_KEY fallback, 1800ms shared budget, v0 barcode fallback, US GS1 UPC priority, and No Salt Added / Spicy variant guards",
-    lookupTs.includes("const TIMEOUT_MS = 1800") &&
+    "Open Food Facts & USDA FoodData Central Resilience: DEMO_KEY fallback, 2500ms shared budget, v0 barcode fallback, US GS1 UPC priority, and No Salt Added / Spicy variant guards",
+    lookupTs.includes("const TIMEOUT_MS = 2500") &&
       lookupTs.includes("fetchOffProductByCode") &&
       lookupTs.includes('/api/v0/product/${code}.json') &&
       lookupTs.includes('|| "DEMO_KEY"') &&
@@ -12002,14 +12002,14 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         androidDetectorSrc.includes("window.__heybrocBubbleCenterX") &&
         androidDetectorSrc.includes("hbPinnedCardId") &&
         androidDetectorSrc.includes("function isCheckoutUrl()") &&
-        androidDetectorSrc.includes("220px 340px") &&
+        androidDetectorSrc.includes("180px 120px") &&
         androidBrowserSrc.includes("window.__heybrocBubbleCenterX =") &&
         androidBrowserSrc.includes("Use Email / Phone Here") &&
         androidBrowserSrc.includes("Uri.parse(safeStoreUrl)") &&
         iosBrowserSrc.includes("window.__heybrocBubbleCenterX =") &&
         iosBrowserSrc.includes("hbPinnedCardId") &&
         iosBrowserSrc.includes("function isCheckoutUrl()") &&
-        iosBrowserSrc.includes("220px 340px") &&
+        iosBrowserSrc.includes("180px 120px") &&
         iosBrowserSrc.includes("Use Email / Phone Here") &&
         toolsClientSrc.includes("{!isIosClient && ("),
     );
@@ -12066,7 +12066,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         iosBrowserSrc.includes('summary.dietaryAlerts.allSatisfy({ $0.id == "pesticide_risk" }) ? "🌱" : "⚠️"') &&
         chromeExtSrc === safariExtSrc &&
         chromeExtSrc.includes('isPesticideOnly ? "🌱" : "⚠️"') &&
-        chromeExtSrc.includes('rootMargin: "180px 340px"') &&
+        chromeExtSrc.includes('rootMargin: "180px 120px"') &&
         scanTsAuditSrc.includes('dietaryAlerts.every((a) => a.id === "pesticide_risk") ? "🌱" : "⚠️"'),
     );
     // 14. Full 6-Pillar Platform Audit Regressions (Auth, Email, Affiliates, iOS Shortcuts, Android/iOS Parity, Kroger Selector)
@@ -12141,6 +12141,318 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         !extListingSrc.includes("Amazon Associates") &&
         iosWorkflowSrc.includes('codesign --entitlements "ios-app/build/HeyBroc/HeyBroc.entitlements" --force --sign "-" "$ARCHIVE_APP"') &&
         iosWorkflowSrc.includes("IDEDistribution.standard.log"),
+    );
+
+    // 15. Multi-Store Ungraded Foods, Brand Integrity, Below-Photo Placement & Option A Check Pill Regressions
+    const { runScan: runScanMultiStore } = await import("../lib/scan");
+    const targetGoodGatherBrandCases = [
+      "Homestyle Guacamole - 10oz - Good & Gather™",
+      "Queso Blanco - 15oz - Good & Gather™",
+      "Mild Heat Restaurant Style Salsa - 16oz - Good & Gather™",
+      "Classic Hummus - 10oz - Good & Gather™",
+    ];
+    const origFetchS15 = globalThis.fetch;
+    let targetGoodGatherRes: Awaited<ReturnType<typeof runScanMultiStore>>[] = [];
+    let [
+      idahoanRes,
+      catfishRes,
+      tropicalGreensRes,
+      greenMachineRes,
+      onceUponRes,
+      cocojuneRes,
+      deansDipRes,
+      goodFoodsFetaRes,
+      paceSalsaRes,
+      realGoodRes,
+      safeCatchRes,
+      mmLobsterRes,
+      mmSurfTurfRes,
+      mmScampiRes,
+      perdueOrgRes,
+      garysQuickSteakRes,
+    ] = [] as Awaited<ReturnType<typeof runScanMultiStore>>[];
+    try {
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("api.nal.usda.gov") || url.includes("fdc.nal.usda.gov/portal-data/external/search")) {
+          const bodyStr = typeof init?.body === "string" ? init.body : "";
+          const decoded = `${decodeURIComponent(url)} ${bodyStr}`.toLowerCase();
+          if (decoded.includes("good") && decoded.includes("gather") && decoded.includes("guacamole")) {
+            return Response.json({
+              foods: [
+                { fdcId: 990100, description: "WHOLLY GUACAMOLE HOMESTYLE GUACAMOLE", brandOwner: "MegaMex Foods", brandName: "Wholly Guacamole", ingredients: "HASS AVOCADOS, SALT, JALAPENO.", foodNutrients: [] },
+                { fdcId: 990101, description: "GOOD & GATHER HOMESTYLE GUACAMOLE", brandOwner: "Target Stores", brandName: "Good & Gather", ingredients: "HASS AVOCADOS, TOMATOES, ONIONS, JALAPENO PEPPERS, SALT, LIME JUICE, CILANTRO, GARLIC.", foodNutrients: [] },
+              ],
+            });
+          }
+          if (decoded.includes("good") && decoded.includes("gather") && decoded.includes("queso")) {
+            return Response.json({
+              foods: [
+                { fdcId: 990102, description: "TOSTITOS QUESO BLANCO DIP", brandOwner: "Frito-Lay", brandName: "Tostitos", ingredients: "WATER, MONTEREY JACK CHEESE, SOYBEAN OIL.", foodNutrients: [] },
+                { fdcId: 990103, description: "GOOD & GATHER QUESO BLANCO DIP", brandOwner: "Target Stores", brandName: "Good & Gather", ingredients: "WATER, MONTEREY JACK CHEESE, CANOLA OIL, MODIFIED CORN STARCH, JALAPENO PEPPERS, SODIUM PHOSPHATE.", foodNutrients: [] },
+              ],
+            });
+          }
+          if (decoded.includes("good") && decoded.includes("gather") && decoded.includes("salsa")) {
+            return Response.json({
+              foods: [
+                { fdcId: 990104, description: "PACE MILD RESTAURANT STYLE SALSA", brandOwner: "Campbell Soup Company", brandName: "Pace", ingredients: "TOMATOES, JALAPENOS, SALT.", foodNutrients: [] },
+                { fdcId: 990105, description: "GOOD & GATHER MILD RESTAURANT-STYLE SALSA", brandOwner: "Target Stores", brandName: "Good & Gather", ingredients: "TOMATOES, TOMATO PUREE, JALAPENO PEPPERS, ONIONS, VINEGAR, SALT, CILANTRO, GARLIC.", foodNutrients: [] },
+              ],
+            });
+          }
+          if (decoded.includes("good") && decoded.includes("gather") && decoded.includes("hummus")) {
+            return Response.json({
+              foods: [
+                { fdcId: 990106, description: "SABRA CLASSIC HUMMUS", brandOwner: "Sabra Dipping Company", brandName: "Sabra", ingredients: "COOKED CHICKPEAS, SOYBEAN OIL, TAHINI.", foodNutrients: [] },
+                { fdcId: 990107, description: "GOOD & GATHER CLASSIC HUMMUS", brandOwner: "Target Stores", brandName: "Good & Gather", ingredients: "COOKED CHICKPEAS, WATER, SESAME TAHINI, CANOLA OIL, SEA SALT, CITRIC ACID, GARLIC.", foodNutrients: [] },
+              ],
+            });
+          }
+          if (decoded.includes("once") && decoded.includes("upon")) {
+            return Response.json({
+              foods: [{
+                fdcId: 990001,
+                description: "ONCE UPON A FARM STRAWBERRY BANANA SWIRL COLD-PRESSED ORGANIC DAIRY-FREE SUPER SMOOTHIE",
+                brandOwner: "Once Upon a Farm",
+                brandName: "Once Upon a Farm",
+                ingredients: "ORGANIC BANANA, ORGANIC STRAWBERRY, ORGANIC COCONUT MILK, ORGANIC PUMPKIN SEED, ORGANIC LEMON JUICE.",
+                foodNutrients: [],
+              }],
+            });
+          }
+          if (decoded.includes("dean")) {
+            return Response.json({
+              foods: [{
+                fdcId: 990002,
+                description: "DEAN'S, FRENCH ONION DIP",
+                brandOwner: "Dean Foods",
+                brandName: "Dean's",
+                ingredients: "SKIM MILK, WHEY, PALM OIL, DEHYDRATED ONION, SALT, MONOSODIUM GLUTAMATE, GUAR GUM.",
+                foodNutrients: [],
+              }],
+            });
+          }
+          if (decoded.includes("good foods") && decoded.includes("tzatziki")) {
+            return Response.json({
+              foods: [{
+                fdcId: 990003,
+                description: "GOOD FOODS FETA CUCUMBER TZATZIKI DIP",
+                brandOwner: "Good Foods Group",
+                brandName: "Good Foods",
+                ingredients: "GREEK YOGURT, CUCUMBER, FETA CHEESE, WATER, LEMON JUICE, DILL, GARLIC, SEA SALT.",
+                foodNutrients: [],
+              }],
+            });
+          }
+          if (decoded.includes("pace") && decoded.includes("salsa")) {
+            return Response.json({
+              foods: [{
+                fdcId: 990004,
+                description: "PACE MILD CHUNKY SALSA",
+                brandOwner: "Campbell Soup Company",
+                brandName: "Pace",
+                ingredients: "CRUSHED TOMATOES, WATER, JALAPENO PEPPERS, ONIONS, DISTILLED VINEGAR, SALT, DEHYDRATED ONIONS, GARLIC.",
+                foodNutrients: [],
+              }],
+            });
+          }
+          if (decoded.includes("shrimp scampi")) {
+            return Response.json({
+              foods: [{
+                fdcId: 990005,
+                description: "MEMBER'S MARK SHRIMP SCAMPI SUCCULENT TAIL-OFF SHRIMP IN A BUTTER, GARLIC & HERB SAUCE",
+                brandOwner: "Sam's West, Inc.",
+                brandName: "Member's Mark",
+                ingredients: "SHRIMP, WATER, SODIUM TRIPOLYPHOSPHATE, BUTTER, SOYBEAN OIL, GARLIC, PARSLEY, NATURAL FLAVOR.",
+                foodNutrients: [],
+              }],
+            });
+          }
+          if (decoded.includes("perdue") && decoded.includes("chicken nuggets")) {
+            return Response.json({
+              foods: [{
+                fdcId: 990006,
+                description: "PERDUE ORGANIC BREADED CHICKEN BREAST NUGGETS",
+                brandOwner: "Perdue Foods LLC",
+                brandName: "Perdue",
+                ingredients: "ORGANIC BONELESS SKINLESS CHICKEN BREAST, ORGANIC WHEAT FLOUR, WATER, ORGANIC EXPELLER PRESSED SOYBEAN OIL, SEA SALT.",
+                foodNutrients: [],
+              }],
+            });
+          }
+          if (decoded.includes("quicksteak") || decoded.includes("gary")) {
+            return Response.json({
+              foods: [{
+                fdcId: 990007,
+                description: "GARY'S QUICKSTEAK 100% SIRLOIN BEEF STEAK",
+                brandOwner: "Glenn Valley Foods",
+                brandName: "Gary's QuickSteak",
+                ingredients: "BEEF, SEASONING PACKET (SALT, GARLIC POWDER, ONION POWDER, SPICES).",
+                foodNutrients: [],
+              }],
+            });
+          }
+        }
+        return Response.json({ status: 0, hits: [], products: [], foods: [] });
+      }) as typeof fetch;
+
+      targetGoodGatherRes = await Promise.all(
+        targetGoodGatherBrandCases.map((t) => runScanMultiStore({ productTitle: t, store: "target", isBatch: true, skipAnalytics: true })),
+      );
+      [
+        idahoanRes,
+        catfishRes,
+        tropicalGreensRes,
+        greenMachineRes,
+        onceUponRes,
+        cocojuneRes,
+        deansDipRes,
+        goodFoodsFetaRes,
+        paceSalsaRes,
+        realGoodRes,
+        safeCatchRes,
+        mmLobsterRes,
+        mmSurfTurfRes,
+        mmScampiRes,
+        perdueOrgRes,
+        garysQuickSteakRes,
+      ] = await Promise.all([
+        runScanMultiStore({ productTitle: "Idahoan Buttery Homestyle Mashed Potatoes, 4 oz", store: "walmart", isBatch: true, skipAnalytics: true }),
+        runScanMultiStore({ productTitle: "Great Value Frozen Unbreaded Catfish Nuggets, 2 lb", store: "walmart", isBatch: true, skipAnalytics: true }),
+        runScanMultiStore({ productTitle: "Naked Juice Tropical Greens Fiber Smoothie - 15.2 fl oz", store: "target", isBatch: true, skipAnalytics: true }),
+        runScanMultiStore({ productTitle: "Naked Juice Green Machine Smoothie - 15.2 fl oz", store: "target", isBatch: true, skipAnalytics: true }),
+        runScanMultiStore({ productTitle: "Once Upon a Farm Organic Cold-Pressed Strawberry Banana Swirl Kids Smoothie Pouch - 4oz: No Sugar Added, Dairy-Free", store: "target", isBatch: true, skipAnalytics: true }),
+        runScanMultiStore({ productTitle: "Cocojune Organic Yogurt Dip - Lemon Dill - 8oz: Gluten-Free, Vegan", store: "target", isBatch: true, skipAnalytics: true }),
+        runScanMultiStore({ productTitle: "Dean's French Onion Dip - 16oz", store: "target", isBatch: true, skipAnalytics: true }),
+        runScanMultiStore({ productTitle: "Good Foods Feta Cucumber Tzatziki Dip - 8oz", store: "target", isBatch: true, skipAnalytics: true }),
+        runScanMultiStore({ productTitle: "Pace Mild Chunky Salsa - 24oz: Gluten-Free, No Artificial Flavors", store: "target", isBatch: true, skipAnalytics: true }),
+        runScanMultiStore({ productTitle: "Real Good Foods Lightly Breaded Chicken Breast Chunks, Frozen, 3 lbs.", store: "sams", isBatch: true, skipAnalytics: true }),
+        runScanMultiStore({ productTitle: "Safe Catch Breaded Fish Nuggets, Frozen, 2 lbs.", store: "sams", isBatch: true, skipAnalytics: true }),
+        runScanMultiStore({ productTitle: "Member's Mark Wild Caught North Atlantic Cold Water Lobster Tails, Frozen", store: "sams", isBatch: true, skipAnalytics: true }),
+        runScanMultiStore({ productTitle: "Member's Mark Premium Surf and Turf Curated Box, Frozen, 4.38 lbs.", store: "sams", isBatch: true, skipAnalytics: true }),
+        runScanMultiStore({ productTitle: "Member's Mark Farm Raised Shrimp Scampi, Frozen, 2 lbs.", store: "sams", isBatch: true, skipAnalytics: true }),
+        runScanMultiStore({ productTitle: "Perdue Simply Smart Organic Lightly Breaded Chicken Nuggets, Frozen", store: "sams", isBatch: true, skipAnalytics: true }),
+        runScanMultiStore({ productTitle: "Gary's Sirloin Beef Thinly Sliced QuickSteak, Frozen, 9 ct.", store: "sams", isBatch: true, skipAnalytics: true }),
+      ]);
+    } finally {
+      globalThis.fetch = origFetchS15;
+    }
+
+    const targetGoodGatherOk = targetGoodGatherRes.every(
+      (r) => r.ok && !r.isCategoryEstimate && /good\s*(?:&|and)\s*gather/i.test(`${r.product.brand} ${r.product.title}`),
+    );
+
+    const idahoanPhoFree =
+      idahoanRes.ok &&
+      !idahoanRes.isCategoryEstimate &&
+      !idahoanRes.result.flagged.some((f) => /hydrogenated/i.test(`${f.name} ${f.matched}`));
+    const catfishFlagsPhosphates =
+      catfishRes.ok &&
+      !catfishRes.isCategoryEstimate &&
+      catfishRes.result.flagged.some((f) => /phosphate/i.test(`${f.name} ${f.matched}`));
+    const smoothiesFidelityOk =
+      tropicalGreensRes.ok &&
+      /tropical\s+greens/i.test(tropicalGreensRes.product.title) &&
+      !/green\s+machine/i.test(tropicalGreensRes.product.title) &&
+      greenMachineRes.ok &&
+      /green\s+machine/i.test(greenMachineRes.product.title) &&
+      !/bright\s+beet/i.test(greenMachineRes.product.title) &&
+      onceUponRes.ok &&
+      /once\s+upon\s+a\s+farm/i.test(`${onceUponRes.product.brand} ${onceUponRes.product.title}`);
+    const targetDipsOk =
+      cocojuneRes.ok &&
+      cocojuneRes.result.yukaBreakdown?.organicScore === 10 &&
+      deansDipRes.ok &&
+      /dean'?s/i.test(`${deansDipRes.product.brand} ${deansDipRes.product.title}`) &&
+      goodFoodsFetaRes.ok &&
+      /good\s+foods/i.test(`${goodFoodsFetaRes.product.brand} ${goodFoodsFetaRes.product.title}`) &&
+      paceSalsaRes.ok &&
+      /pace/i.test(`${paceSalsaRes.product.brand} ${paceSalsaRes.product.title}`);
+    const samsClubOk =
+      realGoodRes.ok &&
+      /real\s*good/i.test(`${realGoodRes.product.brand} ${realGoodRes.product.title}`) &&
+      !/perdue/i.test(`${realGoodRes.product.brand} ${realGoodRes.product.title}`) &&
+      !realGoodRes.result.flagged.some((f) => /canola|soybean|seed\s+oil/i.test(`${f.name} ${f.matched}`)) &&
+      safeCatchRes.ok &&
+      /safe\s+catch/i.test(`${safeCatchRes.product.brand} ${safeCatchRes.product.title}`) &&
+      mmLobsterRes.ok &&
+      mmLobsterRes.result.score >= 85 &&
+      mmSurfTurfRes.ok &&
+      mmSurfTurfRes.result.flagged.some((f) => /phosphate/i.test(`${f.name} ${f.matched}`)) &&
+      mmScampiRes.ok &&
+      /member'?s\s+mark/i.test(`${mmScampiRes.product.brand} ${mmScampiRes.product.title}`) &&
+      perdueOrgRes.ok &&
+      /perdue/i.test(`${perdueOrgRes.product.brand} ${perdueOrgRes.product.title}`) &&
+      garysQuickSteakRes.ok &&
+      /gary'?s/i.test(`${garysQuickSteakRes.product.brand} ${garysQuickSteakRes.product.title}`);
+
+    // Operational failure in batch mode must emit retryable HTTP 503 (not terminal 404)
+    const origFetch503 = globalThis.fetch;
+    let batchOpFailStatus = 0;
+    try {
+      globalThis.fetch = (async () =>
+        new Response("Service Unavailable", { status: 503, headers: { "Content-Type": "text/plain" } })) as typeof fetch;
+      const opFailRes = await runScanMultiStore({
+        productTitle: "Zesty Unindexed Artisanal Test Crackers 99999",
+        store: "walmart",
+        isBatch: true,
+        skipAnalytics: true,
+      });
+      batchOpFailStatus = opFailRes.ok ? 200 : opFailRes.status;
+    } finally {
+      globalThis.fetch = origFetch503;
+    }
+
+    const chromeBgSrc = fsNode.readFileSync("chrome-extension/background.js", "utf8");
+    const safariBgSrc = fsNode.readFileSync("ios-app/SafariExtension/Resources/background.js", "utf8");
+    const opsCliSrc = fsNode.readFileSync("scripts/ops-cli.ts", "utf8");
+
+    check(
+      "Ungraded Foods, Brand Fidelity, Option A Check Pill & Sam's Club Placement/Tap-Hijack Parity: Good & Gather brand hoisted & enforced; Target dips/salsas/smoothies & Once Upon a Farm resolve without flavor hijacks; Idahoan is PHO-free & Great Value Catfish flags phosphates; all 7 Sam's Club screenshot items resolve accurately (Real Good Foods beef tallow never hijacked by Perdue); batch op failure returns retryable HTTP 503; Android/iOS/Extensions share 12s batch timeout, per-item transient/nonFood tracking, Walmart __NEXT_DATA__ barcode recovery, Option A Check pill, below-photo 2-col row guard, coordinate tap-hijack protection, and PDP-to-grid score hydration",
+      targetGoodGatherOk &&
+        idahoanPhoFree &&
+        catfishFlagsPhosphates &&
+        smoothiesFidelityOk &&
+        targetDipsOk &&
+        samsClubOk &&
+        batchOpFailStatus === 503 &&
+        androidScanApiAuditSrc.includes("val transientIds: Set<String>") &&
+        androidScanApiAuditSrc.includes("fun cacheVerifiedScreenScan(") &&
+        androidScanApiAuditSrc.includes("readTimeoutMs = 12000") &&
+        androidBrowserSrc.includes("reqItem.id in outcome.transientIds") &&
+        androidBrowserSrc.includes("window.__heybrocCacheTitleScore") &&
+        androidBrowserSrc.includes("fun urlMatchesStore(") &&
+        androidBrowserSrc.includes("if (!urlMatchesStore(storeKey, safe)) return") &&
+        androidBrowserSrc.includes("storeWebView?.stopLoading()") &&
+        androidDetectorSrc.includes("getWalmartNextDataMap") &&
+        androidDetectorSrc.includes("hb-photo-badge--check") &&
+        androidDetectorSrc.includes("curParentIsVerticalSlotHost && !nextParentIsVertical") &&
+        androidDetectorSrc.includes("hbAllowCheckNavUntil") &&
+        androidDetectorSrc.includes("APP_UPSELL_BANNER_RE") &&
+        androidDetectorSrc.includes("hideBannerNode(cta)") &&
+        androidDetectorSrc.includes("document.addEventListener('touchstart', stopBadgePointerEvent, true)") &&
+        iosShortcutsAuditSrc.includes("var transientIds: Set<String>") &&
+        iosShortcutsAuditSrc.includes("static func cacheVerifiedScreenScan(") &&
+        iosShortcutsAuditSrc.includes("timeoutInterval: 12") &&
+        iosBrowserSrc.includes("outcome.transientIds.contains(id)") &&
+        iosBrowserSrc.includes("urlMatchesStore(_ url: URL, storeKey: String)") &&
+        iosBrowserSrc.includes("storeWebView?.stopLoading()") &&
+        iosBrowserSrc.includes("APP_UPSELL_BANNER_RE") &&
+        iosBrowserSrc.includes("hideBannerNode(cta)") &&
+        iosBrowserSrc.includes("getWalmartNextDataMap") &&
+        iosBrowserSrc.includes("hb-photo-badge--check") &&
+        iosBrowserSrc.includes("curParentIsVerticalSlotHost && !nextParentIsVertical") &&
+        iosBrowserSrc.includes("hbAllowCheckNavUntil") &&
+        chromeExtSrc === safariExtSrc &&
+        chromeExtSrc.includes("getWalmartNextDataMap") &&
+        chromeExtSrc.includes("cc-photo-badge--check") &&
+        chromeExtSrc.includes("pIsVerticalSlotHost && gpIsHorizontalRow") &&
+        chromeExtSrc.includes("extBadgeFromEvent") &&
+        chromeExtSrc.includes("persistVerifiedPdpScore") &&
+        chromeBgSrc.includes("12000") &&
+        safariBgSrc.includes("12000") &&
+        opsCliSrc.includes("USDA_API_KEY"),
     );
   }
 

@@ -328,6 +328,8 @@ struct HeyBrocBatchScanOutcome {
     let summaries: [String: HeyBrocNativeScanSummary]
     let isTransientError: Bool
     var retryAfterSec: Int? = nil
+    var transientIds: Set<String> = []
+    var nonFoodIds: Set<String> = []
 }
 
 enum HeyBrocVisionOCR {
@@ -765,6 +767,50 @@ enum HeyBrocNativeScannerAPI {
         }
     }
 
+    private static let verifiedCacheLock = NSLock()
+    private static var verifiedScreenCache: [String: HeyBrocNativeScanSummary] = [:]
+
+    private static func normalizedVerifiedKey(title: String, barcode: String?) -> [String] {
+        var keys: [String] = []
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        if cleanTitle.count >= 3 {
+            keys.append("t:\(cleanTitle)")
+        }
+        let digits = (barcode ?? "").filter { $0.isNumber }
+        if digits.count >= 8 && digits.count <= 14 {
+            keys.append("b:\(digits)")
+        }
+        return keys
+    }
+
+    static func cacheVerifiedScreenScan(title: String, barcode: String?, summary: HeyBrocNativeScanSummary) {
+        guard !summary.isCategoryEstimate else { return }
+        let keys = normalizedVerifiedKey(title: title, barcode: barcode)
+        guard !keys.isEmpty else { return }
+        verifiedCacheLock.lock()
+        if verifiedScreenCache.count > 240 {
+            verifiedScreenCache.removeAll(keepingCapacity: true)
+        }
+        for k in keys {
+            verifiedScreenCache[k] = summary
+        }
+        verifiedCacheLock.unlock()
+    }
+
+    static func cachedVerifiedScreenScan(title: String, barcode: String?) -> HeyBrocNativeScanSummary? {
+        let keys = normalizedVerifiedKey(title: title, barcode: barcode)
+        guard !keys.isEmpty else { return nil }
+        verifiedCacheLock.lock()
+        defer { verifiedCacheLock.unlock() }
+        for k in keys {
+            if let hit = verifiedScreenCache[k] {
+                return hit
+            }
+        }
+        return nil
+    }
+
     static func scanBatchWithOutcome(
         items: [[String: String]],
         store: String? = nil,
@@ -777,7 +823,25 @@ enum HeyBrocNativeScannerAPI {
             }
             return
         }
-        var req = URLRequest(url: endpoint, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 9)
+        var cachedSummaries: [String: HeyBrocNativeScanSummary] = [:]
+        var uncachedItems: [[String: String]] = []
+        for item in items.prefix(12) {
+            let cid = item["id"] ?? ""
+            let pTitle = item["productTitle"] ?? ""
+            let bCode = item["barcode"]
+            if !cid.isEmpty, let hit = cachedVerifiedScreenScan(title: pTitle, barcode: bCode) {
+                cachedSummaries[cid] = hit
+            } else {
+                uncachedItems.append(item)
+            }
+        }
+        if uncachedItems.isEmpty {
+            DispatchQueue.main.async {
+                completion(HeyBrocBatchScanOutcome(summaries: cachedSummaries, isTransientError: false))
+            }
+            return
+        }
+        var req = URLRequest(url: endpoint, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 12)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("ios", forHTTPHeaderField: "X-HeyBroc-Platform")
@@ -790,7 +854,7 @@ enum HeyBrocNativeScannerAPI {
         }
 
         var payload: [String: Any] = [
-            "items": Array(items.prefix(12)),
+            "items": uncachedItems,
             "store": store ?? HeyBrocSharedPrefs.activeStore,
             "surface": "ios",
             "clientPlatform": "ios-app",
@@ -826,14 +890,14 @@ enum HeyBrocNativeScannerAPI {
                     return nil
                 }()
                 DispatchQueue.main.async {
-                    completion(HeyBrocBatchScanOutcome(summaries: [:], isTransientError: true, retryAfterSec: waitSec))
+                    completion(HeyBrocBatchScanOutcome(summaries: cachedSummaries, isTransientError: true, retryAfterSec: waitSec))
                 }
                 return
             }
             guard let data = data,
                   let top = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
                 DispatchQueue.main.async {
-                    completion(HeyBrocBatchScanOutcome(summaries: [:], isTransientError: true))
+                    completion(HeyBrocBatchScanOutcome(summaries: cachedSummaries, isTransientError: true))
                 }
                 return
             }
@@ -841,15 +905,29 @@ enum HeyBrocNativeScannerAPI {
                 HeyBrocSharedPrefs.deviceSecret = issuedSecret
             }
             let rawMap = (top["results"] as? [String: Any]) ?? (top["batch"] as? [String: Any]) ?? [:]
-            var parsedSummaries: [String: HeyBrocNativeScanSummary] = [:]
+            var parsedSummaries = cachedSummaries
+            var transientIds = Set<String>()
+            var nonFoodIds = Set<String>()
             for (cardId, entryAny) in rawMap {
                 guard let entryObj = entryAny as? [String: Any] else { continue }
                 if case .success(let summary) = parseScanObject(entryObj) {
                     parsedSummaries[cardId] = summary
+                } else {
+                    let itemStatus = (entryObj["status"] as? Int) ?? ((entryObj["status"] as? NSNumber)?.intValue ?? 0)
+                    if itemStatus == 422 {
+                        nonFoodIds.insert(cardId)
+                    } else if itemStatus == 429 || itemStatus == 503 || itemStatus == 504 || itemStatus >= 500 {
+                        transientIds.insert(cardId)
+                    }
                 }
             }
             DispatchQueue.main.async {
-                completion(HeyBrocBatchScanOutcome(summaries: parsedSummaries, isTransientError: false))
+                completion(HeyBrocBatchScanOutcome(
+                    summaries: parsedSummaries,
+                    isTransientError: false,
+                    transientIds: transientIds,
+                    nonFoodIds: nonFoodIds
+                ))
             }
         }.resume()
     }

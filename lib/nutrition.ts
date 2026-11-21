@@ -30,7 +30,7 @@ export function classifyWholeFood(title: string): Pick<NutritionInput, "isWholeF
     return { isWholeFood: true, fruitsVegNutsPct: 100 };
   }
   if (
-    /\b(oats?|oatmeal|quinoa|brown\s+rice|salmon|trout|cod|tuna|sardines?|shrimp|chicken|turkey|beef|pork|lamb|eggs?)\b/.test(
+    /\b(oats?|oatmeal|quinoa|brown\s+rice|salmon|trout|cod|tuna|sardines?|shrimp|tilapia|haddock|halibut|mahi[\s-]*mahi|swordfish|catfish|snapper|sea\s+bass|pollock|flounder|sole|branzino|barramundi|grouper|rockfish|swai|basa|mackerel|scallops?|clams?|mussels?|oysters?|crab|lobster|calamari|squid|octopus|(?:coho|sockeye|chinook|atlantic|king)\s+(?:salmon\s+)?(?:fillets?|filets?|portions?|steaks?)|chicken|turkey|beef|pork|lamb|eggs?)\b/.test(
       s,
     ) &&
     !/\b(milk|butter|yogurt|ice\s+cream|sandwich|soup|chowder|noodles?|pasta|spaghetti(?!\s+squash\b)|macaroni|ramen|cereal|granola|solution|in\s+oil)\b/.test(

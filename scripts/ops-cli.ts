@@ -434,6 +434,11 @@ async function main() {
         where: "https://resend.com/api-keys -> Create sending key for heybroc.com (optional EMAIL_FROM / EMAIL_REPLY_TO overrides)",
       },
       {
+        name: "USDA_API_KEY (USDA FoodData Central 1,000 req/hr quota, recommended)",
+        ok: Boolean(process.env.USDA_API_KEY?.trim() && process.env.USDA_API_KEY.trim().toUpperCase() !== "DEMO_KEY"),
+        where: "https://fdc.nal.usda.gov/api-key-signup -> Free API key (raises quota from DEMO_KEY 10 req/4hr to 1,000 req/hr)",
+      },
+      {
         name: "AMAZON_PARTNER_TAG (Web Amazon Associates, optional)",
         ok: Boolean(process.env.AMAZON_PARTNER_TAG?.trim() || process.env.NEXT_PUBLIC_AMAZON_TAG?.trim()),
         where: "https://affiliate-program.amazon.com -> Store ID (automatically suppressed on iOS & browser extensions)",

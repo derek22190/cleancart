@@ -2138,6 +2138,63 @@
     return "";
   }
 
+  let wmNextDataHref = "";
+  let wmNextDataMap = null;
+  function getWalmartNextDataMap() {
+    if (!/(?:^|\.)walmart\.com$/i.test(String(location.hostname || ""))) return null;
+    if (wmNextDataMap && wmNextDataHref === location.href) return wmNextDataMap;
+    wmNextDataHref = location.href;
+    wmNextDataMap = Object.create(null);
+    try {
+      const scriptEl = document.getElementById("__NEXT_DATA__");
+      if (!scriptEl || !scriptEl.textContent) return wmNextDataMap;
+      const root = JSON.parse(scriptEl.textContent);
+      const stack = [root];
+      let visited = 0;
+      while (stack.length > 0 && visited < 5000) {
+        const cur = stack.pop();
+        if (!cur || typeof cur !== "object") continue;
+        visited++;
+        if (Array.isArray(cur)) {
+          for (let i = 0; i < cur.length && stack.length < 4000; i++) {
+            if (cur[i] && typeof cur[i] === "object") stack.push(cur[i]);
+          }
+          continue;
+        }
+        const rawId = cur.usItemId || cur.itemId || (typeof cur.id === "string" && /^\d{6,14}$/.test(cur.id) ? cur.id : "");
+        const rawName = typeof cur.name === "string" ? cur.name : typeof cur.title === "string" ? cur.title : "";
+        const rawUpc =
+          typeof cur.upc === "string"
+            ? cur.upc
+            : typeof cur.gtin === "string"
+              ? cur.gtin
+              : typeof cur.gtin13 === "string"
+                ? cur.gtin13
+                : "";
+        if (rawId && (rawUpc || rawName)) {
+          const keyId = String(rawId).trim();
+          const prevRec = wmNextDataMap[keyId] || {};
+          let cleanUpc = String(rawUpc || "").replace(/\D/g, "");
+          if (cleanUpc.length === 14 && cleanUpc.startsWith("00")) cleanUpc = cleanUpc.slice(2);
+          else if (cleanUpc.length === 14 && cleanUpc.startsWith("0")) cleanUpc = cleanUpc.slice(1);
+          const cleanedName = rawName ? cleanProductTitleText(rawName) : "";
+          wmNextDataMap[keyId] = {
+            upc: cleanUpc && isValidGs1Barcode(cleanUpc) ? cleanUpc : prevRec.upc || "",
+            name: cleanedName && cleanedName.length > (prevRec.name || "").length ? cleanedName : prevRec.name || "",
+          };
+        }
+        for (const k of Object.keys(cur)) {
+          if (stack.length >= 4000) break;
+          const v = cur[k];
+          if (v && typeof v === "object") stack.push(v);
+        }
+      }
+    } catch {
+      // ignore malformed Next.js payload
+    }
+    return wmNextDataMap;
+  }
+
   function recoverFromCardLinks(cardEl, visibleTitle) {
     let bestTitle = String(visibleTitle || "");
     const isTruncated = !bestTitle || /(?:\.\.\.|…|[,(\/-])\s*$|\([^)]*$/.test(bestTitle);
@@ -2168,6 +2225,7 @@
         break;
       }
     }
+    let wmItemId = String((cardEl.getAttribute && cardEl.getAttribute("data-item-id")) || "").trim();
     let bestHrefKey = "";
     const links = cardEl.querySelectorAll ? cardEl.querySelectorAll("a[href]") : [];
     for (const a of links) {
@@ -2177,6 +2235,10 @@
       const cleanPath = unwrapped.split("#")[0].split("?")[0];
       if (!bestHrefKey && cleanPath) {
         bestHrefKey = cleanPath.slice(0, 160);
+      }
+      if (!wmItemId && cleanPath) {
+        const wmMatch = cleanPath.match(/\/ip\/(?:[^/?#]+\/)?(\d{6,14})(?:[/?#]|$)/i);
+        if (wmMatch && wmMatch[1]) wmItemId = wmMatch[1];
       }
       if (!barcode && cleanPath) {
         const bm = cleanPath.match(/(?:^|\/)(\d{12,14})(?:[/?#.]|$)/);
@@ -2215,6 +2277,25 @@
             bestTitle = slugCand;
           } else if (slugCand.length > bestTitle.length - 2 && (!stem || normSlug.startsWith(stem.slice(0, 12)))) {
             bestTitle = slugCand;
+          }
+        }
+      }
+    }
+    if (wmItemId) {
+      const wmMap = getWalmartNextDataMap();
+      const wmEntry = wmMap && wmMap[wmItemId];
+      if (wmEntry) {
+        if (!barcode && wmEntry.upc) barcode = wmEntry.upc;
+        if (
+          wmEntry.name &&
+          wmEntry.name.length >= 5 &&
+          !NON_TITLE_RE.test(wmEntry.name) &&
+          !CARD_CTA_NOISE_RE.test(wmEntry.name) &&
+          (!bestTitle || /(?:\.\.\.|…|[,(\/-])\s*$|\([^)]*$/.test(bestTitle) || wmEntry.name.length > bestTitle.length + 3)
+        ) {
+          const normNext = wmEntry.name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+          if (!stem || normNext.startsWith(stem.slice(0, 10))) {
+            bestTitle = wmEntry.name;
           }
         }
       }
@@ -2301,10 +2382,10 @@
     }
     if (title && /(?:\.\.\.|…)\s*$/.test(title)) {
       const stem = title.replace(/(?:\.\.\.|…)\s*$/, "").trim().toLowerCase().slice(0, 24);
-      for (const fullSel of ['[data-automation-id*="product-title" i]', "a[link-identifier]", "a[aria-label]", "span.w_iUH7", '[class*="w_iUH7"]']) {
+      for (const fullSel of ['[data-test="product-title"]', '[data-test="product-card-title"]', '[data-automation-id*="product-title" i]', "a[link-identifier]", "a[aria-label]", "[title]", "span.w_iUH7", '[class*="w_iUH7"]']) {
         for (const fel of cardEl.querySelectorAll(fullSel)) {
           if (fel.closest?.(".cc-photo-badge, .cc-photo-badge-slot")) continue;
-          const fullCand = cleanProductTitleText(fel?.getAttribute?.("aria-label") || fel?.textContent || "");
+          const fullCand = cleanProductTitleText(fel?.getAttribute?.("aria-label") || fel?.getAttribute?.("title") || fel?.textContent || "");
           if (
             fullCand &&
             fullCand.length > title.length &&
@@ -4700,6 +4781,13 @@
       (resp) => {
         if (resp?.ok && !isTransientLockedSwap(resp)) {
           lruSet(scanCache, cKey, resp, MAX_PDP_SCAN_CACHE);
+          if (!isNonFoodScanResponse(resp)) {
+            lruSet(gridScanCache, normCacheKey(productTitle, ""), resp, MAX_GRID_SCAN_CACHE);
+            if (resp.product?.title && resp.product.title !== productTitle) {
+              lruSet(gridScanCache, normCacheKey(resp.product.title, ""), resp, MAX_GRID_SCAN_CACHE);
+            }
+            persistVerifiedPdpScore(productTitle, resp);
+          }
         }
         if (seq !== scanSeq || !isProductPage() || resolveStoreBucket().bucketKey !== reqBucket.bucketKey) return;
         void applyScanResult(resp, domImage, seq);
@@ -4716,6 +4804,42 @@
   const MAX_IN_FLIGHT_PHOTO_BATCHES = 2;
 
   const gridScanCache = new Map();
+  const PDP_VERIFIED_SESSION_KEY = "heybroc_pdp_verified_scores_v1";
+
+  function persistVerifiedPdpScore(title, resp) {
+    try {
+      if (!title || !resp?.ok || !resp?.result) return;
+      const key = normCacheKey(title, "");
+      if (!key) return;
+      let storeObj = {};
+      try {
+        storeObj = JSON.parse(sessionStorage.getItem(PDP_VERIFIED_SESSION_KEY) || "{}") || {};
+      } catch {
+        storeObj = {};
+      }
+      storeObj[key] = resp;
+      const keys = Object.keys(storeObj);
+      if (keys.length > 40) {
+        delete storeObj[keys[0]];
+      }
+      sessionStorage.setItem(PDP_VERIFIED_SESSION_KEY, JSON.stringify(storeObj));
+    } catch {
+      // ignore storage quota errors
+    }
+  }
+
+  function readPersistedPdpScore(cKey) {
+    try {
+      if (!cKey) return null;
+      const raw = sessionStorage.getItem(PDP_VERIFIED_SESSION_KEY);
+      if (!raw) return null;
+      const storeObj = JSON.parse(raw);
+      return storeObj && Object.prototype.hasOwnProperty.call(storeObj, cKey) ? storeObj[cKey] : null;
+    } catch {
+      return null;
+    }
+  }
+
   let photoBadgeObserver = null;
   let cardStateByEl = new WeakMap();
   let ownerCardByImg = new WeakMap();
@@ -4729,6 +4853,7 @@
   let photoBadgePrefRev = 1;
   let lastPhotoBadgePageUrl = location.href;
   let inFlightPhotoBatches = 0;
+  let allowExtCheckNavUntil = 0;
 
   function ensurePhotoBadgeStyles() {
     if (document.getElementById(PHOTO_BADGE_STYLE_ID)) return;
@@ -4740,18 +4865,18 @@
         align-items: center !important;
         justify-content: flex-start !important;
         width: 100% !important;
-        padding: 7px 2px 3px 2px !important;
+        padding: 10px 2px 5px 2px !important;
         margin: 0 !important;
         box-sizing: border-box !important;
         pointer-events: none !important;
         position: relative !important;
-        z-index: 20 !important;
+        z-index: 2147483640 !important;
       }
       .cc-photo-badge {
         position: absolute !important;
         bottom: 8px !important;
         left: 8px !important;
-        z-index: 20 !important;
+        z-index: 2147483640 !important;
         display: inline-flex !important;
         align-items: center !important;
         gap: 6px !important;
@@ -4772,6 +4897,12 @@
         white-space: nowrap !important;
         transition: transform 0.14s ease, filter 0.14s ease !important;
       }
+      .cc-photo-badge::before {
+        content: "" !important;
+        position: absolute !important;
+        inset: -6px !important;
+        border-radius: 999px !important;
+      }
       .cc-photo-badge--under {
         position: relative !important;
         bottom: auto !important;
@@ -4784,6 +4915,7 @@
       .cc-photo-badge--red { background: rgba(220, 38, 38, 0.97) !important; }
       .cc-photo-badge--advisory { box-shadow: 0 0 0 2.5px #fbbf24, 0 5px 14px rgba(15, 23, 42, 0.26) !important; }
       .cc-photo-badge--loading { background: rgba(15, 23, 42, 0.78) !important; opacity: 0.9 !important; }
+      .cc-photo-badge--check { background: rgba(51, 65, 85, 0.92) !important; font-size: 13.5px !important; font-weight: 800 !important; padding: 5px 12px !important; letter-spacing: 0 !important; }
     `;
     (document.head || document.documentElement)?.appendChild(styleEl);
   }
@@ -4910,6 +5042,27 @@
         }
       }
       if (extNodeHasDetailsOrCta(p)) break;
+      const pCs = window.getComputedStyle(p);
+      const pIsVerticalSlotHost =
+        p.tagName !== "A" &&
+        p.tagName !== "BUTTON" &&
+        p.tagName !== "PICTURE" &&
+        !p.closest?.("a, button") &&
+        !isExtHorizontalCarouselTrack(p) &&
+        pCs.display !== "grid" &&
+        pCs.display !== "inline-grid" &&
+        !((pCs.display === "flex" || pCs.display === "inline-flex") && !/^column/i.test(pCs.flexDirection || ""));
+      const gp = p.parentElement;
+      const gpCs = gp && gp !== document.body ? window.getComputedStyle(gp) : null;
+      const gpIsHorizontalRow =
+        gpCs &&
+        (gpCs.display === "grid" ||
+          gpCs.display === "inline-grid" ||
+          ((gpCs.display === "flex" || gpCs.display === "inline-flex") && !/^column/i.test(gpCs.flexDirection || "")));
+      if (pIsVerticalSlotHost && gpIsHorizontalRow) {
+        // Stop before climbing out of a vertical left photo column into a 2-column horizontal row (e.g. Sam's Club / Walmart)
+        break;
+      }
       const pr = p.getBoundingClientRect();
       if (pr.width >= 56 && pr.height <= (ar.height || 240) + 64) {
         slotTarget = p;
@@ -4964,11 +5117,18 @@
     if (chosenImg && anchor) {
       const ancRect = anchor.getBoundingClientRect();
       const liveImgRect = chosenImg.getBoundingClientRect();
-      if (liveImgRect.height >= 40 && ancRect.height > liveImgRect.height + 90) {
-        const relTop = Math.max(6, Math.round(liveImgRect.bottom - ancRect.top - 40));
-        if (relTop < ancRect.height - 36) {
-          badgeEl.style.setProperty("top", `${relTop}px`, "important");
+      if (liveImgRect.height >= 40) {
+        const spaceBelowImg = ancRect.bottom - liveImgRect.bottom;
+        if (spaceBelowImg >= 42) {
+          const belowTop = Math.max(6, Math.round(liveImgRect.bottom - ancRect.top + 8));
+          badgeEl.style.setProperty("top", `${belowTop}px`, "important");
           badgeEl.style.setProperty("bottom", "auto", "important");
+        } else if (ancRect.height > liveImgRect.height + 90) {
+          const relTop = Math.max(6, Math.round(liveImgRect.bottom - ancRect.top - 40));
+          if (relTop < ancRect.height - 36) {
+            badgeEl.style.setProperty("top", `${relTop}px`, "important");
+            badgeEl.style.setProperty("bottom", "auto", "important");
+          }
         }
       }
     }
@@ -5193,6 +5353,7 @@
     const icon = severity === "none" ? "🥦" : isPesticideOnly ? "🌱" : "⚠️";
     badgeEl.classList.remove(
       "cc-photo-badge--loading",
+      "cc-photo-badge--check",
       "cc-photo-badge--green",
       "cc-photo-badge--yellow",
       "cc-photo-badge--red",
@@ -5208,8 +5369,63 @@
       "aria-label",
       `HeyBroc score ${safeScore} out of 100 for ${resp.product?.title || info.title}. Tap to inspect and view Clean Swaps.`
     );
-    badgeDataByElement.set(badgeEl, { resp, info, domImg, cardEl, sig, loading: false, openOnResolve: false });
+    badgeDataByElement.set(badgeEl, { resp, info, domImg, cardEl, sig, loading: false, isCheck: false, openOnResolve: false });
     return true;
+  }
+
+  function applyCheckPhotoBadgeState(badgeEl, info, domImg, cardEl, sig) {
+    if (!badgeEl || !badgeEl.isConnected) return false;
+    badgeEl.classList.remove(
+      "cc-photo-badge--loading",
+      "cc-photo-badge--green",
+      "cc-photo-badge--yellow",
+      "cc-photo-badge--red",
+      "cc-photo-badge--advisory"
+    );
+    badgeEl.classList.add("cc-photo-badge--check");
+    badgeEl.dataset.ccSig = sig;
+    badgeEl.textContent = "🥦 Check";
+    badgeEl.setAttribute(
+      "aria-label",
+      `Open product page to read live ingredients for ${info?.title || "this item"}`
+    );
+    badgeDataByElement.set(badgeEl, { resp: null, info, domImg, cardEl, sig, loading: false, isCheck: true, openOnResolve: false });
+    return true;
+  }
+
+  function openExtCardProductPage(cardEl) {
+    if (!cardEl) return false;
+    const links = cardEl.querySelectorAll ? cardEl.querySelectorAll("a[href]") : [];
+    let chosenLink = null;
+    for (const a of links) {
+      if (a.closest?.(".cc-photo-badge, .cc-photo-badge-slot")) continue;
+      const rawHref = String(a.getAttribute("href") || "").trim();
+      if (!rawHref || rawHref === "#" || /^javascript:/i.test(rawHref)) continue;
+      if (isRealProductHrefPath(unwrapProductHref(rawHref))) {
+        chosenLink = a;
+        break;
+      }
+      if (!chosenLink) chosenLink = a;
+    }
+    if (chosenLink) {
+      try {
+        allowExtCheckNavUntil = Date.now() + 400;
+        chosenLink.click();
+        return true;
+      } catch {
+        // ignore click failure
+      }
+    }
+    if (cardEl.getAttribute?.("role") === "button" || cardEl.tagName === "BUTTON") {
+      try {
+        allowExtCheckNavUntil = Date.now() + 400;
+        cardEl.click();
+        return true;
+      } catch {
+        // ignore
+      }
+    }
+    return false;
   }
 
   function openBadgeScanInDrawer(resp, info, domImg) {
@@ -5226,6 +5442,10 @@
   function handlePhotoBadgeActivate(badgeEl) {
     const entry = badgeDataByElement.get(badgeEl);
     if (!entry) return;
+    if (entry.isCheck || badgeEl.classList?.contains?.("cc-photo-badge--check")) {
+      const targetCard = entry.cardEl?.isConnected ? entry.cardEl : badgeEl.closest(PRODUCT_CARD_SEL);
+      if (openExtCardProductPage(targetCard)) return;
+    }
     if (entry.loading) {
       entry.openOnResolve = true;
       return;
@@ -5285,6 +5505,7 @@
 
     if (pendingPhotoBadgeQueue.size > 12) {
       const vhNow = Math.max(400, window.innerHeight || 800);
+      const vwNow = Math.max(280, window.innerWidth || 412);
       const onScreen = [];
       const nearScreen = [];
       const offScreen = [];
@@ -5292,8 +5513,8 @@
         const qe = pair[1];
         if (!qe.cardEl?.isConnected) continue;
         const qr = qe.cardEl.getBoundingClientRect();
-        if (qr.bottom > 40 && qr.top < vhNow - 20) onScreen.push(pair);
-        else if (qr.bottom > -220 && qr.top < vhNow + 260) nearScreen.push(pair);
+        if (qr.bottom > 40 && qr.top < vhNow - 20 && qr.right > 0 && qr.left < vwNow) onScreen.push(pair);
+        else if (qr.bottom > -180 && qr.top < vhNow + 220 && qr.right > -120 && qr.left < vwNow + 140) nearScreen.push(pair);
         else offScreen.push(pair);
       }
       pendingPhotoBadgeQueue.clear();
@@ -5425,6 +5646,20 @@
               continue;
             }
             if (itemResp?.ok) {
+              if (itemResp.isCategoryEstimate) {
+                applyCheckPhotoBadgeState(entry.badgeEl, entry.info, entry.domImg, entry.cardEl, entry.sig);
+                cardStateByEl.set(entry.cardEl, {
+                  sig: entry.sig,
+                  status: "scored",
+                  badgeEl: entry.badgeEl,
+                  retryCount: 0,
+                  nextRetryAt: 0,
+                });
+                if (keepOpen) {
+                  openBadgeScanInDrawer(itemResp, entry.info, entry.domImg);
+                }
+                continue;
+              }
               const shown = applyScoredPhotoBadgeState(
                 entry.badgeEl,
                 itemResp,
@@ -5459,27 +5694,46 @@
                 }
               }
             } else {
-              unmountPhotoBadgeEl(entry.badgeEl);
               const prevRetries = entry.retryCount || 0;
+              const itemStatus = Number(itemResp?.status) || 0;
               const confirmedNonFood =
                 itemResp?.isNonFood === true ||
-                itemResp?.status === 422 ||
+                itemStatus === 422 ||
                 /non-food/i.test(itemResp?.error || "");
-              if (!confirmedNonFood && prevRetries < 1) {
-                const retryDelayMs = 18000;
-                cardStateByEl.set(entry.cardEl, {
-                  sig: entry.sig,
-                  status: "retry",
-                  badgeEl: null,
-                  retryCount: prevRetries + 1,
-                  nextRetryAt: Date.now() + retryDelayMs,
-                });
-                schedulePhotoBadgeRetry(retryDelayMs + 200);
-              } else {
+              const isItemTransient =
+                !confirmedNonFood &&
+                (itemResp?.transient === true ||
+                  itemStatus === 429 ||
+                  itemStatus === 503 ||
+                  itemStatus === 504 ||
+                  itemStatus >= 500);
+              if (confirmedNonFood) {
+                unmountPhotoBadgeEl(entry.badgeEl);
                 cardStateByEl.set(entry.cardEl, {
                   sig: entry.sig,
                   status: "nonfood",
                   badgeEl: null,
+                  retryCount: prevRetries,
+                  nextRetryAt: 0,
+                });
+              } else if (isItemTransient && prevRetries < 4) {
+                unmountPhotoBadgeEl(entry.badgeEl);
+                const nextRetry = prevRetries + 1;
+                const retryDelayMs = nextRetry === 1 ? 2200 : nextRetry === 2 ? 4800 : 8500;
+                cardStateByEl.set(entry.cardEl, {
+                  sig: entry.sig,
+                  status: "retry",
+                  badgeEl: null,
+                  retryCount: nextRetry,
+                  nextRetryAt: Date.now() + retryDelayMs,
+                });
+                schedulePhotoBadgeRetry(retryDelayMs + 120);
+              } else {
+                applyCheckPhotoBadgeState(entry.badgeEl, entry.info, entry.domImg, entry.cardEl, entry.sig);
+                cardStateByEl.set(entry.cardEl, {
+                  sig: entry.sig,
+                  status: "scored",
+                  badgeEl: entry.badgeEl,
                   retryCount: prevRetries,
                   nextRetryAt: 0,
                 });
@@ -5563,9 +5817,19 @@
 
     const domImg = info.domImageUrl || info.image || null;
     const cKey = normCacheKey(info.title, "");
-    const cached = lruGet(gridScanCache, cKey);
+    const cached = lruGet(gridScanCache, cKey) || readPersistedPdpScore(cKey);
     if (cached) {
       if (!cached.ok || isNonFoodScanResponse(cached)) {
+        if (cached?.isCategoryEstimate) {
+          const badgeEl = document.createElement("span");
+          badgeEl.className = "cc-photo-badge";
+          badgeEl.setAttribute("role", "button");
+          badgeEl.setAttribute("tabindex", "0");
+          mountPhotoBadgeUnderOrOnPhoto(cardEl, anchor, badgeEl, info.imgEl);
+          applyCheckPhotoBadgeState(badgeEl, info, domImg, cardEl, sig);
+          cardStateByEl.set(cardEl, { sig, status: "scored", badgeEl, retryCount: 0, nextRetryAt: 0 });
+          return;
+        }
         cardStateByEl.set(cardEl, { sig, status: "nonfood", badgeEl: null, retryCount: 0, nextRetryAt: 0 });
         return;
       }
@@ -5600,6 +5864,7 @@
       cardEl,
       sig,
       loading: true,
+      isCheck: false,
       openOnResolve: false,
     });
     cardStateByEl.set(cardEl, {
@@ -5627,7 +5892,7 @@
           processVisiblePhotoBadgeCard(entry.target);
         }
       },
-      { rootMargin: "180px 340px" }
+      { rootMargin: "180px 120px" }
     );
     return photoBadgeObserver;
   }
@@ -5773,11 +6038,29 @@
     return t && t.nodeType === 1 ? t : t?.parentElement || null;
   }
 
+  function extBadgeFromEvent(e) {
+    if (Date.now() < allowExtCheckNavUntil) return null;
+    const targetEl = eventTargetElement(e);
+    const direct = targetEl?.closest?.(".cc-photo-badge");
+    if (direct) return direct;
+    const pt = e?.changedTouches?.[0] || e?.touches?.[0] || e;
+    const cx = pt && typeof pt.clientX === "number" ? pt.clientX : null;
+    const cy = pt && typeof pt.clientY === "number" ? pt.clientY : null;
+    if (cx !== null && cy !== null && (cx !== 0 || cy !== 0)) {
+      for (const b of document.querySelectorAll(".cc-photo-badge")) {
+        const br = b.getBoundingClientRect();
+        if (br.width > 0 && br.height > 0 && cx >= br.left - 6 && cx <= br.right + 6 && cy >= br.top - 6 && cy <= br.bottom + 6) {
+          return b;
+        }
+      }
+    }
+    return null;
+  }
+
   document.addEventListener(
     "click",
     (e) => {
-      const targetEl = eventTargetElement(e);
-      const badge = targetEl?.closest?.(".cc-photo-badge");
+      const badge = extBadgeFromEvent(e);
       if (!badge) return;
       e.preventDefault();
       e.stopPropagation();
@@ -5787,12 +6070,11 @@
     true
   );
 
-  for (const evtName of ["mousedown", "mouseup", "auxclick", "touchend"]) {
+  for (const evtName of ["touchstart", "pointerdown", "pointerup", "mousedown", "mouseup", "auxclick", "touchend"]) {
     document.addEventListener(
       evtName,
       (e) => {
-        const targetEl = eventTargetElement(e);
-        const badge = targetEl?.closest?.(".cc-photo-badge");
+        const badge = extBadgeFromEvent(e);
         if (!badge) return;
         e.stopPropagation();
         e.stopImmediatePropagation();

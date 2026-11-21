@@ -829,20 +829,38 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     .slice(0, 4);
   if (!candidateList.length && productTitle) candidateList.push(productTitle);
 
-  let found: LookupResult | null = null;
-  for (const cand of candidateList.length ? candidateList : [productTitle]) {
-    found = await lookupIngredients({
-      productTitle: cand,
-      barcode,
-      rawIngredients,
+  let hadOpFailure = false;
+  const found: LookupResult | null = await runWithLookupContext(
+    {
       isBatch: req.isBatch,
-    });
-    if (found) {
-      productTitle = cand;
-      break;
-    }
-  }
+      onOperationalFailure: () => {
+        hadOpFailure = true;
+      },
+    },
+    async () => {
+      for (const cand of candidateList.length ? candidateList : [productTitle]) {
+        const hit = await lookupIngredients({
+          productTitle: cand,
+          barcode,
+          rawIngredients,
+          isBatch: req.isBatch,
+        });
+        if (hit) {
+          productTitle = cand;
+          return hit;
+        }
+      }
+      return null;
+    },
+  );
   if (!found) {
+    if (hadOpFailure && req.isBatch) {
+      return {
+        ok: false,
+        status: 503,
+        error: `Upstream food databases are temporarily busy for "${productTitle || barcode}". Retrying automatically.`,
+      };
+    }
     return {
       ok: false,
       status: 404,
@@ -1182,7 +1200,7 @@ export interface RunBatchScanOptions {
 const VALID_BATCH_ITEM_ID_RE = /^(?!^(?:__proto__|constructor|prototype)$)[A-Za-z0-9_-]{1,40}$/i;
 export const MAX_BATCH_SCAN_ITEMS = 12;
 const BATCH_ENTITLEMENT_TIMEOUT_MS = 900;
-const BATCH_WALL_BUDGET_MS = 4800;
+const BATCH_WALL_BUDGET_MS = 6500;
 
 export const NON_FOOD_GRID_ITEM_RE =
   /\b(?:paper\s+towels?|toilet\s+(?:paper|tissue)|bath\s+tissue|facial\s+tissues?|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|parchment\s+paper|plastic\s+wrap|paper\s+plates?|laundry\s+(?:detergent|pods?|sanitizer)|fabric\s+softener|dryer\s+sheets?|dish\s+(?:soap|detergent)|dishwasher\s+(?:pods?|pac?ks?|detergent)|disinfecting\s+wipes?|bleach|all[- ]purpose\s+cleaner|glass\s+cleaner|toilet\s+bowl\s+cleaner|air\s+freshener|diapers?|pull[- ]ups?|baby\s+wipes?|cat\s+litter|dog\s+(?:food|treats?|pads?)|cat\s+(?:food|treats?)|pet\s+food|alkaline\s+batteries|aa\s+batteries|aaa\s+batteries|motor\s+oil|windshield\s+washer|light\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|body\s+wash|deodorant|antiperspirant|razor\s+blades?|shaving\s+cream|sunscreen|tampons?|maxi\s+pads?|pantiliners?|power\s+bank|air\s+fryer|jigsaw\s+puzzle|piece\s+puzzle|hopper\s+ball|bouncer|heated\s+(?:vest|clothing|jacket)|sippy\s+cups?|toddler\s+cups?|training\s+cups?|water\s+bottle\s+(?:with\s+straw|insulated|stainless))\b/i;

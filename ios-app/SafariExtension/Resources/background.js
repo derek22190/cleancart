@@ -289,7 +289,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "CLEANCART_SCAN_BATCH") {
     (async () => {
       const ctrl = new AbortController();
-      const timeoutId = setTimeout(() => ctrl.abort(), 8500);
+      const timeoutId = setTimeout(() => ctrl.abort(), 12000);
       try {
         const { apiBase, watchlist, familyWatchlist, dietaryWatchlist, preferStoreBrand, deviceId, deviceSecret, authToken } = await getSettings();
         const res = await fetch(`${apiBase}/api/scan`, {

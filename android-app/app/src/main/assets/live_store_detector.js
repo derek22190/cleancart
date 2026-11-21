@@ -36,12 +36,24 @@
     return r.width > 2 && r.height > 2;
   }
 
-  var APP_INSTALL_CTA_RE = /^(?:get\s+the\s+app|open\s+in\s+(?:the\s+)?(?:walmart\s+|target\s+|instacart\s+|sam'?s\s+club\s+|bj'?s\s+|kroger\s+|amazon\s+|aldi\s+|costco\s+)?app|open\s+app|use\s+(?:the\s+)?app|download\s+(?:the\s+)?app|continue\s+in\s+app|shop\s+in\s+(?:the\s+)?app)$/i;
-  var APP_INSTALL_HREF_RE = /play\.google\.com|market\.android\.com|(?:apps|itunes)\.apple\.com|\.onelink\.me|\.app\.link|\bbnc\.lt\b|app\.adjust\.com|\.adj\.st|\.smart\.link|^intent:\/\/|^market:\/\//i;
+  var APP_INSTALL_CTA_RE = /^(?:get\s+the\s+app|open\s+in\s+(?:the\s+)?(?:walmart\s+|target\s+|instacart\s+|sam'?s\s+club\s+|bj'?s\s+|kroger\s+|amazon\s+|aldi\s+|costco\s+|doordash\s+|uber\s*eats\s+|shipt\s+)?app|open\s+app|use\s+(?:the\s+)?app|download\s+(?:the\s+)?app|continue\s+in\s+(?:the\s+)?app|shop\s+in\s+(?:the\s+)?app|view\s+in\s+(?:the\s+)?app)$/i;
+  var APP_GENERIC_OPEN_CTA_RE = /^(?:open|get|install|download|view)$/i;
+  var APP_UPSELL_BANNER_RE = /\b(?:browse|shop|order|get\s+it|checkout)\s+faster\s+in\s+(?:the\s+)?app\b|\bopen\s+in\s+(?:the\s+)?(?:doordash|uber\s*eats|walmart|target|instacart|costco|kroger|shipt|aldi|sam'?s(?:\s+club)?|bj'?s|amazon|whole\s+foods)?\s*app\b|\bget\s+the\s+(?:doordash|uber\s*eats|walmart|target|instacart|costco|kroger|shipt|aldi|sam'?s(?:\s+club)?|bj'?s|amazon|whole\s+foods)?\s*(?:free\s+)?app\b|\bdownload\s+the\s+(?:doordash|uber\s*eats|walmart|target|instacart|costco|kroger|shipt|aldi|sam'?s(?:\s+club)?|bj'?s|amazon|whole\s+foods)?\s*(?:free\s+)?app\b|\buse\s+the\s+(?:doordash|uber\s*eats|walmart|target|instacart|costco|kroger|shipt|aldi|sam'?s(?:\s+club)?|bj'?s|amazon|whole\s+foods)?\s*app\b|\bcontinue\s+in\s+(?:the\s+)?app\b|\bexperience\s+(?:the\s+)?(?:full\s+)?app\b|\b(?:app\s+store|google\s+play)\b.*\bapp\b/i;
+  var APP_RATINGS_WITH_APP_RE = /\b\d+(?:\.\d+)?[mk]\+?\s+ratings?\b/i;
+  var APP_INSTALL_HREF_RE = /play\.google\.com|market\.android\.com|(?:apps|itunes)\.apple\.com|\.onelink\.me|\.app\.link|\bbnc\.lt\b|app\.adjust\.com|\.adj\.st|\.smart\.link|^intent:\/\/|^market:\/\/|^(?:doordash|ubereats|walmart|target|instacart|costco|kroger|shipt|samsclub):\/\//i;
   var SENSITIVE_BANNER_PATH_RE = /\/(?:cart|bag|basket|checkout|gp\/cart|store\/cart|shop\/cart|login|signin|sign-in|account|auth|register)(?:\/|$)/i;
-  var BANNER_FORBIDDEN_TEXT_RE = /\$\s*\d|\b(?:cart|bag|basket|checkout|subtotal|total|pickup|delivery|shipping|address|zip\s*code|sign\s*in|log\s*in|account|password|verification|filter|sort|search\s+results)\b/i;
+  var BANNER_FORBIDDEN_TEXT_RE = /\$\s*\d|\b(?:cart|bag|basket|checkout|subtotal|total|pickup|delivery|shipping|address|zip\s*code|sign\s*in|log\s*in|login|account|password|verification|filter|sort|search\s+results)\b/i;
+  var APP_BANNER_STRICT_FORBIDDEN_RE = /\b(?:cart|bag|basket|checkout|subtotal|sign\s*in|log\s*in|login|account|password|verification|search\s+results|enter\s+delivery\s+address|your\s+addr|zip\s*code)\b/i;
   var hbBannerLastHref = location.href;
-  var hbBannerScanDeadline = Date.now() + 2600;
+  var hbBannerScanDeadline = Date.now() + 8000;
+
+  function hideBannerNode(el) {
+    if (!el || el.getAttribute('data-hb-app-banner-hidden') === '1') return;
+    el.setAttribute('data-hb-app-banner-hidden', '1');
+    el.style.setProperty('display', 'none', 'important');
+    el.style.setProperty('visibility', 'hidden', 'important');
+    el.style.setProperty('pointer-events', 'none', 'important');
+  }
 
   function ensureAppBannerSuppressorStyles() {
     var metaApple = document.querySelector('meta[name="apple-itunes-app"]');
@@ -53,7 +65,7 @@
     if (!document.getElementById('hb-app-banner-suppressor')) {
       var st = document.createElement('style');
       st.id = 'hb-app-banner-suppressor';
-      st.textContent = '#branch-banner-iframe, .branch-journeys-top, [id^="branch-banner"], [class*="branch-animation"], .smartbanner, [id*="smartbanner" i], smart-banner, [data-testid="smart-banner"], [data-testid="app-banner"], [data-testid="download-app-banner"], [data-automation-id="app-banner"], [data-automation-id="smart-banner"], [data-test="smartBanner"], [data-test="appBanner"], [data-hb-app-banner-hidden="1"] { display: none !important; visibility: hidden !important; height: 0 !important; min-height: 0 !important; pointer-events: none !important; overflow: hidden !important; }';
+      st.textContent = '#branch-banner-iframe, .branch-journeys-top, [id^="branch-banner"], [class*="branch-animation"], .smartbanner, [id*="smartbanner" i], smart-banner, [data-testid="smart-banner"], [data-testid="app-banner"], [data-testid="download-app-banner"], [data-testid*="SmartAppBanner" i], [data-testid*="app-download" i], [data-testid*="AppDownload" i], [data-testid*="open-app" i], [data-anchor-id*="AppBanner" i], [data-anchor-id*="DownloadApp" i], [data-anchor-id*="OpenApp" i], [aria-label="Open App" i], [aria-label="Open in app" i], [aria-label="Get the app" i], [data-automation-id="app-banner"], [data-automation-id="smart-banner"], [data-test="smartBanner"], [data-test="appBanner"], [data-hb-app-banner-hidden="1"] { display: none !important; visibility: hidden !important; height: 0 !important; min-height: 0 !important; pointer-events: none !important; overflow: hidden !important; }';
       head.appendChild(st);
     }
     if (/(?:^|\.)samsclub\.com$/i.test(location.hostname || '') && !document.getElementById('hb-sams-search-fix')) {
@@ -77,7 +89,7 @@
     ensureAppBannerSuppressorStyles();
     if (location.href !== hbBannerLastHref) {
       hbBannerLastHref = location.href;
-      hbBannerScanDeadline = Date.now() + 2600;
+      hbBannerScanDeadline = Date.now() + 8000;
     }
     if (Date.now() > hbBannerScanDeadline) return;
     if (SENSITIVE_BANNER_PATH_RE.test(location.pathname || '')) return;
@@ -87,16 +99,18 @@
     var vh = Math.max(400, window.innerHeight || 844);
     for (var i = 0; i < ctas.length; i++) {
       var cta = ctas[i];
-      if (!cta || (cta.closest && cta.closest('[data-hb-app-banner-hidden="1"], header, nav, footer, [role="contentinfo"], form, [role="dialog"], [aria-modal="true"]'))) continue;
+      if (!cta || (cta.closest && cta.closest('[data-hb-app-banner-hidden="1"], footer, [role="contentinfo"], form, [role="dialog"], [aria-modal="true"]'))) continue;
       var ctaText = clean(cta.textContent || '');
       var href = String((cta.getAttribute && cta.getAttribute('href')) || '');
-      var matchesCta = APP_INSTALL_CTA_RE.test(ctaText) || (cta.tagName === 'A' && APP_INSTALL_HREF_RE.test(href));
-      if (!matchesCta) continue;
+      var isExplicitAppCta = APP_INSTALL_CTA_RE.test(ctaText) || (cta.tagName === 'A' && APP_INSTALL_HREF_RE.test(href));
+      var isGenericOpenCta = !isExplicitAppCta && APP_GENERIC_OPEN_CTA_RE.test(ctaText);
+      if (!isExplicitAppCta && !isGenericOpenCta) continue;
 
+      var inHeaderOrNav = Boolean(cta.closest && cta.closest('header, nav'));
       var bannerEl = null;
       var cur = cta.parentElement;
       var depth = 0;
-      while (cur && depth < 6) {
+      while (cur && depth < 7) {
         var tag = (cur.tagName || '').toUpperCase();
         var cid = String(cur.id || '');
         var role = String((cur.getAttribute && cur.getAttribute('role')) || '').toLowerCase();
@@ -111,9 +125,18 @@
           var curText = clean(cur.textContent || '');
           var txtLen = curText.length;
           var hasProtectedNodes = Boolean(cur.querySelector && cur.querySelector('header, nav, footer, [role="contentinfo"], form, input, select, textarea, h1, [role="dialog"], [aria-modal="true"]'));
-          var hasForbiddenCopy = BANNER_FORBIDDEN_TEXT_RE.test(curText);
-          var anchoredEdge = (pos === 'fixed' || pos === 'sticky' || r.bottom >= vh - 96 || r.top <= 96);
-          if (!hasProtectedNodes && !hasForbiddenCopy && txtLen <= 320 && r.height >= 36 && r.height <= 240 && r.width >= vw * 0.60 && anchoredEdge) {
+          var isExplicitUpsellStrip = APP_UPSELL_BANNER_RE.test(curText) || (/\bapp\b/i.test(curText) && APP_RATINGS_WITH_APP_RE.test(curText));
+          if (isGenericOpenCta && !isExplicitUpsellStrip) {
+            cur = cur.parentElement;
+            depth++;
+            continue;
+          }
+          var hasForbiddenCopy = isExplicitUpsellStrip
+            ? APP_BANNER_STRICT_FORBIDDEN_RE.test(curText)
+            : BANNER_FORBIDDEN_TEXT_RE.test(curText);
+          var anchoredEdge = (pos === 'fixed' || pos === 'sticky' || r.bottom >= vh - 110 || r.top <= 160);
+          var maxH = inHeaderOrNav ? 135 : 240;
+          if (!hasProtectedNodes && !hasForbiddenCopy && txtLen <= 320 && r.height >= 34 && r.height <= maxH && r.width >= vw * 0.60 && anchoredEdge) {
             bannerEl = cur;
             break;
           }
@@ -123,7 +146,6 @@
       }
 
       if (bannerEl && bannerEl.getAttribute('data-hb-app-banner-hidden') !== '1') {
-        bannerEl.setAttribute('data-hb-app-banner-hidden', '1');
         var btns = bannerEl.querySelectorAll('button, [role="button"]');
         for (var b = 0; b < btns.length; b++) {
           var btn = btns[b];
@@ -139,9 +161,10 @@
             break;
           }
         }
-        bannerEl.style.setProperty('display', 'none', 'important');
-        bannerEl.style.setProperty('visibility', 'hidden', 'important');
-        bannerEl.style.setProperty('pointer-events', 'none', 'important');
+        hideBannerNode(bannerEl);
+      } else if (inHeaderOrNav && isExplicitAppCta && ctaText.length <= 28) {
+        // Hide standalone "Open App" / "Get the app" button inside header/nav without touching Login/Search/Cart
+        hideBannerNode(cta);
       }
     }
   }
@@ -718,6 +741,53 @@
     return (m && m[1]) ? humanizeProductSlug(m[1]) : '';
   }
 
+  var hbWmNextDataHref = '';
+  var hbWmNextDataMap = null;
+  function getWalmartNextDataMap() {
+    if (!/(?:^|\.)walmart\.com$/i.test(String(location.hostname || ''))) return null;
+    if (hbWmNextDataMap && hbWmNextDataHref === location.href) return hbWmNextDataMap;
+    hbWmNextDataHref = location.href;
+    hbWmNextDataMap = {};
+    try {
+      var scriptEl = document.getElementById('__NEXT_DATA__');
+      if (!scriptEl || !scriptEl.textContent) return hbWmNextDataMap;
+      var root = JSON.parse(scriptEl.textContent);
+      var stack = [root];
+      var visited = 0;
+      while (stack.length > 0 && visited < 5000) {
+        var cur = stack.pop();
+        if (!cur || typeof cur !== 'object') continue;
+        visited++;
+        if (Array.isArray(cur)) {
+          for (var ai = 0; ai < cur.length && stack.length < 4000; ai++) {
+            if (cur[ai] && typeof cur[ai] === 'object') stack.push(cur[ai]);
+          }
+          continue;
+        }
+        var rawId = cur.usItemId || cur.itemId || (typeof cur.id === 'string' && /^\d{6,14}$/.test(cur.id) ? cur.id : '');
+        var rawName = typeof cur.name === 'string' ? cur.name : (typeof cur.title === 'string' ? cur.title : '');
+        var rawUpc = typeof cur.upc === 'string' ? cur.upc : (typeof cur.gtin === 'string' ? cur.gtin : (typeof cur.gtin13 === 'string' ? cur.gtin13 : ''));
+        if (rawId && (rawUpc || rawName)) {
+          var keyId = String(rawId).trim();
+          var prevRec = hbWmNextDataMap[keyId] || {};
+          var cleanUpc = String(rawUpc || '').replace(/\D/g, '');
+          if (cleanUpc.length === 14 && cleanUpc.indexOf('00') === 0) cleanUpc = cleanUpc.slice(2);
+          else if (cleanUpc.length === 14 && cleanUpc.indexOf('0') === 0) cleanUpc = cleanUpc.slice(1);
+          hbWmNextDataMap[keyId] = {
+            upc: (cleanUpc && isValidGs1Barcode(cleanUpc)) ? cleanUpc : (prevRec.upc || ''),
+            name: (rawName && rawName.length > (prevRec.name || '').length) ? clean(rawName) : (prevRec.name || '')
+          };
+        }
+        var keys = Object.keys(cur);
+        for (var ki = 0; ki < keys.length && stack.length < 4000; ki++) {
+          var v = cur[keys[ki]];
+          if (v && typeof v === 'object') stack.push(v);
+        }
+      }
+    } catch (_) {}
+    return hbWmNextDataMap;
+  }
+
   function recoverFromCardLinks(cardEl, visibleTitle) {
     var outTitle = visibleTitle || '';
     var hrefKey = '';
@@ -739,6 +809,7 @@
       }
     }
     var needFullTitle = !outTitle || /(?:\.\.\.|…|[,(\/-])\s*$|\([^)]*$/.test(outTitle);
+    var wmItemId = String((cardEl.getAttribute && cardEl.getAttribute('data-item-id')) || '').trim();
     var links = cardEl.querySelectorAll('a[href]');
     for (var i = 0; i < links.length; i++) {
       var a = links[i];
@@ -749,6 +820,10 @@
       var cleanPath = unwrapped.split('#')[0].split('?')[0];
       if (!hrefKey && cleanPath && cleanPath !== '/' && !/^\/sp\/track\b/i.test(cleanPath)) {
         hrefKey = cleanPath.slice(0, 140);
+      }
+      if (!wmItemId && cleanPath) {
+        var wmMatch = cleanPath.match(/\/ip\/(?:[^/?#]+\/)?(\d{6,14})(?:[/?#]|$)/i);
+        if (wmMatch && wmMatch[1]) wmItemId = wmMatch[1];
       }
       if (!barcode && cleanPath) {
         var bm = cleanPath.match(/(?:^|\/)(\d{12,14})(?:[/?#.]|$)/);
@@ -775,6 +850,23 @@
         }
       }
     }
+    if (wmItemId) {
+      var wmMap = getWalmartNextDataMap();
+      var wmEntry = wmMap && wmMap[wmItemId];
+      if (wmEntry) {
+        if (!barcode && wmEntry.upc) barcode = wmEntry.upc;
+        if (
+          wmEntry.name &&
+          wmEntry.name.length >= 5 &&
+          !NON_TITLE_RE.test(wmEntry.name) &&
+          !CARD_CTA_NOISE_RE.test(wmEntry.name) &&
+          (needFullTitle || (outTitle && wmEntry.name.length > outTitle.length + 3 && titlesShareTokens(outTitle, wmEntry.name)))
+        ) {
+          outTitle = wmEntry.name;
+          needFullTitle = false;
+        }
+      }
+    }
     if (!hrefKey && links.length > 0) {
       hrefKey = String(links[0].getAttribute('href') || '').split('#')[0].split('?')[0].slice(0, 140);
     }
@@ -797,7 +889,7 @@
       if (best) break;
     }
     if (best && /(?:\.\.\.|…)\s*$/.test(best)) {
-      var fullSels = ['[data-automation-id*="product-title" i]', 'a[link-identifier]', 'a[aria-label]', '[title]', 'span.w_iUH7', '[class*="w_iUH7"]'];
+      var fullSels = ['[data-test="product-title"]', '[data-test="product-card-title"]', '[data-automation-id*="product-title" i]', 'a[link-identifier]', 'a[aria-label]', '[title]', 'span.w_iUH7', '[class*="w_iUH7"]'];
       var stem = best.replace(/(?:\.\.\.|…)\s*$/, '').trim().toLowerCase().slice(0, 24);
       for (var fs = 0; fs < fullSels.length; fs++) {
         var fullEls = cardEl.querySelectorAll(fullSels[fs]);
@@ -1212,7 +1304,7 @@
     if (document.getElementById('hb-photo-badge-styles')) return;
     var st = document.createElement('style');
     st.id = 'hb-photo-badge-styles';
-    st.textContent = '.hb-photo-badge-slot{display:flex!important;justify-content:center!important;align-items:center!important;width:100%!important;margin:7px 0 4px 0!important;padding:0!important;position:relative!important;z-index:20!important;pointer-events:none!important;flex:0 0 auto!important;}.hb-photo-badge{position:relative!important;z-index:20!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;min-height:34px!important;gap:6px!important;padding:6px 15px!important;border-radius:999px!important;font:900 17px/1.1 Roboto,-apple-system,BlinkMacSystemFont,sans-serif!important;font-variant-numeric:tabular-nums!important;letter-spacing:-0.015em!important;color:#fff!important;border:2px solid rgba(255,255,255,0.96)!important;box-shadow:0 4px 12px rgba(15,23,42,0.28)!important;cursor:pointer!important;user-select:none!important;-webkit-user-select:none!important;pointer-events:auto!important;text-decoration:none!important;white-space:nowrap!important;}.hb-photo-badge--overlay{position:absolute!important;bottom:6px!important;left:50%!important;transform:translateX(-50%)!important;}.hb-photo-badge__ic{font-size:20px!important;line-height:1!important;display:inline-block!important;}.hb-photo-badge--green{background:rgba(22,163,74,0.97)!important;}.hb-photo-badge--yellow{background:rgba(217,119,6,0.97)!important;}.hb-photo-badge--red{background:rgba(220,38,38,0.97)!important;}.hb-photo-badge--advisory{box-shadow:0 0 0 2.5px #fbbf24,0 4px 12px rgba(15,23,42,0.3)!important;}.hb-photo-badge--loading{background:rgba(15,23,42,0.82)!important;opacity:0.92!important;}';
+    st.textContent = '.hb-photo-badge-slot{display:flex!important;justify-content:center!important;align-items:center!important;width:100%!important;margin:10px 0 6px 0!important;padding:0!important;position:relative!important;z-index:2147483640!important;pointer-events:none!important;flex:0 0 auto!important;}.hb-photo-badge{position:relative!important;z-index:2147483640!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;min-height:34px!important;gap:6px!important;padding:6px 15px!important;border-radius:999px!important;font:900 17px/1.1 Roboto,-apple-system,BlinkMacSystemFont,sans-serif!important;font-variant-numeric:tabular-nums!important;letter-spacing:-0.015em!important;color:#fff!important;border:2px solid rgba(255,255,255,0.96)!important;box-shadow:0 4px 12px rgba(15,23,42,0.28)!important;cursor:pointer!important;user-select:none!important;-webkit-user-select:none!important;pointer-events:auto!important;text-decoration:none!important;white-space:nowrap!important;}.hb-photo-badge::before{content:""!important;position:absolute!important;inset:-6px!important;border-radius:999px!important;}.hb-photo-badge--overlay{position:absolute!important;bottom:6px!important;left:50%!important;transform:translateX(-50%)!important;}.hb-photo-badge__ic{font-size:20px!important;line-height:1!important;display:inline-block!important;}.hb-photo-badge--green{background:rgba(22,163,74,0.97)!important;}.hb-photo-badge--yellow{background:rgba(217,119,6,0.97)!important;}.hb-photo-badge--red{background:rgba(220,38,38,0.97)!important;}.hb-photo-badge--advisory{box-shadow:0 0 0 2.5px #fbbf24,0 4px 12px rgba(15,23,42,0.3)!important;}.hb-photo-badge--loading{background:rgba(15,23,42,0.82)!important;opacity:0.92!important;}.hb-photo-badge--check{background:rgba(51,65,85,0.92)!important;font-size:14px!important;font-weight:800!important;padding:5px 12px!important;letter-spacing:0!important;}';
     (document.head || document.documentElement).appendChild(st);
   }
 
@@ -1417,6 +1509,21 @@
           photoUnit = cur;
           break;
         }
+        var curParentIsVerticalSlotHost =
+          !isHorizontalCarouselTrack(nextP) &&
+          !(nextP.closest && nextP.closest('a, button')) &&
+          containerStacksVertically(nextP);
+        var nextParentIsVertical =
+          nextP.parentElement &&
+          nextP.parentElement !== document.body &&
+          !isHorizontalCarouselTrack(nextP.parentElement) &&
+          !(nextP.parentElement.closest && nextP.parentElement.closest('a, button')) &&
+          containerStacksVertically(nextP.parentElement);
+        if (curParentIsVerticalSlotHost && !nextParentIsVertical) {
+          // Stop before climbing out of a vertical left photo column into a 2-column horizontal row (e.g. Sam's Club / Walmart list cards)
+          photoUnit = cur;
+          break;
+        }
         var nr = nextP.getBoundingClientRect();
         if (nr.width >= 44 && nr.height <= maxMediaH) {
           photoUnit = nextP;
@@ -1499,11 +1606,18 @@
     if (chosenImg && fallbackAnchor) {
       var ancRect = fallbackAnchor.getBoundingClientRect();
       var liveImgRect = chosenImg.getBoundingClientRect();
-      if (liveImgRect.height >= 40 && ancRect.height > liveImgRect.height + 90) {
-        var relTop = Math.max(6, Math.round((liveImgRect.bottom - ancRect.top) - 40));
-        if (relTop < ancRect.height - 36) {
-          badge.style.setProperty('top', relTop + 'px', 'important');
+      if (liveImgRect.height >= 40) {
+        var spaceBelowImg = ancRect.bottom - liveImgRect.bottom;
+        if (spaceBelowImg >= 42) {
+          var belowTop = Math.max(6, Math.round((liveImgRect.bottom - ancRect.top) + 8));
+          badge.style.setProperty('top', belowTop + 'px', 'important');
           badge.style.setProperty('bottom', 'auto', 'important');
+        } else if (ancRect.height > liveImgRect.height + 90) {
+          var relTop = Math.max(6, Math.round((liveImgRect.bottom - ancRect.top) - 40));
+          if (relTop < ancRect.height - 36) {
+            badge.style.setProperty('top', relTop + 'px', 'important');
+            badge.style.setProperty('bottom', 'auto', 'important');
+          }
         }
       }
     }
@@ -1664,7 +1778,7 @@
         if (!qe.cardEl || !qe.cardEl.isConnected) continue;
         var qr = qe.cardEl.getBoundingClientRect();
         if (qr.bottom > 40 && qr.top < vhNow - 20 && qr.right > 0 && qr.left < vwNow) onScreen.push(qe);
-        else if (qr.bottom > -220 && qr.top < vhNow + 260 && qr.right > -340 && qr.left < vwNow + 340) nearScreen.push(qe);
+        else if (qr.bottom > -180 && qr.top < vhNow + 220 && qr.right > -120 && qr.left < vwNow + 140) nearScreen.push(qe);
         else offScreen.push(qe);
       }
       hbPendingQueue = onScreen.concat(nearScreen, offScreen);
@@ -1717,6 +1831,13 @@
     badge.className = 'hb-photo-badge hb-photo-badge--' + tone + extraCls + overlayCls;
     setHbBadgeContent(badge, badgeIcon, String(sc));
     badge.setAttribute('aria-label', 'HeyBroc score ' + sc + ' out of 100' + (title ? ' for ' + title : ''));
+  }
+
+  function applyCheckBadgeAppearance(badge, title) {
+    var overlayCls = (badge.classList && badge.classList.contains('hb-photo-badge--overlay')) ? ' hb-photo-badge--overlay' : '';
+    badge.className = 'hb-photo-badge hb-photo-badge--check' + overlayCls;
+    setHbBadgeContent(badge, '🥦', 'Check');
+    badge.setAttribute('aria-label', 'Open product page to read live ingredients for ' + (title || 'this item'));
   }
 
   function processVisibleCard(cardEl) {
@@ -1787,6 +1908,30 @@
           slotEl: cachedSlot,
           resolved: true,
           suppressedEstimate: false,
+          isCheckBadge: false,
+          retryCount: 0,
+          retryAfter: 0,
+          openOnResolve: false
+        });
+      }
+      hbOwnerCardById[cardId] = cardEl;
+      return true;
+    }
+    if (cachedHit && cachedHit.checkLabel) {
+      applyCheckBadgeAppearance(b, info.title);
+      var checkSlot = mountBadgeUnderOrOnPhoto(info.img, cardEl, b, info.anchor);
+      if (hbCardState) {
+        hbCardState.set(cardEl, {
+          id: cardId,
+          sig: info.sig,
+          title: info.title,
+          anchor: info.anchor,
+          img: info.img,
+          badgeEl: b,
+          slotEl: checkSlot,
+          resolved: true,
+          suppressedEstimate: false,
+          isCheckBadge: true,
           retryCount: 0,
           retryAfter: 0,
           openOnResolve: false
@@ -1866,7 +2011,7 @@
             hbIntersectionObs.unobserve(entries[i].target);
           }
         }
-      }, { rootMargin: '220px 340px' });
+      }, { rootMargin: '180px 120px' });
     }
     var onPdp = Boolean(findOpenProductModal()) || looksLikeProductUrl(location.href);
     var maxCardW = onPdp ? 360 : Math.max(580, (window.innerWidth || 412) + 32);
@@ -1968,8 +2113,8 @@
         cardRect.height > 0 &&
         cardRect.bottom >= -140 &&
         cardRect.top <= vh + 180 &&
-        cardRect.right >= -340 &&
-        cardRect.left <= vwNow + 340;
+        cardRect.right >= -120 &&
+        cardRect.left <= vwNow + 140;
       actions.push({
         kind: inNearViewport ? 'process' : 'observe',
         card: card,
@@ -2043,30 +2188,38 @@
 
       var entry = badgeMap[id];
       if (!entry || !entry.ok) {
-        removeBadgeDom(badge, st ? st.slotEl : null);
-        if (st) {
-          st.badgeEl = null;
-          st.slotEl = null;
-          var shouldOpenFailed = Boolean(st.openOnResolve);
-          st.openOnResolve = false;
-          if (entry && entry.isNonFood) {
+        if (entry && entry.isNonFood) {
+          removeBadgeDom(badge, st ? st.slotEl : null);
+          if (st) {
+            st.badgeEl = null;
+            st.slotEl = null;
+            st.openOnResolve = false;
             st.suppressedEstimate = true;
             if (st.title) cacheTitleBadgeScore(st.title, { suppressedEstimate: true });
-          } else if (entry && entry.transient && (st.retryCount || 0) < 4) {
-            st.retryCount = (st.retryCount || 0) + 1;
-            var serverRetryMs = Number(entry.retryAfterMs) || 0;
-            var fallbackDelay = st.retryCount === 1 ? 2200 : (st.retryCount === 2 ? 4800 : 8500);
-            var delay = serverRetryMs > 0 ? Math.min(62000, Math.max(2200, serverRetryMs)) : fallbackDelay;
-            st.retryAfter = Date.now() + delay;
-            if (!earliestRetryMs || delay < earliestRetryMs) earliestRetryMs = delay;
-          } else if ((st.retryCount || 0) < 1) {
-            st.retryCount = 1;
-            var missDelay = 18000;
-            st.retryAfter = Date.now() + missDelay;
-            if (!earliestRetryMs || missDelay < earliestRetryMs) earliestRetryMs = missDelay;
-          } else {
-            st.suppressedEstimate = true;
           }
+          continue;
+        }
+        if (entry && entry.transient && st && (st.retryCount || 0) < 4) {
+          removeBadgeDom(badge, st.slotEl);
+          st.badgeEl = null;
+          st.slotEl = null;
+          st.retryCount = (st.retryCount || 0) + 1;
+          var serverRetryMs = Number(entry.retryAfterMs) || 0;
+          var fallbackDelay = st.retryCount === 1 ? 2200 : (st.retryCount === 2 ? 4800 : 8500);
+          var delay = serverRetryMs > 0 ? Math.min(62000, Math.max(2200, serverRetryMs)) : fallbackDelay;
+          st.retryAfter = Date.now() + delay;
+          if (!earliestRetryMs || delay < earliestRetryMs) earliestRetryMs = delay;
+          continue;
+        }
+        var unindexedTitle = st ? st.title : '';
+        applyCheckBadgeAppearance(badge, unindexedTitle);
+        if (unindexedTitle) cacheTitleBadgeScore(unindexedTitle, { checkLabel: true });
+        if (st) {
+          var shouldOpenFailed = Boolean(st.openOnResolve);
+          st.openOnResolve = false;
+          st.resolved = true;
+          st.isCheckBadge = true;
+          st.suppressedEstimate = false;
           if (shouldOpenFailed && st.title) {
             postBridge({
               kind: 'inspectCard',
@@ -2081,12 +2234,13 @@
       }
 
       if (entry.isCategoryEstimate) {
-        removeBadgeDom(badge, st ? st.slotEl : null);
+        var estTitle = st ? st.title : '';
+        applyCheckBadgeAppearance(badge, estTitle);
+        if (estTitle) cacheTitleBadgeScore(estTitle, { checkLabel: true });
         if (st) {
-          st.badgeEl = null;
-          st.slotEl = null;
-          st.suppressedEstimate = true;
-          if (st.title) cacheTitleBadgeScore(st.title, { suppressedEstimate: true });
+          st.resolved = true;
+          st.isCheckBadge = true;
+          st.suppressedEstimate = false;
           if (st.openOnResolve && st.title) {
             st.openOnResolve = false;
             postBridge({
@@ -2114,6 +2268,7 @@
       }
       if (st) {
         st.resolved = true;
+        st.isCheckBadge = false;
         if (st.openOnResolve) {
           st.openOnResolve = false;
           postBridge({
@@ -2135,7 +2290,7 @@
     var out = [];
     var vh = Math.max(400, window.innerHeight || 800);
     var vw = Math.max(280, window.innerWidth || 412);
-    var badges = document.querySelectorAll('.hb-photo-badge:not(.hb-photo-badge--loading)');
+    var badges = document.querySelectorAll('.hb-photo-badge:not(.hb-photo-badge--loading):not(.hb-photo-badge--check)');
     for (var i = 0; i < badges.length; i++) {
       var b = badges[i];
       if (!b || !b.isConnected) continue;
@@ -2159,6 +2314,70 @@
     scanPhotoBadges();
   };
 
+  window.__heybrocCacheTitleScore = function(title, entry) {
+    if (!title || !entry || !entry.ok) return;
+    var key = makeTitleScoreKey(title);
+    if (!key) return;
+    cacheTitleBadgeScore(title, {
+      ok: true,
+      score: entry.score,
+      hasAlert: Boolean(entry.hasAlert),
+      alertSeverity: entry.alertSeverity || 'none',
+      alertIcon: entry.alertIcon || ''
+    });
+    var mounted = document.querySelectorAll('.hb-photo-badge--check, .hb-photo-badge--loading');
+    for (var mi = 0; mi < mounted.length; mi++) {
+      var mb = mounted[mi];
+      var mcid = mb.getAttribute('data-hb-card-id') || '';
+      var mOwner = mcid ? hbOwnerCardById[mcid] : null;
+      var mSt = (mOwner && hbCardState) ? hbCardState.get(mOwner) : null;
+      if (mSt && mSt.title && makeTitleScoreKey(mSt.title) === key) {
+        applyResolvedBadgeAppearance(mb, mSt.title, entry);
+        mSt.resolved = true;
+        mSt.isCheckBadge = false;
+      }
+    }
+  };
+
+  var hbAllowCheckNavUntil = 0;
+
+  function openCardProductPage(ownerCard) {
+    if (!ownerCard) return false;
+    var links = ownerCard.querySelectorAll ? ownerCard.querySelectorAll('a[href]') : [];
+    var chosenLink = null;
+    for (var i = 0; i < links.length; i++) {
+      var a = links[i];
+      if (a.closest && a.closest('.hb-photo-badge, .hb-photo-badge-slot')) continue;
+      var rawHref = String(a.getAttribute('href') || '').trim();
+      if (!rawHref || rawHref === '#' || /^javascript:/i.test(rawHref)) continue;
+      if (isRealProductHrefPath(unwrapProductHref(rawHref))) {
+        chosenLink = a;
+        break;
+      }
+      if (!chosenLink) chosenLink = a;
+    }
+    if (chosenLink) {
+      var fullUrl = chosenLink.href || '';
+      try {
+        hbAllowCheckNavUntil = Date.now() + 400;
+        chosenLink.click();
+        return true;
+      } catch (_) {}
+      if (fullUrl && /^https:\/\//i.test(fullUrl)) {
+        postBridge({ kind: 'openCardUrl', url: fullUrl });
+        return true;
+      }
+    }
+    if (ownerCard.getAttribute && (ownerCard.getAttribute('role') === 'button' || ownerCard.tagName === 'BUTTON')) {
+      try {
+        hbAllowCheckNavUntil = Date.now() + 400;
+        ownerCard.click();
+        return true;
+      } catch (_) {}
+    }
+    return false;
+  }
+
   function activateHbPhotoBadge(badge, e) {
     if (!badge) return;
     e.preventDefault();
@@ -2167,6 +2386,10 @@
     var cardId = badge.getAttribute('data-hb-card-id') || '';
     var badgeSig = badge.getAttribute('data-hb-sig') || '';
     var ownerCard = (cardId && hbOwnerCardById[cardId]) ? hbOwnerCardById[cardId] : (badge.closest ? badge.closest(CARD_SEL) : null);
+    var st = (ownerCard && hbCardState) ? hbCardState.get(ownerCard) : null;
+    if ((badge.classList && badge.classList.contains('hb-photo-badge--check')) || (st && st.isCheckBadge)) {
+      if (openCardProductPage(ownerCard)) return;
+    }
     if (cardId) {
       hbPinnedCardId = cardId;
       hbPinnedScrollY = window.scrollY || 0;
@@ -2175,7 +2398,6 @@
       hbPinnedRectLeft = pinRect ? pinRect.left : 0;
       hbPinnedRectTop = pinRect ? pinRect.top : 0;
     }
-    var st = (ownerCard && hbCardState) ? hbCardState.get(ownerCard) : null;
     var liveInfo = ownerCard ? readCardInfo(ownerCard) : null;
     if (ownerCard && liveInfo && badgeSig && liveInfo.sig !== badgeSig) {
       if (st) removeCardBadgeState(ownerCard, st);
@@ -2220,8 +2442,23 @@
   }
 
   function badgeFromEvent(e) {
+    if (Date.now() < hbAllowCheckNavUntil) return null;
     var el = eventTargetEl(e);
-    return (el && el.closest) ? el.closest('.hb-photo-badge') : null;
+    var direct = (el && el.closest) ? el.closest('.hb-photo-badge') : null;
+    if (direct) return direct;
+    var pt = (e && e.changedTouches && e.changedTouches[0]) || (e && e.touches && e.touches[0]) || e;
+    var cx = pt && typeof pt.clientX === 'number' ? pt.clientX : null;
+    var cy = pt && typeof pt.clientY === 'number' ? pt.clientY : null;
+    if (cx !== null && cy !== null && (cx !== 0 || cy !== 0)) {
+      var allBadges = document.querySelectorAll('.hb-photo-badge');
+      for (var bi = 0; bi < allBadges.length; bi++) {
+        var br = allBadges[bi].getBoundingClientRect();
+        if (br.width > 0 && br.height > 0 && cx >= br.left - 6 && cx <= br.right + 6 && cy >= br.top - 6 && cy <= br.bottom + 6) {
+          return allBadges[bi];
+        }
+      }
+    }
+    return null;
   }
 
   function stopBadgePointerEvent(e) {
@@ -2231,7 +2468,9 @@
     }
   }
 
+  document.addEventListener('touchstart', stopBadgePointerEvent, true);
   document.addEventListener('pointerdown', stopBadgePointerEvent, true);
+  document.addEventListener('pointerup', stopBadgePointerEvent, true);
   document.addEventListener('mousedown', stopBadgePointerEvent, true);
   document.addEventListener('mouseup', stopBadgePointerEvent, true);
   document.addEventListener('touchend', stopBadgePointerEvent, true);
@@ -2245,8 +2484,23 @@
 
   document.addEventListener('click', function(e) {
     var badge = badgeFromEvent(e);
-    if (!badge) return;
-    activateHbPhotoBadge(badge, e);
+    if (badge) {
+      activateHbPhotoBadge(badge, e);
+      return;
+    }
+    var t = e && e.target;
+    if (t && t.nodeType === 3) t = t.parentElement;
+    var cta = t && t.closest ? t.closest('a, button, [role="button"]') : null;
+    if (cta) {
+      var ctaHref = String((cta.getAttribute && cta.getAttribute('href')) || '');
+      var ctaTxt = clean(cta.textContent || '');
+      if ((cta.tagName === 'A' && APP_INSTALL_HREF_RE.test(ctaHref)) || (ctaTxt.length <= 28 && APP_INSTALL_CTA_RE.test(ctaTxt))) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        hideBannerNode(cta);
+      }
+    }
   }, true);
 
   document.addEventListener('keydown', function(e) {

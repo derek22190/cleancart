@@ -1536,6 +1536,36 @@ object ScanApi {
         }
     }
 
+    /** Hydrates the grid responseCache from a verified live-page PDP ingredient scan. */
+    fun cacheVerifiedScreenScan(
+        ctx: Context,
+        productTitle: String,
+        barcode: String?,
+        rawJsonStr: String,
+        store: String,
+        storeBucket: String = "",
+        instacartRetailerSlug: String = ""
+    ) {
+        val cleanTitle = productTitle.trim().take(300)
+        val cleanBarcode = barcode?.filter { it.isDigit() }?.takeIf { it.length in 8..14 }.orEmpty()
+        if (cleanTitle.length < 3 && cleanBarcode.isEmpty()) return
+        if (!rawJsonStr.contains("\"ok\":true")) return
+        val appCtx = ctx.applicationContext
+        val keys = ArrayList<String>(2)
+        if (cleanTitle.length >= 3) {
+            keys.add(normalizedCacheKey(appCtx, cleanTitle, null, store, storeBucket, instacartRetailerSlug))
+        }
+        if (cleanBarcode.isNotEmpty()) {
+            val withUpc = if (cleanTitle.isNotEmpty()) "$cleanTitle|upc:$cleanBarcode" else "|upc:$cleanBarcode"
+            keys.add(normalizedCacheKey(appCtx, withUpc, null, store, storeBucket, instacartRetailerSlug))
+        }
+        synchronized(responseCache) {
+            for (k in keys) {
+                responseCache[k] = rawJsonStr
+            }
+        }
+    }
+
     /** Blocking call — run off the main thread. Returns the raw JSON response body. */
     fun scan(
         ctx: Context,
@@ -1702,7 +1732,9 @@ object ScanApi {
     data class BatchScanOutcome(
         val results: Map<String, BatchBadgeResult>,
         val transientFailure: Boolean,
-        val retryAfterSec: Int? = null
+        val retryAfterSec: Int? = null,
+        val transientIds: Set<String> = emptySet(),
+        val nonFoodIds: Set<String> = emptySet()
     )
 
     private fun parseBatchBadgeResult(
@@ -1876,9 +1908,11 @@ object ScanApi {
         var reachedServer = false
         var hadTransientStatus = false
         var lastRetryAfterSec: Int? = null
+        val transientIds = LinkedHashSet<String>()
+        val nonFoodIds = LinkedHashSet<String>()
         for (endpoint in ENDPOINTS) {
             try {
-                val http = postFollowingRedirectsDetailed(endpoint, body, maxRedirects = 4, readTimeoutMs = 10000)
+                val http = postFollowingRedirectsDetailed(endpoint, body, maxRedirects = 4, readTimeoutMs = 12000)
                 if (http.statusCode == 429) {
                     val waitSec = http.retryAfterSec ?: 15
                     lastRetryAfterSec = waitSec
@@ -1939,6 +1973,15 @@ object ScanApi {
                                 out[dupId] = parsed.copy(id = dupId, fullJson = JSONObject(parsed.rawJsonStr))
                             }
                         }
+                    } else {
+                        val itemStatus = itemJson.optInt("status", 0)
+                        if (itemStatus == 422) {
+                            nonFoodIds.add(u.id)
+                            duplicateIdsByPrimaryId[u.id]?.let { nonFoodIds.addAll(it) }
+                        } else if (itemStatus == 429 || itemStatus == 503 || itemStatus == 504 || itemStatus >= 500) {
+                            transientIds.add(u.id)
+                            duplicateIdsByPrimaryId[u.id]?.let { transientIds.addAll(it) }
+                        }
                     }
                 }
                 break
@@ -1947,7 +1990,13 @@ object ScanApi {
             }
         }
 
-        return BatchScanOutcome(out, transientFailure = !reachedServer || hadTransientStatus, retryAfterSec = lastRetryAfterSec)
+        return BatchScanOutcome(
+            results = out,
+            transientFailure = !reachedServer || hadTransientStatus,
+            retryAfterSec = lastRetryAfterSec,
+            transientIds = transientIds,
+            nonFoodIds = nonFoodIds
+        )
     }
 
     fun scanBatch(
