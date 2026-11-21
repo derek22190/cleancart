@@ -684,11 +684,28 @@
     return parts.join('');
   }
 
+  var NON_PDP_ING_RE = /\b(items\s+to\s+add\s+next|product\s+information|similar\s+items|customers\s+also|you\s+might\s+also|related\s+items|frequently\s+bought\s+together|compare\s+with\s+similar|sold\s+by|fulfilled\s+by|see\s+packaging|refer\s+to\s+packaging|nutrition\s+facts|serving\s+size|legal\s+disclaimer|statements\s+regarding|visit\s+the\s+store|customer\s+reviews|add\s+to\s+cart)\b/i;
+  var SINGLE_WHOLE_ING_RE = /\b(garlic|lemons?|limes?|apples?|bananas?|avocados?|onions?|scallions?|shallots?|leeks?|carrots?|tomato(?:es)?|potato(?:es)?|yams?|peppers?|spinach|broccoli|cauliflower|kale|arugula|lettuce|romaine|cabbage|cucumbers?|celery|mushrooms?|zucchini|squash|asparagus|beets?|ginger|parsley|cilantro|basil|berries|blueberr(?:y|ies)|raspberr(?:y|ies)|strawberr(?:y|ies)|blackberr(?:y|ies)|cranberr(?:y|ies)|cherr(?:y|ies)|grapes?|oranges?|mandarins?|clementines?|grapefruits?|peaches?|plums?|pears?|kiwis?|mangos?|mangoes|pineapples?|watermelons?|cantaloupes?|honeydews?|milk|cream|butter|eggs?|oats?|rice|quinoa|honey|water|beef|chicken|turkey|pork|lamb|salmon|cod|shrimp|tilapia|tuna|almonds?|walnuts?|peanuts?|cashews?|pecans?|pistachios?|beans?|lentils?|chickpeas?|peas|corn|salt|sugar|flour|olive\s+oil|avocado\s+oil|coconut\s+oil)\b/i;
+
+  function isPlausiblePdpIngredientText(raw, requireCommaUnlessWhole) {
+    var t = clean(raw || '');
+    if (!t || t.length < 3 || t.length >= 2500) return false;
+    if (NON_TITLE_RE.test(t) || NON_PDP_ING_RE.test(t)) return false;
+    if (/\$\s*\d/.test(t) && t.indexOf(',') === -1) return false;
+    if (t.length >= 12) {
+      if (requireCommaUnlessWhole && t.indexOf(',') === -1 && t.indexOf(';') === -1) {
+        return t.length <= 80 && SINGLE_WHOLE_ING_RE.test(t);
+      }
+      return true;
+    }
+    return /^[a-z][a-z\s'-]{1,48}\.?$/i.test(t) && SINGLE_WHOLE_ING_RE.test(t);
+  }
+
   function readIngredientsFromScope(modalScope) {
     var root = modalScope || document.querySelector('main') || document.body;
     if (!root) return '';
     var stopBoundary = modalScope || document.body;
-    var stopRe = /\b(Allergens?|Contains\s*:|Warnings?|Directions|Nutrition\s+Facts|Distributed\s+by|Legal\s+Disclaimer)\b/i;
+    var stopRe = /\b(Allergens?|Contains\s*:|Warnings?|Directions|Nutrition\s+Facts|Distributed\s+by|Legal\s+Disclaimer|Statements\s+regarding)\b/i;
     var host = String(location.hostname || '').toLowerCase();
     var isAmazonHost = /(?:^|\.)amazon\.[a-z.]+$/i.test(host) || host.indexOf('wholefoods') !== -1;
     if (!modalScope && isAmazonHost) {
@@ -697,10 +714,10 @@
         var amzInfo = amzNodes[a];
         if (!isAllowedAmazonInfoNode(amzInfo)) continue;
         var amzTxt = (amzInfo.textContent || '').replace(/\s+/g, ' ');
-        var amzMatch = amzTxt.match(/\bIngredients\s*:?\s*([\s\S]{12,1400})/i);
+        var amzMatch = amzTxt.match(/\bIngredients\s*:?\s*([\s\S]{3,1400})/i);
         if (amzMatch && amzMatch[1]) {
           var candAmz = clean(amzMatch[1].split(stopRe)[0]);
-          if (candAmz.length >= 12 && candAmz.indexOf(',') !== -1) return candAmz;
+          if (isPlausiblePdpIngredientText(candAmz, true)) return candAmz;
         }
       }
     }
@@ -726,7 +743,7 @@
               ? extractVisibleText(panel, modalScope)
               : String(panel.textContent || '');
             var ctxt = clean(rawPanel.split(stopRe)[0]);
-            if (ctxt.length >= 12 && ctxt.length < 2500 && !NON_TITLE_RE.test(ctxt)) return ctxt;
+            if (isPlausiblePdpIngredientText(ctxt, false)) return ctxt;
           }
         }
       }
@@ -739,7 +756,7 @@
         if (!sibVisible && !sibControlled) continue;
         var rawSib = sibVisible ? extractVisibleText(sib, modalScope) : String(sib.textContent || '');
         var stxt = clean(rawSib.split(stopRe)[0]);
-        if (stxt.length >= 12 && stxt.length < 2500 && !NON_TITLE_RE.test(stxt)) return stxt;
+        if (isPlausiblePdpIngredientText(stxt, false)) return stxt;
       }
 
       var parentEl = el.parentElement;
@@ -750,7 +767,7 @@
         !isInsideHiddenOrCartContainer(parentEl, modalScope)
       ) {
         var ptxt = clean(extractVisibleText(parentEl, modalScope).replace(/^ingredients\s*:?\s*/i, '').split(stopRe)[0]);
-        if (ptxt.length >= 12 && ptxt.length < 2500 && !NON_TITLE_RE.test(ptxt)) return ptxt;
+        if (isPlausiblePdpIngredientText(ptxt, false)) return ptxt;
       }
     }
 
@@ -762,15 +779,15 @@
       var ntxt = clean(n.textContent || '');
       if (/^ingredients\s*:/i.test(ntxt)) {
         var candInline = clean(ntxt.replace(/^ingredients\s*:\s*/i, '').split(stopRe)[0]);
-        if (candInline.length >= 12 && candInline.length < 2500 && !NON_TITLE_RE.test(candInline)) return candInline;
+        if (isPlausiblePdpIngredientText(candInline, false)) return candInline;
       }
     }
 
     var visibleRootText = extractVisibleText(root, modalScope);
-    var m = visibleRootText.match(/\bIngredients\s*[:\n]\s*([^\n]{12,1200})/i);
+    var m = visibleRootText.match(/\bIngredients\s*[:\n]\s*([^\n]{3,1200})/i);
     if (m && m[1]) {
       var candFallback = clean(m[1].split(stopRe)[0]);
-      if (candFallback.length >= 12 && candFallback.length < 2500 && !NON_TITLE_RE.test(candFallback)) return candFallback;
+      if (isPlausiblePdpIngredientText(candFallback, false)) return candFallback;
     }
     return '';
   }
@@ -920,16 +937,34 @@
     }
     var needFullTitle = !outTitle || /(?:\.\.\.|…|[,(\/-])\s*$|\([^)]*$/.test(outTitle);
     var wmItemId = String((cardEl.getAttribute && cardEl.getAttribute('data-item-id')) || '').trim();
+    var rawHrefs = [];
+    var ownDpUrl = String((cardEl.getAttribute && cardEl.getAttribute('data-detailpageurl')) || '').trim();
+    if (ownDpUrl) rawHrefs.push(ownDpUrl);
+    var dpNodes = cardEl.querySelectorAll('[data-detailpageurl]');
+    for (var di = 0; di < dpNodes.length; di++) {
+      var dEl = dpNodes[di];
+      if (dEl.closest && dEl.closest('.hb-photo-badge, .hb-photo-badge-slot')) continue;
+      var dpv = String(dEl.getAttribute('data-detailpageurl') || '').trim();
+      if (dpv) rawHrefs.push(dpv);
+    }
     var links = cardEl.querySelectorAll('a[href]');
-    for (var i = 0; i < links.length; i++) {
-      var a = links[i];
+    for (var li = 0; li < links.length; li++) {
+      var a = links[li];
       if (a.closest && a.closest('.hb-photo-badge, .hb-photo-badge-slot')) continue;
-      var rawHref = String(a.getAttribute('href') || '').trim();
-      if (!rawHref) continue;
+      var rh = String(a.getAttribute('href') || '').trim();
+      if (rh) rawHrefs.push(rh);
+    }
+    var fallbackHrefKey = '';
+    for (var i = 0; i < rawHrefs.length; i++) {
+      var rawHref = rawHrefs[i];
       var unwrapped = unwrapProductHref(rawHref);
       var cleanPath = unwrapped.split('#')[0].split('?')[0];
-      if (!hrefKey && cleanPath && cleanPath !== '/' && !/^\/sp\/track\b/i.test(cleanPath)) {
-        hrefKey = cleanPath.slice(0, 140);
+      if (cleanPath && cleanPath !== '/' && !/^\/sp\/track\b/i.test(cleanPath)) {
+        if (!hrefKey && isRealProductHrefPath(rawHref)) {
+          hrefKey = cleanPath.slice(0, 140);
+        } else if (!fallbackHrefKey) {
+          fallbackHrefKey = cleanPath.slice(0, 140);
+        }
       }
       if (!wmItemId && cleanPath) {
         var wmMatch = cleanPath.match(/\/ip\/(?:[^/?#]+\/)?(\d{6,14})(?:[/?#]|$)/i);
@@ -977,6 +1012,9 @@
         }
       }
     }
+    if (!hrefKey && fallbackHrefKey) {
+      hrefKey = fallbackHrefKey;
+    }
     if (!hrefKey && links.length > 0) {
       hrefKey = String(links[0].getAttribute('href') || '').split('#')[0].split('?')[0].slice(0, 140);
     }
@@ -999,7 +1037,7 @@
       if (best) break;
     }
     if (best && /(?:\.\.\.|…)\s*$/.test(best)) {
-      var fullSels = ['[data-test="product-title"]', '[data-test="product-card-title"]', '[data-automation-id*="product-title" i]', 'a[link-identifier]', 'a[aria-label]', '[title]', 'span.w_iUH7', '[class*="w_iUH7"]'];
+      var fullSels = ['.p13nTitle .a-truncate-full', '.a-truncate-full', '[data-test="product-title"]', '[data-test="product-card-title"]', '[data-automation-id*="product-title" i]', 'a[link-identifier]', 'a[aria-label]', '[title]', 'span.w_iUH7', '[class*="w_iUH7"]'];
       var stem = best.replace(/(?:\.\.\.|…)\s*$/, '').trim().toLowerCase().slice(0, 24);
       for (var fs = 0; fs < fullSels.length; fs++) {
         var fullEls = cardEl.querySelectorAll(fullSels[fs]);
@@ -1025,11 +1063,11 @@
     return best;
   }
 
-  var CARD_SEL = '[data-item-id], [data-testid*="list-view" i], [data-testid*="item-stack" i] > div, div[class*="mb0"][class*="ph1"], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid^="item_list_item" i], [data-testid*="product-tile" i], [data-test*="product-card" i], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-qa*="product-card" i], [data-qa*="product-tile" i], [data-automation-id="product-tile"], [automation-id*="productTile" i], [data-component-type="s-search-result"], [data-csa-c-type="productTile"], li[data-csa-c-type="item"][data-csa-c-item-id*="asin."], [data-asin]:not([data-asin=""]), [data-anchor-id*="RetailItem" i], [data-anchor-id*="MenuItem" i], [data-testid*="RetailItem" i], [data-testid*="MenuItem" i], [data-testid*="store-item" i], li[data-testid*="store-item" i], .product-tile-set, .product-tile, .base-product-tile, .ProductCard, .CardTemplate-Horizontal, .sc-pc-medium-desktop-card, [class*="sc-pc-" i][class*="card" i], app-product-card, [auto-data*="productCard" i], [data-auto-data*="product" i], [data-cy*="product-card" i], article[class*="product" i], li[class*="product" i]';
-  var EXPLICIT_PRODUCT_CARD_SEL = '[data-item-id], [data-asin]:not([data-asin=""]), [data-component-type="s-search-result"], [data-csa-c-type="productTile"], li[data-csa-c-type="item"][data-csa-c-item-id*="asin."], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid^="item_list_item" i], [data-testid*="product-tile" i], [data-test*="product-card" i], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-qa*="product-card" i], [data-automation-id="product-tile"], [automation-id*="productTile" i], [data-anchor-id*="RetailItem" i], [data-testid*="RetailItem" i], [data-testid*="store-item" i], .product-tile-set, .product-tile, .base-product-tile, .ProductCard, .CardTemplate-Horizontal, .sc-pc-medium-desktop-card, app-product-card, [auto-data*="productCard" i]';
-  var MULTI_CARD_UNIT_SEL = '[data-item-id], [data-asin]:not([data-asin=""]), [data-component-type="s-search-result"], [data-csa-c-type="productTile"], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid^="item_list_item" i], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-qa*="product-card" i], [data-anchor-id*="RetailItem" i], [data-testid*="RetailItem" i], [data-testid*="store-item" i], .product-tile-set, .ProductCard, .CardTemplate-Horizontal, app-product-card, [auto-data*="productCard" i]';
-  var DEFINITIVE_SINGLE_CARD_SEL = '[data-component-type="s-search-result"], [data-csa-c-type="productTile"], li[data-csa-c-type="item"][data-csa-c-item-id*="asin."], [data-item-id], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-testid^="item_list_item" i], [data-testid*="RetailItem" i], [data-testid*="store-item" i], .sc-pc-medium-desktop-card, [auto-data*="productCard" i]';
-  var PRODUCT_LINK_SEL = 'a[data-csa-c-type="productTile"], a[link-identifier], a[href*="/sp/track"], a[href*="/gp/slredirect"], a[href*="/ip/"], a[href*="/products/"], a[href*="/product/"], a[href*="/items/"], a[href*=".product."], a[href*="/p/"], a[href*="/sams/shop/product/"], a[href*="/detail/ps/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"], a[href*="item_id="], a[href*="product_id="]';
+  var CARD_SEL = '[data-item-id], [data-testid*="list-view" i], [data-testid*="item-stack" i] > div, div[class*="mb0"][class*="ph1"], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid^="item_list_item" i], [data-testid*="product-tile" i], [data-test*="product-card" i], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-qa*="product-card" i], [data-qa*="product-tile" i], [data-automation-id="product-tile"], [automation-id*="productTile" i], [data-component-type="s-search-result"], [data-csa-c-type="productTile"], [data-csa-c-type="item"][data-csa-c-item-id*="asin."], [data-asin]:not([data-asin=""]), [data-anchor-id*="RetailItem" i], [data-anchor-id*="MenuItem" i], [data-testid*="RetailItem" i], [data-testid*="MenuItem" i], [data-testid*="store-item" i], li[data-testid*="store-item" i], .product-tile-set, .product-tile, .base-product-tile, .ProductCard, .CardTemplate-Horizontal, .sc-pc-medium-desktop-card, [class*="sc-pc-" i][class*="card" i], app-product-card, [auto-data*="productCard" i], [data-auto-data*="product" i], [data-cy*="product-card" i], article[class*="product" i], li[class*="product" i]';
+  var EXPLICIT_PRODUCT_CARD_SEL = '[data-item-id], [data-asin]:not([data-asin=""]), [data-component-type="s-search-result"], [data-csa-c-type="productTile"], [data-csa-c-type="item"][data-csa-c-item-id*="asin."], [data-detailpageurl*="/dp/"], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid^="item_list_item" i], [data-testid*="product-tile" i], [data-test*="product-card" i], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-qa*="product-card" i], [data-automation-id="product-tile"], [automation-id*="productTile" i], [data-anchor-id*="RetailItem" i], [data-testid*="RetailItem" i], [data-testid*="store-item" i], .product-tile-set, .product-tile, .base-product-tile, .ProductCard, .CardTemplate-Horizontal, .sc-pc-medium-desktop-card, app-product-card, [auto-data*="productCard" i]';
+  var MULTI_CARD_UNIT_SEL = '[data-item-id], [data-asin]:not([data-asin=""]), [data-component-type="s-search-result"], [data-csa-c-type="productTile"], [data-csa-c-type="item"][data-csa-c-item-id*="asin."], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid^="item_list_item" i], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-qa*="product-card" i], [data-anchor-id*="RetailItem" i], [data-testid*="RetailItem" i], [data-testid*="store-item" i], .product-tile-set, .ProductCard, .CardTemplate-Horizontal, app-product-card, [auto-data*="productCard" i]';
+  var DEFINITIVE_SINGLE_CARD_SEL = '[data-component-type="s-search-result"], [data-csa-c-type="productTile"], [data-csa-c-type="item"][data-csa-c-item-id*="asin."], [data-item-id], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-testid^="item_list_item" i], [data-testid*="RetailItem" i], [data-testid*="store-item" i], .sc-pc-medium-desktop-card, [auto-data*="productCard" i]';
+  var PRODUCT_LINK_SEL = 'a[data-csa-c-type="productTile"], [data-detailpageurl*="/dp/"], a[link-identifier], a[href*="/sp/track"], a[href*="/gp/slredirect"], a[href*="/ip/"], a[href*="/products/"], a[href*="/product/"], a[href*="/items/"], a[href*=".product."], a[href*="/p/"], a[href*="/sams/shop/product/"], a[href*="/detail/ps/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"], a[href*="item_id="], a[href*="product_id="]';
   var PLACEHOLDER_IMG_RE = /(?:^|[\/_.-])(?:1x1|pixel|spacer|spinner|skeleton|shimmer|placeholder|transparent|blank|loading|lazyload|grey-pixel)(?:[\/_.-]|$)|^data:image\/gif|^data:image\/svg\+xml.*(?:feGaussianBlur|blur|shimmer|skeleton|spinner|spacer|1x1)/i;
   var NON_PRODUCT_IMG_RE = /(?:^|[\/_.-])(?:logo|sprite|icon|avatar|badge|stars?|rating|banner|promo|favicon)(?:[\/_.-]|$)/i;
 
@@ -1058,7 +1096,7 @@
     for (var i = 0; i < pLinks.length; i++) {
       var a = pLinks[i];
       var csaId = (a.getAttribute && a.getAttribute('data-csa-c-content-id')) || '';
-      var key = csaId || isRealProductHrefPath(a.getAttribute('href') || '');
+      var key = csaId || isRealProductHrefPath((a.getAttribute && (a.getAttribute('href') || a.getAttribute('data-detailpageurl'))) || '');
       if (!key) continue;
       if (!firstKey) firstKey = key;
       else if (key !== firstKey) return true;
@@ -1067,6 +1105,7 @@
   }
 
   var CARD_TITLE_SELS = [
+    '.p13nTitle .a-truncate-full', '.p13nTitle',
     '[data-automation-id="product-title"]', '[data-automation-id*="product-title" i]', '[data-test="product-title"]', '[data-test="product-card-title"]',
     '[data-testid*="product-title" i]', '[data-testid*="item-title" i]', '[data-testid*="product-card-name" i]', '[data-testid*="item-name" i]',
     '[data-telemetry-id*="storeItem.title" i]', '[auto-data="productTitle"]',
@@ -1446,7 +1485,7 @@
 
   function nodeHasDetailsOrCta(el) {
     if (!el || !el.querySelector) return false;
-    if (el.querySelector('h1, h2, h3, [data-test="product-title"], [data-automation-id*="product-title" i], [data-testid*="product-title" i], [data-testid*="item-title" i]')) {
+    if (el.querySelector('h1, h2, h3, .p13nTitle, .a-truncate-full, [data-test="product-title"], [data-automation-id*="product-title" i], [data-testid*="product-title" i], [data-testid*="item-title" i]')) {
       return true;
     }
     var btns = el.querySelectorAll ? el.querySelectorAll('button') : [];
@@ -1769,7 +1808,7 @@
       var pr = img.parentElement ? img.parentElement.getBoundingClientRect() : r;
       var ew = Math.max(r.width, pr.width);
       var eh = Math.max(r.height, pr.height);
-      var isExplicitLazyTile = Boolean(cardEl.matches && cardEl.matches('[data-csa-c-type="productTile"], li[data-csa-c-type="item"][data-csa-c-item-id*="asin."]') && ew >= 60 && eh >= 60);
+      var isExplicitLazyTile = Boolean(cardEl.matches && cardEl.matches('[data-csa-c-type="productTile"], [data-csa-c-type="item"][data-csa-c-item-id*="asin."]') && ew >= 60 && eh >= 60);
       if (isNonProductCardImg(img, src, altCand, isExplicitLazyTile || usedAltSrc)) continue;
       if (!isExplicitLazyTile && isPlaceholderCardImg(usedAltSrc ? null : img, src)) continue;
       if (ew < 44 || eh < 44 || ew > 640 || eh > 640) continue;
@@ -1807,9 +1846,12 @@
       (cardEl.querySelector && cardEl.querySelector(EXPLICIT_PRODUCT_CARD_SEL))
     );
     if (!hasExplicitCardSignal) {
-      var hasProdHref = false;
+      var hasProdHref = Boolean(
+        (cardEl.getAttribute && isRealProductHrefPath(cardEl.getAttribute('data-detailpageurl') || '')) ||
+        (cardEl.querySelector && cardEl.querySelector('[data-detailpageurl*="/dp/"]'))
+      );
       var cardLinks = cardEl.querySelectorAll ? cardEl.querySelectorAll('a[href]') : [];
-      for (var cl = 0; cl < cardLinks.length; cl++) {
+      for (var cl = 0; cl < cardLinks.length && !hasProdHref; cl++) {
         if (isRealProductHrefPath(cardLinks[cl].getAttribute('href') || '')) {
           hasProdHref = true;
           break;
@@ -2124,12 +2166,34 @@
       }, { rootMargin: '180px 120px' });
     }
     var onPdp = Boolean(findOpenProductModal()) || looksLikeProductUrl(location.href);
+    var pdpAsinMatch = onPdp ? String(location.pathname || '').match(/(?:\/dp\/|\/gp\/product\/|\/gp\/aw\/d\/)([A-Z0-9]{10})/i) : null;
+    var pdpAsin = pdpAsinMatch ? pdpAsinMatch[1].toUpperCase() : '';
+    function isPdpHeroCardCandidate(el) {
+      if (!onPdp || !el) return false;
+      var elId = String(el.id || '');
+      if (/^(?:mediaBlockEntities|imageBlock(?:_feature_div)?|image-block|main-image-container|altImages|product-image-gallery-asin|dp-container|ppd|centerCol|leftCol|rightCol)$/i.test(elId)) {
+        return true;
+      }
+      if (el.closest && el.closest('#mediaBlockEntities, #imageBlock, #imageBlock_feature_div, #image-block, #main-image-container, #altImages, [data-testid*="hero-image" i], [data-testid*="media-gallery" i]')) {
+        return true;
+      }
+      if (el.querySelector && el.querySelector('#landingImage, #main-image, [data-fling-asin]')) {
+        return true;
+      }
+      if (pdpAsin) {
+        var cardAsin = String((el.getAttribute && el.getAttribute('data-asin')) || '').toUpperCase();
+        var csaItemId = String((el.getAttribute && el.getAttribute('data-csa-c-item-id')) || '').toUpperCase();
+        if (cardAsin === pdpAsin || csaItemId.indexOf(pdpAsin) !== -1) return true;
+      }
+      return false;
+    }
     var maxCardW = onPdp ? 360 : Math.max(580, (window.innerWidth || 412) + 32);
     var vh = Math.max(400, window.innerHeight || 800);
     var seen = [];
     var seenRects = [];
     function addCand(el, preRect) {
       if (!el || seen.indexOf(el) !== -1 || el.closest('header, nav, footer, [role="contentinfo"]')) return;
+      if (isPdpHeroCardCandidate(el)) return;
       if (!el.querySelector || !el.querySelector('img')) return;
       if (hasMultipleDistinctProductLinks(el)) return;
       for (var ex = 0; ex < seen.length; ex++) {
@@ -2453,18 +2517,39 @@
 
   function openCardProductPage(ownerCard) {
     if (!ownerCard) return false;
+    var NON_PROD_NAV_RE = /(?:\/ap\/signin|\/signin|\/login|\/lists\/|\/pastpurchases|\/wishlist|\/hz\/wishlist|#customerReviews)/i;
+    var dpUrl = String((ownerCard.getAttribute && ownerCard.getAttribute('data-detailpageurl')) || '').trim();
+    var dpTarget = dpUrl ? ownerCard : (ownerCard.querySelector ? ownerCard.querySelector('[data-detailpageurl*="/dp/"]') : null);
+    if (!dpUrl && dpTarget && dpTarget.getAttribute) {
+      dpUrl = String(dpTarget.getAttribute('data-detailpageurl') || '').trim();
+    }
+    if (dpUrl && !NON_PROD_NAV_RE.test(dpUrl) && isRealProductHrefPath(dpUrl)) {
+      try {
+        var resolvedDp = new URL(dpUrl, location.href).href;
+        if (/^https:\/\//i.test(resolvedDp)) {
+          postBridge({ kind: 'openCardUrl', url: resolvedDp });
+          return true;
+        }
+      } catch (_) {}
+      if (dpTarget) {
+        try {
+          hbAllowCheckNavUntil = Date.now() + 400;
+          dpTarget.click();
+          return true;
+        } catch (_) {}
+      }
+    }
     var links = ownerCard.querySelectorAll ? ownerCard.querySelectorAll('a[href]') : [];
     var chosenLink = null;
     for (var i = 0; i < links.length; i++) {
       var a = links[i];
       if (a.closest && a.closest('.hb-photo-badge, .hb-photo-badge-slot')) continue;
       var rawHref = String(a.getAttribute('href') || '').trim();
-      if (!rawHref || rawHref === '#' || /^javascript:/i.test(rawHref)) continue;
+      if (!rawHref || rawHref === '#' || /^javascript:/i.test(rawHref) || NON_PROD_NAV_RE.test(rawHref)) continue;
       if (isRealProductHrefPath(unwrapProductHref(rawHref))) {
         chosenLink = a;
         break;
       }
-      if (!chosenLink) chosenLink = a;
     }
     if (chosenLink) {
       var fullUrl = chosenLink.href || '';
@@ -2478,7 +2563,7 @@
         return true;
       }
     }
-    if (ownerCard.getAttribute && (ownerCard.getAttribute('role') === 'button' || ownerCard.tagName === 'BUTTON')) {
+    if (!looksLikeProductUrl(location.href) && ownerCard.getAttribute && (ownerCard.getAttribute('role') === 'button' || ownerCard.tagName === 'BUTTON')) {
       try {
         hbAllowCheckNavUntil = Date.now() + 400;
         ownerCard.click();
@@ -2736,7 +2821,7 @@
               }
               var wmIngObj = wmData && wmData.idml && wmData.idml.ingredients && wmData.idml.ingredients.ingredients;
               var wmIngVal = wmIngObj && wmIngObj.value ? clean(String(wmIngObj.value)) : '';
-              if (wmIngVal && wmIngVal.length >= 12 && !/^none$/i.test(wmIngVal)) {
+              if (wmIngVal && isPlausiblePdpIngredientText(wmIngVal, false) && !/^none$/i.test(wmIngVal)) {
                 nextDataIngredients = wmIngVal;
               }
             }

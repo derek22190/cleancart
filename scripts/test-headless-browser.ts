@@ -3301,6 +3301,204 @@ async function main() {
     }
     console.log("   ✓ DoorDash & cross-store app banners (whole-banner <a> + spacer, clickable <div>, upsell modal + backdrop, SmartBanner <iframe>, header Open App) suppressed on Android & iOS while Header/Login/Cart/Checkout dialog stay intact!");
 
+    // 6G: Amazon Fresh Mobile ALM Storefront Carousel Cards + PDP Hero Guard + Single-Ingredient "Garlic" Extraction
+    const amzFreshStorefrontHtml = `
+      <main style="padding:8px;">
+        <h2>Fresh Vegetables & Dairy</h2>
+        <ul style="display:flex; gap:10px; list-style:none; padding:0; margin:0; overflow-x:auto;">
+          <li aria-roledescription="slide" class="a-carousel-card" style="width:148px; flex:0 0 148px;">
+            <div data-is-carousel="true">
+              <div data-csa-c-type="item" data-csa-c-item-type="asin" data-csa-c-item-id="amzn1.asin.B09B323RJV" data-csa-c-posx="0">
+                <div data-detailpageurl="/Christopher-Ranch-White-Garlic-pack/dp/B09B323RJV?almBrandId=QW1hem9uIEZyZXNo" data-linkson="true" class="a-box-group">
+                  <div class="a-row"><a id="amz-pp-link-0" href="/afx/lists/pastpurchases?almBrandId=QW1hem9uIEZyZXNo"></a></div>
+                  <div class="a-row _rptImageSection">
+                    <div class="a-image-container p13nImage" style="width:140px;height:125px;">
+                      <img id="amz-garlic-img" alt="Christopher Ranch White Garlic 3 pack, 3 oz." src=${JSON.stringify(placeholderSvgDataUrl)} width="125" height="125" style="display:block;width:125px;height:125px;" />
+                    </div>
+                  </div>
+                  <div class="a-row">
+                    <span class="a-color-base p13nTitle">
+                      <span class="a-truncate"><span class="a-truncate-full">Christopher Ranch White Garlic 3 pack, 3 oz.</span><span class="a-truncate-cut">Christopher Ranch White Garlic...</span></span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </li>
+          <li aria-roledescription="slide" class="a-carousel-card" style="width:148px; flex:0 0 148px;">
+            <div data-is-carousel="true">
+              <div data-csa-c-type="item" data-csa-c-item-type="asin" data-csa-c-item-id="amzn1.asin.B09BUTTER1" data-csa-c-posx="1">
+                <div data-detailpageurl="/Amazon-Grocery-Salted-Butter-Sticks/dp/B09BUTTER1?almBrandId=QW1hem9uIEZyZXNo" data-linkson="true" class="a-box-group">
+                  <div class="a-row"><a id="amz-pp-link-1" href="/afx/lists/pastpurchases?almBrandId=QW1hem9uIEZyZXNo" onclick="window.__amzBadLinkClicked = true; return false;">Past Purchases</a></div>
+                  <div class="a-row _rptImageSection">
+                    <div class="a-image-container p13nImage" style="width:140px;height:125px;">
+                      <img id="amz-butter-img" alt="Amazon Grocery, Salted Butter Sticks, 16 oz" src=${JSON.stringify(placeholderSvgDataUrl)} width="125" height="125" style="display:block;width:125px;height:125px;" />
+                    </div>
+                  </div>
+                  <div class="a-row">
+                    <span class="a-color-base p13nTitle">
+                      <span class="a-truncate"><span class="a-truncate-full">Amazon Grocery, Salted Butter Sticks, 16 oz</span><span class="a-truncate-cut">Amazon Grocery, Salted Butter...</span></span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </li>
+          <li aria-roledescription="slide" class="a-carousel-card" style="width:148px; flex:0 0 148px;">
+            <div data-is-carousel="true">
+              <div data-csa-c-type="item" data-csa-c-item-type="asin" data-csa-c-item-id="amzn1.asin.B09TISSUE1" data-csa-c-posx="2">
+                <div data-detailpageurl="/Kleenex-Ultra-Soft-Facial-Tissues/dp/B09TISSUE1?almBrandId=QW1hem9uIEZyZXNo" data-linkson="true" class="a-box-group">
+                  <div class="a-row _rptImageSection">
+                    <div class="a-image-container p13nImage" style="width:140px;height:125px;">
+                      <img alt="Kleenex Ultra Soft Facial Tissues, 3 Flat Boxes" src=${JSON.stringify(placeholderSvgDataUrl)} width="125" height="125" style="display:block;width:125px;height:125px;" />
+                    </div>
+                  </div>
+                  <div class="a-row">
+                    <span class="a-color-base p13nTitle">
+                      <span class="a-truncate"><span class="a-truncate-full">Kleenex Ultra Soft Facial Tissues, 3 Flat Boxes</span></span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </main>
+    `;
+    await storePage.navigate("https://www.amazon.com/alm/storefront?almBrandId=QW1hem9uIEZyZXNo");
+    await storePage.eval(`
+      if (!document.querySelector('meta[name="viewport"]')) {
+        const mv = document.createElement('meta');
+        mv.name = 'viewport';
+        mv.content = 'width=device-width, initial-scale=1';
+        document.head.appendChild(mv);
+      }
+      document.body.innerHTML = ${JSON.stringify(amzFreshStorefrontHtml)};
+      window.__heybrocBridgeSecret = ${JSON.stringify(androidBridgeSecret)};
+      window.__amzBatchItems = [];
+      window.__amzPageToken = "";
+      window.__amzAlignedKinds = [];
+      window.__amzOpenUrls = [];
+      window.__amzBadLinkClicked = false;
+      window.heybrocAndroidBridge = {
+        postMessage: function(raw) {
+          try {
+            const p = JSON.parse(raw);
+            if (p.kind === "gridBatch" && Array.isArray(p.items)) {
+              window.__amzPageToken = p.pageToken || "";
+              window.__amzBatchItems = window.__amzBatchItems.concat(p.items);
+            } else if (p.kind === "card" || p.kind === "browse") {
+              window.__amzAlignedKinds.push(p.kind + ":" + (p.title || ""));
+            } else if (p.kind === "openCardUrl") {
+              window.__amzOpenUrls.push(p.url || "");
+            }
+          } catch (_) {}
+        }
+      };
+    `);
+    await storePage.eval(androidDetectorJS, false);
+    const amzQueued = await storePage.waitFor<Array<{ id: string; productTitle: string }>>(
+      `window.__amzBatchItems.length >= 2 ? window.__amzBatchItems : null`,
+      "Amazon Fresh ALM mobile storefront cards queued cleanly",
+      5000,
+    );
+    const amzTitles = amzQueued.map((i) => i.productTitle);
+    assert(
+      amzTitles.some((t) => t === "Christopher Ranch White Garlic 3 pack, 3 oz.") &&
+        amzTitles.some((t) => t === "Amazon Grocery, Salted Butter Sticks, 16 oz") &&
+        !amzTitles.some((t) => /kleenex|facial tissues/i.test(t)),
+      `Amazon Fresh ALM storefront queued wrong titles: ${JSON.stringify(amzTitles)}`,
+    );
+    const amzPlacementAndCheck = await storePage.eval<{
+      alignedCard: boolean;
+      garlicBadgeText: string;
+      imgBottom: number;
+      badgeTop: number;
+      openUrls: string[];
+      badLinkClicked: boolean;
+    }>(`(() => {
+      const garlicIt = window.__amzBatchItems.find((i) => i.productTitle.includes("Garlic"));
+      const butterIt = window.__amzBatchItems.find((i) => i.productTitle.includes("Salted Butter"));
+      const map = {};
+      if (garlicIt) map[garlicIt.id] = { ok: true, score: 90, hasAlert: false, alertSeverity: "none" };
+      if (butterIt) map[butterIt.id] = { ok: true, score: 52, isCategoryEstimate: true, hasAlert: false, alertSeverity: "none" };
+      window.__heybrocApplyCardBadges(map, window.__amzPageToken);
+      const garlicBadge = document.querySelector('.hb-photo-badge[data-hb-card-id="' + garlicIt.id + '"]');
+      const butterBadge = document.querySelector('.hb-photo-badge[data-hb-card-id="' + butterIt.id + '"]');
+      const imgR = document.getElementById("amz-garlic-img").getBoundingClientRect();
+      const bR = garlicBadge.getBoundingClientRect();
+      if (butterBadge) butterBadge.click();
+      return {
+        alignedCard: window.__amzAlignedKinds.some((k) => k.startsWith("card:")),
+        garlicBadgeText: String(garlicBadge?.textContent || "").trim(),
+        imgBottom: Math.round(imgR.bottom),
+        badgeTop: Math.round(bR.top),
+        openUrls: window.__amzOpenUrls.slice(),
+        badLinkClicked: Boolean(window.__amzBadLinkClicked),
+      };
+    })()`);
+    assert(
+      amzPlacementAndCheck.alignedCard &&
+        amzPlacementAndCheck.garlicBadgeText.includes("90") &&
+        amzPlacementAndCheck.badgeTop >= amzPlacementAndCheck.imgBottom - 8 &&
+        !amzPlacementAndCheck.badLinkClicked &&
+        amzPlacementAndCheck.openUrls.some((u) => u.includes("/Amazon-Grocery-Salted-Butter-Sticks/dp/B09BUTTER1")),
+      `Amazon Fresh ALM badge placement or Check data-detailpageurl navigation failed: ${JSON.stringify(amzPlacementAndCheck)}`,
+    );
+
+    // Verify Amazon Garlic PDP extracts 6-char "Garlic" ingredient AND never badges #mediaBlockEntities hero container
+    const amzGarlicPdpHtml = `
+      <main style="padding:12px;">
+        <h1 id="title">Christopher Ranch White Garlic 3 pack, 3 oz.</h1>
+        <div id="mediaBlockEntities" data-asin="B09B323RJV" style="width:340px; padding:8px;">
+          <img id="landingImage" alt="Christopher Ranch White Garlic 3 pack, 3 oz." src=${JSON.stringify(placeholderSvgDataUrl)} width="260" height="220" style="display:block;" />
+          <a id="wishlist-heart" href="/ap/signin?openid.return_to=wishlist">Add to List</a>
+        </div>
+        <div id="importantInformation_feature_div" class="a-section">
+          <h3>Important information</h3>
+          <h4>Ingredients</h4>
+          <p>Garlic</p>
+          <h4>Legal Disclaimer</h4>
+          <p>Statements regarding dietary supplements have not been evaluated by the FDA.</p>
+        </div>
+      </main>
+    `;
+    await storePage.navigate("https://www.amazon.com/Christopher-Ranch-White-Garlic-pack/dp/B09B323RJV");
+    await storePage.eval(`
+      document.body.innerHTML = ${JSON.stringify(amzGarlicPdpHtml)};
+      window.__heybrocBridgeSecret = ${JSON.stringify(androidBridgeSecret)};
+      window.__amzPdpEvents = [];
+      window.heybrocAndroidBridge = {
+        postMessage: function(raw) {
+          try {
+            const p = JSON.parse(raw);
+            if (p.kind === "product") window.__amzPdpEvents.push(p);
+          } catch (_) {}
+        }
+      };
+    `);
+    await storePage.eval(androidDetectorJS, false);
+    const amzPdpResult = await storePage.waitFor<{ title: string; ingredients: string; heroBadges: number }>(
+      `(() => {
+        const ev = window.__amzPdpEvents[window.__amzPdpEvents.length - 1];
+        if (!ev) return null;
+        return {
+          title: ev.title || "",
+          ingredients: ev.ingredients || "",
+          heroBadges: document.querySelectorAll("#mediaBlockEntities .hb-photo-badge").length,
+        };
+      })()`,
+      "Amazon Garlic PDP extracts single-ingredient Garlic and skips #mediaBlockEntities hero badge",
+      5000,
+    );
+    assert(
+      /christopher ranch white garlic/i.test(amzPdpResult.title) &&
+        amzPdpResult.ingredients === "Garlic" &&
+        amzPdpResult.heroBadges === 0,
+      `Amazon Garlic PDP extraction or hero badge exclusion failed: ${JSON.stringify(amzPdpResult)}`,
+    );
+    console.log("   ✓ Amazon Fresh ALM storefront carousel (90 below photo + Check -> /dp/B09BUTTER1) & Garlic PDP ('Garlic' extracted, 0 hero badges) verified!");
+
     storePage.close();
 
     // =========================================================================

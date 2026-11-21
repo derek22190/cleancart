@@ -12419,18 +12419,31 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
       globalThis.fetch = origFetch503;
     }
 
+    const realGoodPrefixOrderRes = await runScanMultiStore({
+      productTitle: "Real Good Foods No Seed Oils Lightly Breaded Chicken Breast Chunks, Frozen",
+      store: "sams",
+      isBatch: true,
+      skipAnalytics: true,
+    });
+    const lookupSrcAudit = fsNode.readFileSync("lib/lookup.ts", "utf8");
     const chromeBgSrc = fsNode.readFileSync("chrome-extension/background.js", "utf8");
     const safariBgSrc = fsNode.readFileSync("ios-app/SafariExtension/Resources/background.js", "utf8");
     const opsCliSrc = fsNode.readFileSync("scripts/ops-cli.ts", "utf8");
 
     check(
-      "Ungraded Foods, Brand Fidelity, Option A Check Pill & Sam's Club Placement/Tap-Hijack Parity: Good & Gather brand hoisted & enforced; Target dips/salsas/smoothies & Once Upon a Farm resolve without flavor hijacks; Idahoan is PHO-free & Great Value Catfish flags phosphates; all 7 Sam's Club screenshot items resolve accurately (Real Good Foods beef tallow never hijacked by Perdue); batch op failure returns retryable HTTP 503; Android/iOS/Extensions share 12s batch timeout, per-item transient/nonFood tracking, Walmart __NEXT_DATA__ barcode recovery, Option A Check pill, below-photo 2-col row guard, coordinate tap-hijack protection, and PDP-to-grid score hydration",
+      "Ungraded Foods, Brand Fidelity, Option A Check Pill & Sam's Club Placement/Tap-Hijack Parity: Good & Gather brand hoisted & enforced; Target dips/salsas/smoothies & Once Upon a Farm resolve without flavor hijacks; Idahoan is PHO-free & Great Value Catfish flags phosphates; all 7 Sam's Club screenshot items resolve accurately (Real Good Foods beef tallow never hijacked by Perdue); batch op failure returns retryable HTTP 503; SHA-256 KV cache keys with 450ms cap & external-DB-only writes; Android/iOS/Extensions share 12s batch timeout, per-item transient/nonFood tracking, Walmart __NEXT_DATA__ barcode recovery, Option A Check pill, below-photo 2-col row guard, coordinate tap-hijack protection, preference-scoped PDP-to-grid hydration, and hardened openCardUrl validation",
       targetGoodGatherOk &&
         idahoanPhoFree &&
         catfishFlagsPhosphates &&
         smoothiesFidelityOk &&
         targetDipsOk &&
         samsClubOk &&
+        realGoodPrefixOrderRes.ok &&
+        /real\s*good/i.test(`${realGoodPrefixOrderRes.product.brand} ${realGoodPrefixOrderRes.product.title}`) &&
+        !realGoodPrefixOrderRes.result.flagged.some((f) => /canola|soybean|seed\s+oil/i.test(`${f.name} ${f.matched}`)) &&
+        lookupSrcAudit.includes('crypto.createHash("sha256").update(key)') &&
+        lookupSrcAudit.includes("const isVerifiedExternalRecord =") &&
+        !lookupSrcAudit.includes("sam-s-choice-premium-frozen-cooked-medium-shrimp-cocktail-ring") &&
         batchOpFailStatus === 503 &&
         androidScanApiAuditSrc.includes("val transientIds: Set<String>") &&
         androidScanApiAuditSrc.includes("fun cacheVerifiedScreenScan(") &&
@@ -12440,6 +12453,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         androidBrowserSrc.includes("fun urlMatchesStore(") &&
         androidBrowserSrc.includes("if (!urlMatchesStore(storeKey, safe)) return") &&
         androidBrowserSrc.includes("storeWebView?.stopLoading()") &&
+        androidBrowserSrc.includes('val safeUrl = validatedRetailerUrl(obj.optString("url"))') &&
         androidDetectorSrc.includes("getWalmartNextDataMap") &&
         androidDetectorSrc.includes("hb-photo-badge--check") &&
         androidDetectorSrc.includes("curParentIsVerticalSlotHost && !nextParentIsVertical") &&
@@ -12449,8 +12463,12 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         androidDetectorSrc.includes("document.addEventListener('touchstart', stopBadgePointerEvent, true)") &&
         iosShortcutsAuditSrc.includes("var transientIds: Set<String>") &&
         iosShortcutsAuditSrc.includes("static func cacheVerifiedScreenScan(") &&
+        iosShortcutsAuditSrc.includes("static func clearVerifiedScreenCache()") &&
+        iosShortcutsAuditSrc.includes("currentVerifiedPrefSignature(store: store)") &&
         iosShortcutsAuditSrc.includes("timeoutInterval: 12") &&
         iosBrowserSrc.includes("outcome.transientIds.contains(id)") &&
+        iosBrowserSrc.includes("HeyBrocNativeScannerAPI.clearVerifiedScreenCache()") &&
+        iosBrowserSrc.includes("if let url = Self.validatedHTTPURL(rawUrl)") &&
         iosBrowserSrc.includes("urlMatchesStore(_ url: URL, storeKey: String)") &&
         iosBrowserSrc.includes("storeWebView?.stopLoading()") &&
         iosBrowserSrc.includes("APP_UPSELL_BANNER_RE") &&
@@ -12465,9 +12483,102 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         chromeExtSrc.includes("pIsVerticalSlotHost && gpIsHorizontalRow") &&
         chromeExtSrc.includes("extBadgeFromEvent") &&
         chromeExtSrc.includes("persistVerifiedPdpScore") &&
+        chromeExtSrc.includes("resp.isCategoryEstimate") &&
+        chromeExtSrc.includes("sessionStorage.removeItem(PDP_VERIFIED_SESSION_KEY)") &&
         chromeBgSrc.includes("12000") &&
         safariBgSrc.includes("12000") &&
         opsCliSrc.includes("USDA_API_KEY"),
+    );
+
+    // 16. Amazon Fresh / Whole Foods ALM Storefront, Single-Ingredient PDP Labels, PDP Hero Guard & Plain Whole-Produce Protection
+    const { isPlausibleScreenIngredients: checkScreenIng, isDietaryOrVariantMismatch: checkVariantMismatch } = await import("../lib/lookup");
+    const [
+      amzGarlicGrid,
+      amzGarlicPdp,
+      amzLemonGrid,
+      amzBlueberriesGrid,
+      amzRaspberriesGrid,
+      amzOnionsGrid,
+      amzGreenOnionsGrid,
+      amzGreenBellGrid,
+      amzCherubsGrid,
+      amzLambRackGrid,
+    ] = await Promise.all([
+      runScanMultiStore({ productTitle: "Christopher Ranch White Garlic 3 pack, 3 oz.", store: "amazon_fresh", isBatch: true, skipAnalytics: true }),
+      runScanMultiStore({ productTitle: "Christopher Ranch White Garlic 3 pack, 3 oz.", rawIngredients: "Garlic", store: "amazon_fresh", skipAnalytics: true }),
+      runScanMultiStore({ productTitle: "Lemon, 1 Each", store: "amazon_fresh", isBatch: true, skipAnalytics: true }),
+      runScanMultiStore({ productTitle: "Blueberries, 1 Pint", store: "amazon_fresh", isBatch: true, skipAnalytics: true }),
+      runScanMultiStore({ productTitle: "Red Raspberries, 6 oz", store: "amazon_fresh", isBatch: true, skipAnalytics: true }),
+      runScanMultiStore({ productTitle: "Sweet Yellow Onions, 3 lb Bag", store: "amazon_fresh", isBatch: true, skipAnalytics: true }),
+      runScanMultiStore({ productTitle: "Green Onions (Scallions), One Bunch", store: "amazon_fresh", isBatch: true, skipAnalytics: true }),
+      runScanMultiStore({ productTitle: "Fresh Produce, Brands Vary, Green Bell Pepper", store: "amazon_fresh", isBatch: true, skipAnalytics: true }),
+      runScanMultiStore({ productTitle: "Nature Sweet Organic Cherubs Salad Tomatoes", store: "amazon_fresh", isBatch: true, skipAnalytics: true }),
+      runScanMultiStore({ productTitle: "New Zealand Spring Lamb, Fresh New Zealand Lamb Rack, 1 lb", store: "amazon_fresh", isBatch: true, skipAnalytics: true }),
+    ]);
+
+    const plainWholeProduceClean =
+      amzGarlicGrid.ok &&
+      amzGarlicGrid.result.score === 90 &&
+      amzGarlicGrid.result.flagged.length === 0 &&
+      !/crushed|minced/i.test(amzGarlicGrid.product.title) &&
+      amzGarlicPdp.ok &&
+      amzGarlicPdp.lookup.source === "screen" &&
+      amzGarlicPdp.result.score === 90 &&
+      amzGarlicPdp.result.flagged.length === 0 &&
+      amzLemonGrid.ok &&
+      amzLemonGrid.result.score === 90 &&
+      amzLemonGrid.result.flagged.length === 0 &&
+      amzBlueberriesGrid.ok &&
+      amzBlueberriesGrid.result.score === 90 &&
+      amzBlueberriesGrid.result.flagged.length === 0 &&
+      amzRaspberriesGrid.ok &&
+      amzRaspberriesGrid.result.score === 90 &&
+      amzRaspberriesGrid.result.flagged.length === 0 &&
+      amzOnionsGrid.ok &&
+      amzOnionsGrid.result.score === 90 &&
+      !/potato/i.test(amzOnionsGrid.product.title) &&
+      amzGreenOnionsGrid.ok &&
+      amzGreenOnionsGrid.result.score === 90 &&
+      amzGreenBellGrid.ok &&
+      amzGreenBellGrid.result.score === 90 &&
+      amzCherubsGrid.ok &&
+      amzCherubsGrid.result.score === 90 &&
+      amzLambRackGrid.ok &&
+      amzLambRackGrid.result.score === 90;
+
+    const wholeProduceGuardsOk =
+      checkScreenIng("Garlic") &&
+      checkScreenIng("Lemon") &&
+      !checkScreenIng("Legal Disclaimer") &&
+      !checkScreenIng("Visit the Store") &&
+      checkVariantMismatch("Christopher Ranch White Garlic 3 pack, 3 oz.", "Christopher Ranch Crushed Garlic", "Garlic, Soybean Oil, Citric Acid.") &&
+      checkVariantMismatch("Christopher Ranch White Garlic 3 pack, 3 oz.", "Christopher Ranch, Minced Garlic", "Garlic, Water, Citric Acid.") &&
+      checkVariantMismatch("Lemon, 1 Each", "Hostess Baby Bundts 10 Ounce Lemon Drizzle", "Sugar, Enriched Flour, Soybean Oil") &&
+      checkVariantMismatch("Blueberries, 1 Pint", "Bakery Blueberry Muffins", "Enriched Wheat Flour, Sugar, Blueberries") &&
+      checkVariantMismatch("Red Raspberries, 6 oz", "Wegmans Red Raspberry Preserves", "Red Raspberries, Sugar, Fruit Pectin, Citric Acid");
+
+    check(
+      "Amazon Fresh ALM Storefront, Single-Ingredient PDP Labels, PDP Hero Guard & Plain Whole-Produce Protection: plain garlic/lemons/berries/onions/bell peppers/salad tomatoes/lamb rack all score 90/100 with zero soybean-oil/muffin/bundt/preserves hijacks; single-ingredient 'Garlic' PDP panel accepted; Android/iOS/Extension match div[data-csa-c-type=item] + [data-detailpageurl] + .p13nTitle/.a-truncate-full, skip PDP #mediaBlockEntities hero containers, and block wishlist/sign-in link fallbacks",
+      plainWholeProduceClean &&
+        wholeProduceGuardsOk &&
+        androidDetectorSrc.includes("isPlausiblePdpIngredientText") &&
+        androidDetectorSrc.includes("isPdpHeroCardCandidate") &&
+        androidDetectorSrc.includes("NON_PROD_NAV_RE") &&
+        androidDetectorSrc.includes('[data-detailpageurl*="/dp/"]') &&
+        androidDetectorSrc.includes("'.p13nTitle .a-truncate-full'") &&
+        !androidDetectorSrc.includes('li[data-csa-c-type="item"][data-csa-c-item-id*="asin."]') &&
+        iosBrowserSrc.includes("isPlausiblePdpIngredientText") &&
+        iosBrowserSrc.includes("isPdpHeroCardCandidate") &&
+        iosBrowserSrc.includes("NON_PROD_NAV_RE") &&
+        iosBrowserSrc.includes('[data-detailpageurl*="/dp/"]') &&
+        iosBrowserSrc.includes("'.p13nTitle .a-truncate-full'") &&
+        !iosBrowserSrc.includes('li[data-csa-c-type="item"][data-csa-c-item-id*="asin."]') &&
+        chromeExtSrc === safariExtSrc &&
+        chromeExtSrc.includes("isPdpHeroCardCandidate") &&
+        chromeExtSrc.includes("NON_PROD_NAV_RE") &&
+        chromeExtSrc.includes('[data-detailpageurl*="/dp/"]') &&
+        chromeExtSrc.includes('".p13nTitle .a-truncate-full"') &&
+        !chromeExtSrc.includes('li[data-csa-c-type="item"][data-csa-c-item-id*="asin."]'),
     );
   }
 

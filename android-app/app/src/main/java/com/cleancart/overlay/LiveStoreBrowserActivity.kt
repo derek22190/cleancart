@@ -860,9 +860,11 @@ class LiveStoreBrowserActivity : Activity() {
             val norm = normalizeStoreKey(newStoreRaw)
             val targetStore = STORES.firstOrNull { it.key == norm }
             if (targetStore != null && targetStore.key != activeStore.key) {
+                saveLastStoreUrl(activeStore.key, storeWebView?.url)
                 activeStore = targetStore
                 updateStoreChipStyles()
                 if (newQuery.isEmpty() && newExplicitUrl == null) {
+                    storeWebView?.stopLoading()
                     storeWebView?.loadUrl(loadLastStoreUrl(activeStore.key) ?: activeStore.homeUrl)
                     return
                 }
@@ -871,9 +873,11 @@ class LiveStoreBrowserActivity : Activity() {
         when {
             newQuery.isNotEmpty() -> {
                 val qUrl = validatedRetailerUrl(ScanHistoryStore.storeSearchUrl(activeStore.key, newQuery)) ?: activeStore.homeUrl
+                storeWebView?.stopLoading()
                 storeWebView?.loadUrl(qUrl)
             }
             newExplicitUrl != null -> {
+                storeWebView?.stopLoading()
                 storeWebView?.loadUrl(newExplicitUrl)
             }
         }
@@ -2285,11 +2289,10 @@ class LiveStoreBrowserActivity : Activity() {
                         }
                     }
                     "openCardUrl" -> {
-                        val rawUrl = obj.optString("url").trim()
-                        val targetUri = runCatching { Uri.parse(rawUrl) }.getOrNull()
-                        if (targetUri != null && targetUri.scheme?.lowercase() == "https" && isAllowedRetailerHost(targetUri.host)) {
+                        val safeUrl = validatedRetailerUrl(obj.optString("url"))
+                        if (safeUrl != null) {
                             setBubbleScanningState()
-                            storeWebView?.loadUrl(rawUrl)
+                            storeWebView?.loadUrl(safeUrl)
                         }
                     }
                 }

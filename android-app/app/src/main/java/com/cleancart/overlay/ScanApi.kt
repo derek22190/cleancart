@@ -1549,7 +1549,7 @@ object ScanApi {
         val cleanTitle = productTitle.trim().take(300)
         val cleanBarcode = barcode?.filter { it.isDigit() }?.takeIf { it.length in 8..14 }.orEmpty()
         if (cleanTitle.length < 3 && cleanBarcode.isEmpty()) return
-        if (!rawJsonStr.contains("\"ok\":true")) return
+        if (!rawJsonStr.contains("\"ok\":true") && !rawJsonStr.contains("\"ok\": true")) return
         val appCtx = ctx.applicationContext
         val keys = ArrayList<String>(2)
         if (cleanTitle.length >= 3) {

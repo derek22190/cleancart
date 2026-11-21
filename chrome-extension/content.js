@@ -1211,10 +1211,10 @@
     /^(search|your cart|shopping cart|cart|bag|basket|checkout|review order|order summary|items to add next|product information|similar items|customers also.*|sponsored.*|buy (?:it )?again|frequently bought together|saved for later|product|item|ad|advertisement|walmart|target|costco(?:\s+wholesale)?|sam'?s\s+club|aldi|kroger|instacart|whole\s+foods(?:\s+market)?|amazon(?:\s+fresh)?|bj'?s(?:\s+wholesale\s+club)?|doordash|dashmart|uber\s*eats|shipt|boost\s+by\s+kroger|continue\s+as\s+guest|log\s*in|sign\s*in|sign\s*up|same-day\s+delivery|choose\s+a\s+store|departments|grocery|new\s+grocery|produce|fresh\s+produce|fruits?(?:\s*&\s*vegetables?)?|vegetables?|meat(?:\s*&\s*seafood)?|seafood|dairy(?:\s*&\s*eggs)?|eggs|bakery(?:\s*&\s*bread)?|bread|deli|frozen(?:\s+foods?)?|pantry|snacks(?:\s*&\s*candy)?|candy|beverages|drinks|coffee(?:\s*&\s*tea)?|breakfast(?:\s*&\s*cereal)?|condiments|baking|household|personal\s+care|health(?:\s*&\s*beauty)?|baby|pets?|savings|deals|weekly\s+ad|instant\s+savings|top\s+deals|rollbacks?|clearance|new\s+arrivals|best\s+sellers|trending|featured(?:\s+categories|\s+items)?|shop\s+by\s+(?:category|department|brand|diet)|all\s+products|shop\s+all|subtotal.*|estimated\s+total.*|substitutions?.*)$/i;
 
   const NON_INGREDIENT_RE =
-    /\b(items to add next|product information|similar items|customers also|you might also|related items|frequently bought together|compare with similar|sold by|fulfilled by|see packaging|refer to packaging|nutrition facts|serving size)\b/i;
+    /\b(items to add next|product information|similar items|customers also|you might also|related items|frequently bought together|compare with similar|sold by|fulfilled by|see packaging|refer to packaging|nutrition facts|serving size|legal disclaimer|statements regarding|visit the store|customer reviews|add to cart)\b/i;
 
   const REAL_ING_HINT_RE =
-    /\b(water|milk|cream|sugar|salt|flour|wheat|corn|soy|oil|butter|egg|cheese|cocoa|chocolate|vanilla|syrup|starch|acid|lecithin|gum|flavor|natural|organic|vitamin|potassium|sodium|calcium|turkey|chicken|beef|pork|apple|berry|oat|rice|potato|tomato|onion|garlic|spice|vinegar|yeast|honey|almond|peanut|hazelnut|extract|culture|enzyme)\b/i;
+    /\b(water|milk|cream|sugar|salt|flour|wheat|corn|soy|oil|butter|egg|cheese|cocoa|chocolate|vanilla|syrup|starch|acid|lecithin|gum|flavor|natural|organic|vitamin|potassium|sodium|calcium|turkey|chicken|beef|pork|lamb|salmon|cod|shrimp|tilapia|tuna|apple|banana|orange|lemon|lime|avocado|berry|blueberr|raspberr|strawberr|blackberr|grape|peach|pear|mango|pineapple|carrot|pepper|spinach|broccoli|kale|lettuce|cucumber|celery|mushroom|ginger|oat|rice|quinoa|lentil|chickpea|bean|potato|tomato|onion|scallion|garlic|spice|vinegar|yeast|honey|almond|peanut|walnut|cashew|pecan|hazelnut|extract|culture|enzyme)\b/i;
 
   const EXCLUDED_SECTION_HEADING_RE =
     /\b(customers\s+also\s+(?:viewed|bought|shopped|considered)|similar\s+items?|sponsored(?:\s+products?|\s+items?)?|buy\s+(?:it\s+)?again|frequently\s+bought\s+together|items?\s+to\s+add\s+next|recommended(?:\s+for\s+you)?|you\s+may\s+also\s+like|related\s+(?:products?|items?)|compare\s+with\s+similar|more\s+to\s+consider|saved\s+for\s+later|add-ons?|people\s+also\s+buy)\b/i;
@@ -1361,8 +1361,12 @@
 
   function isValidIngredientText(raw) {
     const t = String(raw || "").replace(/\s+/g, " ").trim();
-    if (t.length < 12 || t.length >= 3000) return false;
+    if (t.length < 3 || t.length >= 3000) return false;
     if (NON_INGREDIENT_RE.test(t) || NON_TITLE_RE.test(t)) return false;
+    if (/\$\s*\d/.test(t) && !t.includes(",")) return false;
+    if (t.length < 12) {
+      return /^[a-z][a-z\s'-]{1,48}\.?$/i.test(t) && REAL_ING_HINT_RE.test(t);
+    }
     if (!t.includes(",") && !REAL_ING_HINT_RE.test(t)) return false;
     return true;
   }
@@ -1708,7 +1712,7 @@
       for (const amzInfo of amzNodes) {
         if (!isAllowedAmazonInfoNode(amzInfo)) continue;
         const amzTxt = (amzInfo.textContent || "").replace(/\s+/g, " ");
-        const amzMatch = amzTxt.match(/\bIngredients\s*:?\s*([\s\S]{12,1800})/i);
+        const amzMatch = amzTxt.match(/\bIngredients\s*:?\s*([\s\S]{3,1800})/i);
         if (amzMatch?.[1]) {
           const cand = amzMatch[1]
             .split(/\b(Allergens?|Contains\s*:|Warnings?|Directions|Nutrition\s+Facts|Distributed\s+by|Legal\s+Disclaimer|Statements\s+regarding)\b/i)[0]
@@ -1922,7 +1926,7 @@
     '[automation-id*="productTile" i]',
     '[data-component-type="s-search-result"]',
     '[data-csa-c-type="productTile"]',
-    'li[data-csa-c-type="item"][data-csa-c-item-id*="asin."]',
+    '[data-csa-c-type="item"][data-csa-c-item-id*="asin."]',
     'div[class*="s-result-item"][data-asin]:not([data-asin=""])',
     '[data-asin]:not([data-asin=""])',
     "app-product-card",
@@ -1941,7 +1945,8 @@
     '[data-asin]:not([data-asin=""])',
     '[data-component-type="s-search-result"]',
     '[data-csa-c-type="productTile"]',
-    'li[data-csa-c-type="item"][data-csa-c-item-id*="asin."]',
+    '[data-csa-c-type="item"][data-csa-c-item-id*="asin."]',
+    '[data-detailpageurl*="/dp/"]',
     '[data-test*="@web/site-top-of-funnel/ProductCardWrapper"]',
     '[data-testid*="product-card" i]',
     '[data-testid*="product_card" i]',
@@ -1967,6 +1972,7 @@
     '[data-asin]:not([data-asin=""])',
     '[data-component-type="s-search-result"]',
     '[data-csa-c-type="productTile"]',
+    '[data-csa-c-type="item"][data-csa-c-item-id*="asin."]',
     '[data-test*="@web/site-top-of-funnel/ProductCardWrapper"]',
     '[data-testid*="product-card" i]',
     '[data-testid*="product_card" i]',
@@ -1987,7 +1993,7 @@
   const DEFINITIVE_SINGLE_CARD_SEL = [
     '[data-component-type="s-search-result"]',
     '[data-csa-c-type="productTile"]',
-    'li[data-csa-c-type="item"][data-csa-c-item-id*="asin."]',
+    '[data-csa-c-type="item"][data-csa-c-item-id*="asin."]',
     "[data-item-id]",
     '[data-test*="@web/site-top-of-funnel/ProductCardWrapper"]',
     '[data-testid^="item_list_item" i]',
@@ -1997,7 +2003,7 @@
   ].join(", ");
 
   const PRODUCT_LINK_FALLBACK_SEL =
-    'a[data-csa-c-type="productTile"], a[link-identifier], a[href*="/sp/track"], a[href*="/gp/slredirect"], a[href*="/ip/"], a[href*=".product."], a[href*="/products/"], a[href*="/product/"], a[href*="/items/"], a[href*="item_id="], a[href*="product_id="], a[href*="/p/"], a[href*="/sams/shop/product/"], a[href*="/detail/ps/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"]';
+    'a[data-csa-c-type="productTile"], [data-detailpageurl*="/dp/"], a[link-identifier], a[href*="/sp/track"], a[href*="/gp/slredirect"], a[href*="/ip/"], a[href*=".product."], a[href*="/products/"], a[href*="/product/"], a[href*="/items/"], a[href*="item_id="], a[href*="product_id="], a[href*="/p/"], a[href*="/sams/shop/product/"], a[href*="/detail/ps/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"]';
 
   const CARD_CTA_NOISE_RE =
     /^(?:(?:\+\s*)?add(?:\s+to\s+(?:cart|bag|list|order))?|choose\s+options?|options?|select(?:\s+options?)?|view(?:\s+details|\s+item|\s+product)?|shop\s+now|quick\s+(?:add|look|shop|view)|sign\s+in(?:\s+to\s+add)?|out\s+of\s+stock|in\s+stock|many\s+in\s+stock|low\s+stock|sold\s+out|unavailable|notify\s+me|subscribe(?:\s*&\s*save)?|clip(?:\s+coupon)?|coupon(?:\s+available)?|sponsored|best\s+seller|overall\s+pick|popular(?:\s+pick)?|rollback|clearance|sale|deal|snap(?:\s+ebt)?(?:\s+eligible)?|ebt(?:\s+eligible)?|pickup|delivery|shipping|free\s+(?:shipping|pickup|delivery).*|save\s+\$?\d.*|\$?\d+(?:\.\d+)?\s+off\b.*|\d+%\s+off\b.*|buy\s+\d+.*get\s+\d+.*|bogo\b.*|\d+%\s*(?:\(\d+\))?|\d+(?:\.\d+)?\s*(?:stars?|out\s+of\s+5).*|\d+\s*(?:cal|kcal|calories?)\b.*|\$?\d+(?:\.\d+)?\s*\/\s*[a-z]+.*|\d+(?:\.\d+)?\s*(?:fl\.?\s*oz|oz|lb|lbs|gal|qt|pt|ml|l|g|kg|ct|count|pk|pack)\b)$/i;
@@ -2085,7 +2091,7 @@
     let firstKey = "";
     for (const a of pLinks) {
       const csaId = a.getAttribute?.("data-csa-c-content-id") || "";
-      const key = csaId || isRealProductHrefPath(a.getAttribute?.("href") || "");
+      const key = csaId || isRealProductHrefPath(a.getAttribute?.("href") || a.getAttribute?.("data-detailpageurl") || "");
       if (!key) continue;
       if (!firstKey) firstKey = key;
       else if (key !== firstKey) return true;
@@ -2227,14 +2233,31 @@
     }
     let wmItemId = String((cardEl.getAttribute && cardEl.getAttribute("data-item-id")) || "").trim();
     let bestHrefKey = "";
+    let fallbackHrefKey = "";
+    const linkCandidates = [];
+    const ownDpUrl = String((cardEl.getAttribute && cardEl.getAttribute("data-detailpageurl")) || "").trim();
+    if (ownDpUrl) linkCandidates.push({ el: cardEl, rawHref: ownDpUrl });
+    const dpNodes = cardEl.querySelectorAll ? cardEl.querySelectorAll("[data-detailpageurl]") : [];
+    for (const dEl of dpNodes) {
+      if (dEl.closest?.(".cc-photo-badge, .cc-photo-badge-slot")) continue;
+      const dpv = String(dEl.getAttribute("data-detailpageurl") || "").trim();
+      if (dpv) linkCandidates.push({ el: dEl, rawHref: dpv });
+    }
     const links = cardEl.querySelectorAll ? cardEl.querySelectorAll("a[href]") : [];
     for (const a of links) {
       if (a.closest?.(".cc-photo-badge, .cc-photo-badge-slot")) continue;
-      const rawHref = String(a.getAttribute("href") || "");
+      const rh = String(a.getAttribute("href") || "").trim();
+      if (rh) linkCandidates.push({ el: a, rawHref: rh });
+    }
+    for (const { el: a, rawHref } of linkCandidates) {
       const unwrapped = unwrapProductHref(rawHref);
       const cleanPath = unwrapped.split("#")[0].split("?")[0];
-      if (!bestHrefKey && cleanPath) {
-        bestHrefKey = cleanPath.slice(0, 160);
+      if (cleanPath && cleanPath !== "/") {
+        if (!bestHrefKey && isRealProductHrefPath(rawHref)) {
+          bestHrefKey = cleanPath.slice(0, 160);
+        } else if (!fallbackHrefKey) {
+          fallbackHrefKey = cleanPath.slice(0, 160);
+        }
       }
       if (!wmItemId && cleanPath) {
         const wmMatch = cleanPath.match(/\/ip\/(?:[^/?#]+\/)?(\d{6,14})(?:[/?#]|$)/i);
@@ -2300,6 +2323,7 @@
         }
       }
     }
+    if (!bestHrefKey && fallbackHrefKey) bestHrefKey = fallbackHrefKey;
     return { title: bestTitle, barcode, hrefKey: bestHrefKey };
   }
 
@@ -2309,6 +2333,8 @@
     if (isCartDrawerElement(cardEl.closest('[role="dialog"], aside, section'))) return null;
 
     const titleSelectors = [
+      ".p13nTitle .a-truncate-full",
+      ".p13nTitle",
       '[data-automation-id="product-title"]',
       '[data-automation-id*="product-title" i]',
       '[data-test="product-title"]',
@@ -2476,8 +2502,12 @@
         cardEl.matches?.(EXPLICIT_PRODUCT_CARD_SEL) || cardEl.querySelector?.(EXPLICIT_PRODUCT_CARD_SEL)
       );
       if (!hasExplicitCardSignal) {
-        let hasProdHref = false;
+        let hasProdHref = Boolean(
+          (cardEl.getAttribute && isRealProductHrefPath(cardEl.getAttribute("data-detailpageurl") || "")) ||
+            cardEl.querySelector?.('[data-detailpageurl*="/dp/"]')
+        );
         for (const aEl of cardEl.querySelectorAll("a[href]")) {
+          if (hasProdHref) break;
           if (isRealProductHrefPath(aEl.getAttribute("href") || "")) {
             hasProdHref = true;
             break;
@@ -4808,7 +4838,7 @@
 
   function persistVerifiedPdpScore(title, resp) {
     try {
-      if (!title || !resp?.ok || !resp?.result) return;
+      if (!title || !resp?.ok || !resp?.result || resp.isCategoryEstimate) return;
       const key = normCacheKey(title, "");
       if (!key) return;
       let storeObj = {};
@@ -4938,7 +4968,7 @@
     if (!el || typeof el.querySelector !== "function") return false;
     if (
       el.querySelector(
-        'h1, h2, h3, [data-test="product-title"], [data-automation-id*="product-title" i], [data-testid*="product-title" i], [data-testid*="item-title" i]'
+        'h1, h2, h3, .p13nTitle, .a-truncate-full, [data-test="product-title"], [data-automation-id*="product-title" i], [data-testid*="product-title" i], [data-testid*="item-title" i]'
       )
     ) {
       return true;
@@ -5254,7 +5284,7 @@
       const effW = Math.max(r.width, parentR.width);
       const effH = Math.max(r.height, parentR.height);
       const isExplicitLazyTile = Boolean(
-        cardEl.matches?.('[data-csa-c-type="productTile"], li[data-csa-c-type="item"][data-csa-c-item-id*="asin."]') &&
+        cardEl.matches?.('[data-csa-c-type="productTile"], [data-csa-c-type="item"][data-csa-c-item-id*="asin."]') &&
           effW >= 60 &&
           effH >= 60
       );
@@ -5395,17 +5425,43 @@
 
   function openExtCardProductPage(cardEl) {
     if (!cardEl) return false;
+    const NON_PROD_NAV_RE = /(?:\/ap\/signin|\/signin|\/login|\/lists\/|\/pastpurchases|\/wishlist|\/hz\/wishlist|#customerReviews)/i;
+    let dpUrl = String((cardEl.getAttribute && cardEl.getAttribute("data-detailpageurl")) || "").trim();
+    const dpTarget = dpUrl ? cardEl : cardEl.querySelector?.('[data-detailpageurl*="/dp/"]');
+    if (!dpUrl && dpTarget?.getAttribute) {
+      dpUrl = String(dpTarget.getAttribute("data-detailpageurl") || "").trim();
+    }
+    if (dpUrl && !NON_PROD_NAV_RE.test(dpUrl) && isRealProductHrefPath(dpUrl)) {
+      try {
+        const resolvedDp = new URL(dpUrl, location.href).href;
+        if (/^https:\/\//i.test(resolvedDp)) {
+          allowExtCheckNavUntil = Date.now() + 400;
+          location.assign(resolvedDp);
+          return true;
+        }
+      } catch {
+        // ignore URL error
+      }
+      if (dpTarget) {
+        try {
+          allowExtCheckNavUntil = Date.now() + 400;
+          dpTarget.click();
+          return true;
+        } catch {
+          // ignore
+        }
+      }
+    }
     const links = cardEl.querySelectorAll ? cardEl.querySelectorAll("a[href]") : [];
     let chosenLink = null;
     for (const a of links) {
       if (a.closest?.(".cc-photo-badge, .cc-photo-badge-slot")) continue;
       const rawHref = String(a.getAttribute("href") || "").trim();
-      if (!rawHref || rawHref === "#" || /^javascript:/i.test(rawHref)) continue;
+      if (!rawHref || rawHref === "#" || /^javascript:/i.test(rawHref) || NON_PROD_NAV_RE.test(rawHref)) continue;
       if (isRealProductHrefPath(unwrapProductHref(rawHref))) {
         chosenLink = a;
         break;
       }
-      if (!chosenLink) chosenLink = a;
     }
     if (chosenLink) {
       try {
@@ -5416,7 +5472,7 @@
         // ignore click failure
       }
     }
-    if (cardEl.getAttribute?.("role") === "button" || cardEl.tagName === "BUTTON") {
+    if (!isProductPage() && (cardEl.getAttribute?.("role") === "button" || cardEl.tagName === "BUTTON")) {
       try {
         allowExtCheckNavUntil = Date.now() + 400;
         cardEl.click();
@@ -5901,11 +5957,41 @@
     const found = [];
     const seen = new Set();
     const onPdp = isProductPage();
+    const pdpAsinMatch = onPdp ? String(location.pathname || "").match(/(?:\/dp\/|\/gp\/product\/|\/gp\/aw\/d\/)([A-Z0-9]{10})/i) : null;
+    const pdpAsin = pdpAsinMatch ? pdpAsinMatch[1].toUpperCase() : "";
+    const isPdpHeroCardCandidate = (el) => {
+      if (!onPdp || !el) return false;
+      const elId = String(el.id || "");
+      if (
+        /^(?:mediaBlockEntities|imageBlock(?:_feature_div)?|image-block|main-image-container|altImages|product-image-gallery-asin|dp-container|ppd|centerCol|leftCol|rightCol)$/i.test(
+          elId
+        )
+      ) {
+        return true;
+      }
+      if (
+        el.closest?.(
+          '#mediaBlockEntities, #imageBlock, #imageBlock_feature_div, #image-block, #main-image-container, #altImages, [data-testid*="hero-image" i], [data-testid*="media-gallery" i]'
+        )
+      ) {
+        return true;
+      }
+      if (el.querySelector?.("#landingImage, #main-image, [data-fling-asin]")) {
+        return true;
+      }
+      if (pdpAsin) {
+        const cardAsin = String(el.getAttribute?.("data-asin") || "").toUpperCase();
+        const csaItemId = String(el.getAttribute?.("data-csa-c-item-id") || "").toUpperCase();
+        if (cardAsin === pdpAsin || csaItemId.includes(pdpAsin)) return true;
+      }
+      return false;
+    };
     const maxCardW = onPdp ? 360 : Math.max(580, (window.innerWidth || 412) + 32);
 
     const addCandidate = (el) => {
       if (!el || seen.has(el) || host?.contains(el)) return;
       if (el.closest('header, nav, footer, [role="contentinfo"]')) return;
+      if (isPdpHeroCardCandidate(el)) return;
       if (!el.querySelector?.("img")) return;
       if (hasMultipleDistinctProductLinks(el)) return;
       const r = el.getBoundingClientRect();
@@ -6518,6 +6604,11 @@
           photoBadgePrefRev++;
           scanCache.clear();
           gridScanCache.clear();
+          try {
+            sessionStorage.removeItem(PDP_VERIFIED_SESSION_KEY);
+          } catch {
+            // ignore storage errors
+          }
           stockCache.clear();
           lastKey = "";
           clearAllPhotoBadges();

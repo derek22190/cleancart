@@ -770,23 +770,38 @@ enum HeyBrocNativeScannerAPI {
     private static let verifiedCacheLock = NSLock()
     private static var verifiedScreenCache: [String: HeyBrocNativeScanSummary] = [:]
 
-    private static func normalizedVerifiedKey(title: String, barcode: String?) -> [String] {
+    private static func currentVerifiedPrefSignature(store: String?) -> String {
+        let fam = HeyBrocSharedPrefs.familyWatchlist.sorted().joined(separator: ",")
+        let diet = HeyBrocSharedPrefs.dietaryWatchlist.sorted().joined(separator: ",")
+        let sb = HeyBrocSharedPrefs.preferStoreBrand ? "1" : "0"
+        let st = (store ?? HeyBrocSharedPrefs.activeStore).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return "\(st)|\(sb)|\(fam)|\(diet)"
+    }
+
+    private static func normalizedVerifiedKey(title: String, barcode: String?, store: String? = nil) -> [String] {
         var keys: [String] = []
+        let prefSig = currentVerifiedPrefSignature(store: store)
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
         if cleanTitle.count >= 3 {
-            keys.append("t:\(cleanTitle)")
+            keys.append("t:\(prefSig)|\(cleanTitle)")
         }
         let digits = (barcode ?? "").filter { $0.isNumber }
         if digits.count >= 8 && digits.count <= 14 {
-            keys.append("b:\(digits)")
+            keys.append("b:\(prefSig)|\(digits)")
         }
         return keys
     }
 
-    static func cacheVerifiedScreenScan(title: String, barcode: String?, summary: HeyBrocNativeScanSummary) {
+    static func clearVerifiedScreenCache() {
+        verifiedCacheLock.lock()
+        verifiedScreenCache.removeAll(keepingCapacity: false)
+        verifiedCacheLock.unlock()
+    }
+
+    static func cacheVerifiedScreenScan(title: String, barcode: String?, summary: HeyBrocNativeScanSummary, store: String? = nil) {
         guard !summary.isCategoryEstimate else { return }
-        let keys = normalizedVerifiedKey(title: title, barcode: barcode)
+        let keys = normalizedVerifiedKey(title: title, barcode: barcode, store: store)
         guard !keys.isEmpty else { return }
         verifiedCacheLock.lock()
         if verifiedScreenCache.count > 240 {
@@ -798,8 +813,8 @@ enum HeyBrocNativeScannerAPI {
         verifiedCacheLock.unlock()
     }
 
-    static func cachedVerifiedScreenScan(title: String, barcode: String?) -> HeyBrocNativeScanSummary? {
-        let keys = normalizedVerifiedKey(title: title, barcode: barcode)
+    static func cachedVerifiedScreenScan(title: String, barcode: String?, store: String? = nil) -> HeyBrocNativeScanSummary? {
+        let keys = normalizedVerifiedKey(title: title, barcode: barcode, store: store)
         guard !keys.isEmpty else { return nil }
         verifiedCacheLock.lock()
         defer { verifiedCacheLock.unlock() }
@@ -829,7 +844,7 @@ enum HeyBrocNativeScannerAPI {
             let cid = item["id"] ?? ""
             let pTitle = item["productTitle"] ?? ""
             let bCode = item["barcode"]
-            if !cid.isEmpty, let hit = cachedVerifiedScreenScan(title: pTitle, barcode: bCode) {
+            if !cid.isEmpty, let hit = cachedVerifiedScreenScan(title: pTitle, barcode: bCode, store: store) {
                 cachedSummaries[cid] = hit
             } else {
                 uncachedItems.append(item)
