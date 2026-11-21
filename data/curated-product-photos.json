@@ -13,6 +13,9 @@
     "barcode": "0092325222243",
     "verifiedAt": "2026-11-17"
   },
+  "applegate naturals::applegate naturals hickory smoked uncured turkey bacon": {
+    "verifiedAt": "2026-11-21"
+  },
   "applegate organics::applegate organics organic gluten free chicken nuggets": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/002/531/760/5519/front_en.6.400.jpg",
     "barcode": "0025317605519",
@@ -50,6 +53,10 @@
     "barcode": "0071828003009",
     "verifiedAt": "2026-11-17"
   },
+  "bettergoods::bettergoods brown butter mushroom ravioli": {
+    "barcode": "0194346673025",
+    "verifiedAt": "2026-11-21"
+  },
   "big k::big k cola soda 12 fl oz": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/001/111/049/1053/front_en.3.400.jpg",
     "barcode": "0011110491053",
@@ -77,6 +84,11 @@
     "imageUrl": "https://images.openfoodfacts.org/images/products/081/363/602/1932/front_en.30.400.jpg",
     "barcode": "0813636021932",
     "verifiedAt": "2026-11-17"
+  },
+  "campbells::campbells condensed chicken noodle soup": {
+    "imageUrl": "https://images.openfoodfacts.org/images/products/005/100/028/1081/front_en.24.400.jpg",
+    "barcode": "0051000281081",
+    "verifiedAt": "2026-11-21"
   },
   "capri sun::capri sun fruit punch juice drink blend": {
     "barcode": "087684001035",
@@ -237,6 +249,11 @@
     "barcode": "0052000241211",
     "verifiedAt": "2026-11-17"
   },
+  "general mills::general mills cinnamon chex gluten free cereal": {
+    "imageUrl": "https://images.openfoodfacts.org/images/products/001/600/010/3719/front_en.48.400.jpg",
+    "barcode": "0016000103719",
+    "verifiedAt": "2026-11-21"
+  },
   "general mills::general mills cinnamon toast crunch cereal": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/10167730/front_en.3.400.jpg",
     "barcode": "10167730",
@@ -259,6 +276,10 @@
     "imageUrl": "https://images.openfoodfacts.org/images/products/008/523/944/8717/front_en.3.400.jpg",
     "barcode": "0085239448717",
     "verifiedAt": "2026-11-18"
+  },
+  "great value::great value frozen unbreaded catfish nuggets": {
+    "barcode": "078742126760",
+    "verifiedAt": "2026-11-21"
   },
   "great value::great value grade a pasteurized whole vitamin d milk 1 gallon": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/007/874/215/9034/front_en.25.400.jpg",
@@ -316,6 +337,15 @@
     "barcode": "0071100003116",
     "verifiedAt": "2026-11-17"
   },
+  "hillshire farm::hillshire farm hardwood smoked summer sausage": {
+    "barcode": "00044500004113",
+    "verifiedAt": "2026-11-21"
+  },
+  "jacksons::jacksons sea salt sweet potato chips in avocado oil": {
+    "imageUrl": "https://images.openfoodfacts.org/images/products/085/682/300/4776/front_en.8.400.jpg",
+    "barcode": "0856823004776",
+    "verifiedAt": "2026-11-21"
+  },
   "jif::jif creamy peanut butter": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/005/150/025/5162/front_en.197.400.jpg",
     "barcode": "0051500255162",
@@ -343,6 +373,11 @@
   },
   "kelloggs::kelloggs froot loops sweetened multigrain cereal": {
     "verifiedAt": "2026-11-18"
+  },
+  "kerrygold::kerrygold pure irish salted butter": {
+    "imageUrl": "https://images.openfoodfacts.org/images/products/076/770/700/1067/front_en.83.400.jpg",
+    "barcode": "0767707001067",
+    "verifiedAt": "2026-11-21"
   },
   "kikkoman::kikkoman wasabi sauce": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/004/139/000/7002/front_en.11.400.jpg",
@@ -390,6 +425,9 @@
     "barcode": "0028400090858",
     "verifiedAt": "2026-11-18"
   },
+  "little debbie::little debbie christmas old fashioned donuts": {
+    "verifiedAt": "2026-11-21"
+  },
   "little debbie::little debbie nutty buddy wafer bars": {
     "verifiedAt": "2026-11-19"
   },
@@ -423,10 +461,17 @@
     "barcode": "0681131377416",
     "verifiedAt": "2026-11-17"
   },
+  "marketside::marketside apple cinnamon muffins": {
+    "barcode": "0194346458615",
+    "verifiedAt": "2026-11-21"
+  },
   "marys gone crackers::marys gone crackers organic original seed crackers": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/065/439/124/6006/front_en.3.400.jpg",
     "barcode": "0654391246006",
     "verifiedAt": "2026-11-17"
+  },
+  "members mark::members mark breaded and boneless homestyle chicken bites": {
+    "verifiedAt": "2026-11-21"
   },
   "members mark::members mark fully cooked lightly breaded chicken breast bites": {
     "verifiedAt": "2026-11-18"
@@ -461,10 +506,26 @@
     "barcode": "0044000047009",
     "verifiedAt": "2026-11-17"
   },
+  "naked juice::naked juice strawberry lemon ginger fiber smoothie 15 2 fl oz": {
+    "barcode": "00082592012040",
+    "verifiedAt": "2026-11-21"
+  },
+  "naked juice::naked juice tropical greens fiber smoothie 15 2 fl oz": {
+    "barcode": "00082592012050",
+    "verifiedAt": "2026-11-21"
+  },
+  "natural uncured::natural uncured hickory smoked uncured pork bacon": {
+    "imageUrl": "https://images.openfoodfacts.org/images/products/005/161/116/5893/front_en.4.400.jpg",
+    "barcode": "0051611165893",
+    "verifiedAt": "2026-11-21"
+  },
   "natures path::natures path organic heritage flakes": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/991/360/277/0206/front_en.4.400.jpg",
     "barcode": "9913602770206",
     "verifiedAt": "2026-11-17"
+  },
+  "natures path::natures path organic sunrise crunchy cinnamon gluten free cereal": {
+    "verifiedAt": "2026-11-21"
   },
   "nesquik::nesquik chocolate lowfat milk 14 fl oz": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/002/800/077/1720/front_en.3.400.jpg",
@@ -529,6 +590,9 @@
     "barcode": "0093966004861",
     "verifiedAt": "2026-11-17"
   },
+  "organic valley::organic valley organic eggnog": {
+    "verifiedAt": "2026-11-21"
+  },
   "organic valley::organic valley organic grassmilk whole milk": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/64715087/front_en.3.400.jpg",
     "barcode": "64715087",
@@ -555,6 +619,11 @@
   "oscar mayer::oscar mayer deli fresh smoked turkey breast": {
     "barcode": "0044700030813",
     "verifiedAt": "2026-11-18"
+  },
+  "pepperidge farm::pepperidge farm goldfish cheddar baked snack crackers": {
+    "imageUrl": "https://images.openfoodfacts.org/images/products/001/410/007/5233/front_en.126.400.jpg",
+    "barcode": "0014100075233",
+    "verifiedAt": "2026-11-21"
   },
   "philadelphia::philadelphia original cream cheese": {
     "barcode": "021000612239",
@@ -636,6 +705,16 @@
     "barcode": "0030000567289",
     "verifiedAt": "2026-11-18"
   },
+  "quaker::quaker instant oatmeal original": {
+    "imageUrl": "https://images.openfoodfacts.org/images/products/003/000/056/7319/front_en.40.400.jpg",
+    "barcode": "0030000567319",
+    "verifiedAt": "2026-11-21"
+  },
+  "quaker::quaker oats old fashioned 100 whole grain oats": {
+    "imageUrl": "https://images.openfoodfacts.org/images/products/003/000/001/0204/front_en.129.400.jpg",
+    "barcode": "0030000010204",
+    "verifiedAt": "2026-11-21"
+  },
   "quaker::quaker quick 1 minute 100 whole grain oats": {
     "verifiedAt": "2026-11-18"
   },
@@ -661,6 +740,15 @@
   "representative category formulation::representative category formulation white enriched sandwich bread representative formulation": {
     "verifiedAt": "2026-11-18"
   },
+  "representative confectionery formulation::representative confectionery formulation milk chocolate confectionery representative formulation": {
+    "verifiedAt": "2026-11-21"
+  },
+  "representative cracker formulation::representative cracker formulation baked snack crackers representative formulation": {
+    "verifiedAt": "2026-11-21"
+  },
+  "representative deli soup formulation::representative deli soup formulation new england style clam chowder representative formulation": {
+    "verifiedAt": "2026-11-21"
+  },
   "representative frozen potato formulation::representative frozen potato formulation frozen french fried potatoes and tater tots representative formulation": {
     "verifiedAt": "2026-11-19"
   },
@@ -669,6 +757,9 @@
   },
   "representative process cheese formulation::representative process cheese formulation pasteurized process cheese and queso dip representative formulation": {
     "verifiedAt": "2026-11-18"
+  },
+  "representative salad kit formulation::representative salad kit formulation salad kit with dressing packet representative formulation": {
+    "verifiedAt": "2026-11-21"
   },
   "representative smoked sausage formulation::representative smoked sausage formulation smoked sausage and kielbasa representative formulation": {
     "verifiedAt": "2026-11-18"
@@ -762,6 +853,14 @@
     "barcode": "0050200121005",
     "verifiedAt": "2026-11-17"
   },
+  "sweetened dried fruit::sweetened dried fruit sweetened dried berries": {
+    "verifiedAt": "2026-11-21"
+  },
+  "takis::takis fuego hot chili pepper and lime tortilla chips": {
+    "imageUrl": "https://images.openfoodfacts.org/images/products/075/752/800/5276/front_en.39.400.jpg",
+    "barcode": "0757528005276",
+    "verifiedAt": "2026-11-21"
+  },
   "thats it::thats it 100 real fruit bars apple strawberry": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/638/859/700/4996/front_en.3.400.jpg",
     "barcode": "6388597004996",
@@ -771,6 +870,9 @@
     "imageUrl": "https://images.openfoodfacts.org/images/products/085/001/182/8427/front_en.32.400.jpg",
     "barcode": "0850011828427",
     "verifiedAt": "2026-11-18"
+  },
+  "triscuit::triscuit original whole grain wheat crackers": {
+    "verifiedAt": "2026-11-21"
   },
   "tyson::tyson fully cooked chicken nuggets": {
     "barcode": "0023700014191",
