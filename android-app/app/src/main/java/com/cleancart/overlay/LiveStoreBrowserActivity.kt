@@ -274,13 +274,37 @@ class LiveStoreBrowserActivity : Activity() {
                 host == "itunes.apple.com" ||
                 host == "apps.apple.com" ||
                 host == "bnc.lt" ||
+                host == "drdsh.me" ||
+                host == "inst.cr" ||
+                host == "t.uber.com" ||
+                host == "m.uber.com" ||
+                host == "get.uber.com" ||
                 host == "app.adjust.com" ||
                 host == "smart.link" ||
+                host == "branch.io" ||
+                host == "onelink.me" ||
+                host == "app.link" ||
+                host == "adj.st" ||
                 host.endsWith(".app.link") ||
                 host.endsWith(".onelink.me") ||
                 host.endsWith(".adj.st") ||
                 host.endsWith(".branch.io") ||
                 host.endsWith(".smart.link")
+        }
+
+        fun isBlockedAppRedirectUrl(uri: Uri?): Boolean {
+            if (uri == null) return false
+            val host = uri.host?.trim()?.lowercase().orEmpty()
+            if (isBlockedAppRedirectHost(host)) return true
+            val path = uri.path?.lowercase().orEmpty()
+            return path == "/download" ||
+                path.startsWith("/download/") ||
+                path == "/get-the-app" ||
+                path.startsWith("/get-the-app/") ||
+                path == "/mobile-app" ||
+                path.startsWith("/mobile-app/") ||
+                path.startsWith("/cp/walmart-app") ||
+                path.startsWith("/c/target-app")
         }
 
         fun isAllowedAffiliateRedirectHost(rawHost: String?): Boolean {
@@ -393,7 +417,7 @@ class LiveStoreBrowserActivity : Activity() {
               if (!document.getElementById('hb-app-banner-suppressor')) {
                 var st = document.createElement('style');
                 st.id = 'hb-app-banner-suppressor';
-                st.textContent = '#branch-banner-iframe, .branch-journeys-top, [id^="branch-banner"], [class*="branch-animation"], .smartbanner, [id*="smartbanner" i], smart-banner, [data-testid="smart-banner"], [data-testid="app-banner"], [data-testid="download-app-banner"], [data-testid*="SmartAppBanner" i], [data-testid*="app-download" i], [data-testid*="AppDownload" i], [data-testid*="open-app" i], [data-anchor-id*="AppBanner" i], [data-anchor-id*="DownloadApp" i], [data-anchor-id*="OpenApp" i], [aria-label="Open App" i], [aria-label="Open in app" i], [aria-label="Get the app" i], [data-automation-id="app-banner"], [data-automation-id="smart-banner"], [data-test="smartBanner"], [data-test="appBanner"], [data-hb-app-banner-hidden="1"] { display: none !important; visibility: hidden !important; height: 0 !important; min-height: 0 !important; pointer-events: none !important; overflow: hidden !important; }';
+                st.textContent = '#branch-banner-iframe, .branch-journeys-top, [id^="branch-banner"], [class*="branch-animation"], .smartbanner, [id*="smartbanner" i], smart-banner, [class*="SmartBanner" i], [class*="smart-banner" i], [class*="AppBanner" i], [class*="app-banner" i], [class*="DownloadAppBanner" i], [data-testid="smart-banner"], [data-testid="app-banner"], [data-testid="download-app-banner"], [data-testid*="SmartAppBanner" i], [data-testid*="app-download" i], [data-testid*="AppDownload" i], [data-testid*="app-upsell" i], [data-testid*="open-in-app" i], [data-testid*="open-app" i], [data-anchor-id*="AppBanner" i], [data-anchor-id*="SmartBanner" i], [data-anchor-id*="DownloadApp" i], [data-anchor-id*="OpenApp" i], [aria-label="Open App" i], [aria-label="Open in app" i], [aria-label="Get the app" i], [aria-label*="Browse faster in the app" i], [aria-label*="Download the app" i], [data-automation-id="app-banner"], [data-automation-id="smart-banner"], [data-test="smartBanner"], [data-test="appBanner"], [data-hb-app-banner-hidden="1"] { display: none !important; visibility: hidden !important; height: 0 !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; pointer-events: none !important; overflow: hidden !important; } body.branch-banner-is-active, html.branch-banner-is-active { margin-top: 0 !important; padding-top: 0 !important; }';
                 head.appendChild(st);
               }
               if (/(?:^|\.)samsclub\.com$/i.test(location.hostname || '') && !document.getElementById('hb-sams-search-fix')) {
@@ -1188,10 +1212,14 @@ class LiveStoreBrowserActivity : Activity() {
                 val scheme = uri.scheme?.lowercase().orEmpty()
                 if (scheme == "about" || scheme == "blob" || scheme == "data") return false
                 if (scheme != "https") {
+                    dismissAuthPopupDialog()
                     return true
                 }
                 val host = uri.host?.lowercase().orEmpty()
-                if (isBlockedAppRedirectHost(host)) return true
+                if (isBlockedAppRedirectUrl(uri)) {
+                    dismissAuthPopupDialog()
+                    return true
+                }
                 if (isExternalOAuthHost(host)) {
                     dismissAuthPopupDialog()
                     showExternalOAuthPrompt(uri.toString(), host)
@@ -1227,7 +1255,7 @@ class LiveStoreBrowserActivity : Activity() {
                 if (candidate.isEmpty() || candidate.equals("about:blank", ignoreCase = true)) return
                 val uri = runCatching { Uri.parse(candidate) }.getOrNull() ?: return
                 val host = uri.host?.lowercase().orEmpty()
-                if (isBlockedAppRedirectHost(host)) {
+                if (isBlockedAppRedirectUrl(uri)) {
                     dismissAuthPopupDialog()
                     return
                 }
@@ -1389,7 +1417,7 @@ class LiveStoreBrowserActivity : Activity() {
                     return true
                 }
                 val host = uri.host?.lowercase().orEmpty()
-                if (isBlockedAppRedirectHost(host)) {
+                if (isBlockedAppRedirectUrl(uri)) {
                     return true
                 }
                 if (isMainFrame) {

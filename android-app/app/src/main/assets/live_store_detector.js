@@ -36,23 +36,68 @@
     return r.width > 2 && r.height > 2;
   }
 
-  var APP_INSTALL_CTA_RE = /^(?:get\s+the\s+app|open\s+in\s+(?:the\s+)?(?:walmart\s+|target\s+|instacart\s+|sam'?s\s+club\s+|bj'?s\s+|kroger\s+|amazon\s+|aldi\s+|costco\s+|doordash\s+|uber\s*eats\s+|shipt\s+)?app|open\s+app|use\s+(?:the\s+)?app|download\s+(?:the\s+)?app|continue\s+in\s+(?:the\s+)?app|shop\s+in\s+(?:the\s+)?app|view\s+in\s+(?:the\s+)?app)$/i;
-  var APP_GENERIC_OPEN_CTA_RE = /^(?:open|get|install|download|view)$/i;
-  var APP_UPSELL_BANNER_RE = /\b(?:browse|shop|order|get\s+it|checkout)\s+faster\s+in\s+(?:the\s+)?app\b|\bopen\s+in\s+(?:the\s+)?(?:doordash|uber\s*eats|walmart|target|instacart|costco|kroger|shipt|aldi|sam'?s(?:\s+club)?|bj'?s|amazon|whole\s+foods)?\s*app\b|\bget\s+the\s+(?:doordash|uber\s*eats|walmart|target|instacart|costco|kroger|shipt|aldi|sam'?s(?:\s+club)?|bj'?s|amazon|whole\s+foods)?\s*(?:free\s+)?app\b|\bdownload\s+the\s+(?:doordash|uber\s*eats|walmart|target|instacart|costco|kroger|shipt|aldi|sam'?s(?:\s+club)?|bj'?s|amazon|whole\s+foods)?\s*(?:free\s+)?app\b|\buse\s+the\s+(?:doordash|uber\s*eats|walmart|target|instacart|costco|kroger|shipt|aldi|sam'?s(?:\s+club)?|bj'?s|amazon|whole\s+foods)?\s*app\b|\bcontinue\s+in\s+(?:the\s+)?app\b|\bexperience\s+(?:the\s+)?(?:full\s+)?app\b|\b(?:app\s+store|google\s+play)\b.*\bapp\b/i;
+  var APP_INSTALL_CTA_RE = /^(?:get\s+(?:the\s+)?app|open\s+in\s+(?:the\s+)?(?:walmart\s+|target\s+|instacart\s+|sam'?s\s+club\s+|bj'?s\s+|kroger\s+|amazon\s+|aldi\s+|costco\s+|doordash\s+|uber\s*eats\s+|shipt\s+)?app|open\s+in\s+(?:doordash|uber\s*eats|instacart|walmart|target|shipt|kroger|costco|aldi)|open\s+app|use\s+(?:the\s+)?app|download\s+(?:the\s+)?app|install\s+(?:the\s+)?app|continue\s+in\s+(?:the\s+)?app|shop\s+in\s+(?:the\s+)?app|view\s+in\s+(?:the\s+)?app|switch\s+to\s+(?:the\s+)?app)$/i;
+  var APP_GENERIC_OPEN_CTA_RE = /^(?:open|get|install|download|view|use\s+app)$/i;
+  var APP_UPSELL_BANNER_RE = /\b(?:browse|shop|order|get\s+it|checkout)\s+(?:faster|easier)\s+in\s+(?:the\s+)?app\b|\b(?:better|more\s+to\s+love)\s+in\s+(?:the\s+)?app\b|\bopen\s+(?:in\s+)?(?:the\s+)?(?:doordash|uber\s*eats|walmart|target|instacart|costco|kroger|shipt|aldi|sam'?s(?:\s+club)?|bj'?s|amazon|whole\s+foods)?\s*app\b|\bopen\s+in\s+(?:doordash|uber\s*eats|instacart|walmart|target|shipt|kroger|costco|aldi)\b|\bget\s+the\s+(?:doordash|uber\s*eats|walmart|target|instacart|costco|kroger|shipt|aldi|sam'?s(?:\s+club)?|bj'?s|amazon|whole\s+foods)?\s*(?:free\s+)?app\b|\bdownload\s+the\s+(?:doordash|uber\s*eats|walmart|target|instacart|costco|kroger|shipt|aldi|sam'?s(?:\s+club)?|bj'?s|amazon|whole\s+foods)?\s*(?:free\s+)?app\b|\buse\s+the\s+(?:doordash|uber\s*eats|walmart|target|instacart|costco|kroger|shipt|aldi|sam'?s(?:\s+club)?|bj'?s|amazon|whole\s+foods)?\s*app\b|\b(?:continue|shop|order|switch\s+to|view)\s+in\s+(?:the\s+)?(?:doordash|uber\s*eats|walmart|target|instacart|costco|kroger|shipt|aldi|sam'?s(?:\s+club)?|bj'?s|amazon|whole\s+foods)?\s*app\b|\bexperience\s+(?:is\s+better\s+in\s+)?(?:the\s+)?(?:full\s+)?app\b|\b(?:app\s+store|google\s+play)\b.*\bapp\b/i;
   var APP_RATINGS_WITH_APP_RE = /\b\d+(?:\.\d+)?[mk]\+?\s+ratings?\b/i;
-  var APP_INSTALL_HREF_RE = /play\.google\.com|market\.android\.com|(?:apps|itunes)\.apple\.com|\.onelink\.me|\.app\.link|\bbnc\.lt\b|app\.adjust\.com|\.adj\.st|\.smart\.link|^intent:\/\/|^market:\/\/|^(?:doordash|ubereats|walmart|target|instacart|costco|kroger|shipt|samsclub):\/\//i;
+  var APP_INSTALL_HREF_RE = /play\.google\.com|market\.android\.com|(?:apps|itunes)\.apple\.com|\.onelink\.me|\bonelink\.me\b|\.app\.link|\bapp\.link\b|\bbnc\.lt\b|\bdrdsh\.me\b|\binst\.cr\b|\bt\.uber\.com\b|\bget\.uber\.com\b|app\.adjust\.com|\.adj\.st|\.branch\.io|\.smart\.link|\/(?:download|get-?the-?app|mobile-?app|cp\/walmart-app|c\/target-app)(?:\/|\?|$)|^(?:intent|market|doordash|ubereats|walmart|target|instacart|costco|kroger|shipt|samsclub|aldi|bjs|amzn|wholefoods):\/\//i;
+  var APP_BANNER_IFRAME_RE = /branch|smart[-_]?banner|app[-_]?banner|onelink|app\.link|adj\.st|download[-_]?app|open[-_]?in[-_]?app/i;
   var SENSITIVE_BANNER_PATH_RE = /\/(?:cart|bag|basket|checkout|gp\/cart|store\/cart|shop\/cart|login|signin|sign-in|account|auth|register)(?:\/|$)/i;
   var BANNER_FORBIDDEN_TEXT_RE = /\$\s*\d|\b(?:cart|bag|basket|checkout|subtotal|total|pickup|delivery|shipping|address|zip\s*code|sign\s*in|log\s*in|login|account|password|verification|filter|sort|search\s+results)\b/i;
-  var APP_BANNER_STRICT_FORBIDDEN_RE = /\b(?:cart|bag|basket|checkout|subtotal|sign\s*in|log\s*in|login|account|password|verification|search\s+results|enter\s+delivery\s+address|your\s+addr|zip\s*code)\b/i;
+  var APP_BANNER_STRICT_FORBIDDEN_RE = /\b(?:view\s+cart|your\s+cart|shopping\s+cart|cart|bag|basket|checkout|subtotal|sign\s*in|log\s*in|login|create\s+account|account|password|verification|search\s+results|enter\s+(?:your\s+)?(?:delivery\s+)?address|change\s+address|your\s+addr|zip\s*code)\b/i;
   var hbBannerLastHref = location.href;
-  var hbBannerScanDeadline = Date.now() + 8000;
+  var hbBannerLastScanAt = 0;
 
   function hideBannerNode(el) {
     if (!el || el.getAttribute('data-hb-app-banner-hidden') === '1') return;
     el.setAttribute('data-hb-app-banner-hidden', '1');
     el.style.setProperty('display', 'none', 'important');
     el.style.setProperty('visibility', 'hidden', 'important');
+    el.style.setProperty('height', '0', 'important');
+    el.style.setProperty('min-height', '0', 'important');
+    el.style.setProperty('margin', '0', 'important');
+    el.style.setProperty('padding', '0', 'important');
     el.style.setProperty('pointer-events', 'none', 'important');
+  }
+
+  function hideBannerWithSpacer(el, vw) {
+    if (!el || el.getAttribute('data-hb-app-banner-hidden') === '1') return;
+    var rect = typeof el.getBoundingClientRect === 'function' ? el.getBoundingClientRect() : null;
+    var siblings = [el.previousElementSibling, el.nextElementSibling];
+    hideBannerNode(el);
+    if (rect && rect.top <= 180) {
+      for (var s = 0; s < siblings.length; s++) {
+        var sib = siblings[s];
+        if (!sib || sib.getAttribute('data-hb-app-banner-hidden') === '1') continue;
+        if ((sib.tagName || '').toUpperCase() !== 'DIV') continue;
+        if (clean(sib.textContent || '').length > 0) continue;
+        if (sib.querySelector && sib.querySelector('img, svg, a, button, input, form, nav, header, iframe')) continue;
+        var sr = typeof sib.getBoundingClientRect === 'function' ? sib.getBoundingClientRect() : null;
+        if (sr && sr.height >= 34 && sr.height <= 180 && sr.width >= vw * 0.60 && sr.top <= 200) {
+          hideBannerNode(sib);
+        }
+      }
+    }
+  }
+
+  function clickSafeBannerDismissButton(container, excludeEl) {
+    if (!container || !container.querySelectorAll) return false;
+    var btns = container.querySelectorAll('button, a, [role="button"]');
+    for (var b = 0; b < btns.length; b++) {
+      var btn = btns[b];
+      if (!btn || btn === excludeEl) continue;
+      var bHref = String((btn.getAttribute && btn.getAttribute('href')) || '');
+      if (bHref && APP_INSTALL_HREF_RE.test(bHref)) continue;
+      var aria = clean(String((btn.getAttribute && (btn.getAttribute('aria-label') || btn.getAttribute('title'))) || ''));
+      var bTxt = clean(btn.textContent || '');
+      var safeAriaClose = /^(?:close|dismiss)(?:\s+(?:app\s+)?(?:banner|prompt|bar|modal|sheet|dialog))?$/i.test(aria) && !/cart|drawer|menu|address|search|filter|nav/i.test(aria);
+      var safeTextClose = /^(?:[×✕✖x]|not\s+now|no\s+thanks|maybe\s+later|stay\s+on\s+web|continue\s+(?:on|in)\s+(?:mobile\s+)?(?:web|browser))$/i.test(bTxt);
+      if (safeAriaClose || safeTextClose) {
+        try { btn.click(); } catch (e) {}
+        return true;
+      }
+    }
+    return false;
   }
 
   function ensureAppBannerSuppressorStyles() {
@@ -65,7 +110,7 @@
     if (!document.getElementById('hb-app-banner-suppressor')) {
       var st = document.createElement('style');
       st.id = 'hb-app-banner-suppressor';
-      st.textContent = '#branch-banner-iframe, .branch-journeys-top, [id^="branch-banner"], [class*="branch-animation"], .smartbanner, [id*="smartbanner" i], smart-banner, [data-testid="smart-banner"], [data-testid="app-banner"], [data-testid="download-app-banner"], [data-testid*="SmartAppBanner" i], [data-testid*="app-download" i], [data-testid*="AppDownload" i], [data-testid*="open-app" i], [data-anchor-id*="AppBanner" i], [data-anchor-id*="DownloadApp" i], [data-anchor-id*="OpenApp" i], [aria-label="Open App" i], [aria-label="Open in app" i], [aria-label="Get the app" i], [data-automation-id="app-banner"], [data-automation-id="smart-banner"], [data-test="smartBanner"], [data-test="appBanner"], [data-hb-app-banner-hidden="1"] { display: none !important; visibility: hidden !important; height: 0 !important; min-height: 0 !important; pointer-events: none !important; overflow: hidden !important; }';
+      st.textContent = '#branch-banner-iframe, .branch-journeys-top, [id^="branch-banner"], [class*="branch-animation"], .smartbanner, [id*="smartbanner" i], smart-banner, [class*="SmartBanner" i], [class*="smart-banner" i], [class*="AppBanner" i], [class*="app-banner" i], [class*="DownloadAppBanner" i], [data-testid="smart-banner"], [data-testid="app-banner"], [data-testid="download-app-banner"], [data-testid*="SmartAppBanner" i], [data-testid*="app-download" i], [data-testid*="AppDownload" i], [data-testid*="app-upsell" i], [data-testid*="open-in-app" i], [data-testid*="open-app" i], [data-anchor-id*="AppBanner" i], [data-anchor-id*="SmartBanner" i], [data-anchor-id*="DownloadApp" i], [data-anchor-id*="OpenApp" i], [aria-label="Open App" i], [aria-label="Open in app" i], [aria-label="Get the app" i], [aria-label*="Browse faster in the app" i], [aria-label*="Download the app" i], [data-automation-id="app-banner"], [data-automation-id="smart-banner"], [data-test="smartBanner"], [data-test="appBanner"], [data-hb-app-banner-hidden="1"] { display: none !important; visibility: hidden !important; height: 0 !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; pointer-events: none !important; overflow: hidden !important; } body.branch-banner-is-active, html.branch-banner-is-active { margin-top: 0 !important; padding-top: 0 !important; }';
       head.appendChild(st);
     }
     if (/(?:^|\.)samsclub\.com$/i.test(location.hostname || '') && !document.getElementById('hb-sams-search-fix')) {
@@ -85,86 +130,151 @@
     }
   }
 
+  function findOutermostAppBannerContainer(startEl, requireExplicitUpsell, inHeaderOrNav, vw, vh) {
+    var bannerEl = null;
+    var cur = startEl;
+    var depth = 0;
+    while (cur && depth < 12) {
+      var tag = (cur.tagName || '').toUpperCase();
+      var cid = String(cur.id || '');
+      var role = String((cur.getAttribute && cur.getAttribute('role')) || '').toLowerCase();
+      var ariaModal = String((cur.getAttribute && cur.getAttribute('aria-modal')) || '').toLowerCase();
+      if (cur === document.body || cur === document.documentElement || tag === 'MAIN' || tag === 'HEADER' || tag === 'NAV' || tag === 'FOOTER' || tag === 'FORM' || role === 'dialog' || role === 'contentinfo' || ariaModal === 'true' || cid === '__next' || cid === 'root' || cid === 'app') {
+        break;
+      }
+      if (typeof cur.getBoundingClientRect === 'function') {
+        var r = cur.getBoundingClientRect();
+        var cs = window.getComputedStyle(cur);
+        var pos = cs ? cs.position : '';
+        var curText = clean(cur.textContent || '');
+        var txtLen = curText.length;
+        var hasProtectedNodes = Boolean(cur.querySelector && cur.querySelector('header, nav, footer, [role="contentinfo"], form, input, select, textarea, h1, [role="dialog"], [aria-modal="true"]'));
+        var isExplicitUpsellStrip = APP_UPSELL_BANNER_RE.test(curText) || (/\bapp\b/i.test(curText) && APP_RATINGS_WITH_APP_RE.test(curText));
+        if (hasProtectedNodes || txtLen > 340 || r.height > (inHeaderOrNav ? 185 : 240)) {
+          if (bannerEl) break;
+        } else if (!requireExplicitUpsell || isExplicitUpsellStrip) {
+          var scrubbedCurText = isExplicitUpsellStrip ? curText.replace(APP_UPSELL_BANNER_RE, ' ') : curText;
+          var hasForbiddenCopy = isExplicitUpsellStrip
+            ? APP_BANNER_STRICT_FORBIDDEN_RE.test(scrubbedCurText)
+            : BANNER_FORBIDDEN_TEXT_RE.test(curText);
+          var anchoredEdge = (pos === 'fixed' || pos === 'sticky' || r.bottom >= vh - 120 || r.top <= 190);
+          var maxH = inHeaderOrNav ? 185 : 240;
+          if (!hasForbiddenCopy && r.height >= 34 && r.height <= maxH && r.width >= vw * 0.55 && anchoredEdge) {
+            bannerEl = cur;
+          } else if (bannerEl && hasForbiddenCopy) {
+            break;
+          }
+        }
+      }
+      cur = cur.parentElement;
+      depth++;
+    }
+    return bannerEl;
+  }
+
   function dismissRetailerAppBanners() {
     ensureAppBannerSuppressorStyles();
+    var now = Date.now();
     if (location.href !== hbBannerLastHref) {
       hbBannerLastHref = location.href;
-      hbBannerScanDeadline = Date.now() + 8000;
+      hbBannerLastScanAt = 0;
     }
-    if (Date.now() > hbBannerScanDeadline) return;
+    if (now - hbBannerLastScanAt < 450) return;
+    hbBannerLastScanAt = now;
     if (SENSITIVE_BANNER_PATH_RE.test(location.pathname || '')) return;
 
-    var ctas = document.querySelectorAll('a, button, [role="button"]');
     var vw = Math.max(280, window.innerWidth || 390);
     var vh = Math.max(400, window.innerHeight || 844);
+
+    // Pass 1: CTA-anchored detection (handles <button>, <a>, whole-banner <a>, and header "Open App" pills)
+    var ctas = document.querySelectorAll('a, button, [role="button"]');
     for (var i = 0; i < ctas.length; i++) {
       var cta = ctas[i];
       if (!cta || (cta.closest && cta.closest('[data-hb-app-banner-hidden="1"], footer, [role="contentinfo"], form, [role="dialog"], [aria-modal="true"]'))) continue;
       var ctaText = clean(cta.textContent || '');
       var href = String((cta.getAttribute && cta.getAttribute('href')) || '');
-      var isExplicitAppCta = APP_INSTALL_CTA_RE.test(ctaText) || (cta.tagName === 'A' && APP_INSTALL_HREF_RE.test(href));
+      var isWholeBannerCta = ctaText.length <= 340 && (APP_UPSELL_BANNER_RE.test(ctaText) || (/\bapp\b/i.test(ctaText) && APP_RATINGS_WITH_APP_RE.test(ctaText)));
+      var isExplicitAppCta = APP_INSTALL_CTA_RE.test(ctaText) || isWholeBannerCta || (cta.tagName === 'A' && APP_INSTALL_HREF_RE.test(href));
       var isGenericOpenCta = !isExplicitAppCta && APP_GENERIC_OPEN_CTA_RE.test(ctaText);
       if (!isExplicitAppCta && !isGenericOpenCta) continue;
 
       var inHeaderOrNav = Boolean(cta.closest && cta.closest('header, nav'));
-      var bannerEl = null;
-      var cur = cta.parentElement;
-      var depth = 0;
-      while (cur && depth < 7) {
-        var tag = (cur.tagName || '').toUpperCase();
-        var cid = String(cur.id || '');
-        var role = String((cur.getAttribute && cur.getAttribute('role')) || '').toLowerCase();
-        var ariaModal = String((cur.getAttribute && cur.getAttribute('aria-modal')) || '').toLowerCase();
-        if (cur === document.body || cur === document.documentElement || tag === 'MAIN' || tag === 'HEADER' || tag === 'NAV' || tag === 'FOOTER' || tag === 'FORM' || role === 'dialog' || role === 'contentinfo' || ariaModal === 'true' || cid === '__next' || cid === 'root' || cid === 'app') {
-          break;
-        }
-        if (typeof cur.getBoundingClientRect === 'function') {
-          var r = cur.getBoundingClientRect();
-          var cs = window.getComputedStyle(cur);
-          var pos = cs ? cs.position : '';
-          var curText = clean(cur.textContent || '');
-          var txtLen = curText.length;
-          var hasProtectedNodes = Boolean(cur.querySelector && cur.querySelector('header, nav, footer, [role="contentinfo"], form, input, select, textarea, h1, [role="dialog"], [aria-modal="true"]'));
-          var isExplicitUpsellStrip = APP_UPSELL_BANNER_RE.test(curText) || (/\bapp\b/i.test(curText) && APP_RATINGS_WITH_APP_RE.test(curText));
-          if (isGenericOpenCta && !isExplicitUpsellStrip) {
-            cur = cur.parentElement;
-            depth++;
-            continue;
-          }
-          var hasForbiddenCopy = isExplicitUpsellStrip
-            ? APP_BANNER_STRICT_FORBIDDEN_RE.test(curText)
-            : BANNER_FORBIDDEN_TEXT_RE.test(curText);
-          var anchoredEdge = (pos === 'fixed' || pos === 'sticky' || r.bottom >= vh - 110 || r.top <= 160);
-          var maxH = inHeaderOrNav ? 135 : 240;
-          if (!hasProtectedNodes && !hasForbiddenCopy && txtLen <= 320 && r.height >= 34 && r.height <= maxH && r.width >= vw * 0.60 && anchoredEdge) {
-            bannerEl = cur;
-            break;
-          }
-        }
-        cur = cur.parentElement;
-        depth++;
-      }
+      var startNode = isWholeBannerCta ? cta : cta.parentElement;
+      var bannerEl = findOutermostAppBannerContainer(startNode, isGenericOpenCta, inHeaderOrNav, vw, vh);
 
       if (bannerEl && bannerEl.getAttribute('data-hb-app-banner-hidden') !== '1') {
-        var btns = bannerEl.querySelectorAll('button, [role="button"]');
-        for (var b = 0; b < btns.length; b++) {
-          var btn = btns[b];
-          if (btn === cta) continue;
-          var bHref = String((btn.getAttribute && btn.getAttribute('href')) || '');
-          if (bHref && APP_INSTALL_HREF_RE.test(bHref)) continue;
-          var aria = clean(String((btn.getAttribute && (btn.getAttribute('aria-label') || btn.getAttribute('title'))) || ''));
-          var bTxt = clean(btn.textContent || '');
-          var safeAriaClose = /^(?:close|dismiss)(?:\s+(?:app\s+)?(?:banner|prompt|bar))?$/i.test(aria) && !/cart|drawer|modal|dialog|menu|address|search|filter|nav/i.test(aria);
-          var safeTextClose = /^(?:[×✕✖]|not\s+now|no\s+thanks|continue\s+in\s+(?:mobile\s+)?browser)$/i.test(bTxt);
-          if (safeAriaClose || safeTextClose) {
-            try { btn.click(); } catch (e) {}
-            break;
-          }
-        }
-        hideBannerNode(bannerEl);
+        clickSafeBannerDismissButton(bannerEl, cta);
+        hideBannerWithSpacer(bannerEl, vw);
       } else if (inHeaderOrNav && isExplicitAppCta && ctaText.length <= 28) {
         // Hide standalone "Open App" / "Get the app" button inside header/nav without touching Login/Search/Cart
         hideBannerNode(cta);
+      }
+    }
+
+    // Pass 2: Text-first fallback for clickable <div>/<span> app banners with no <button> or <a>
+    var textNodes = document.querySelectorAll('div, p, span, h2, h3, h4, section');
+    var checkedCount = 0;
+    for (var t = 0; t < textNodes.length && checkedCount < 260; t++) {
+      var tn = textNodes[t];
+      if (!tn || tn.children.length > 4) continue;
+      if (tn.closest && tn.closest('[data-hb-app-banner-hidden="1"], footer, [role="contentinfo"], form, [role="dialog"], [aria-modal="true"]')) continue;
+      var tRect = typeof tn.getBoundingClientRect === 'function' ? tn.getBoundingClientRect() : null;
+      if (!tRect || tRect.height < 8 || tRect.height > 180) continue;
+      if (tRect.top > 200 && tRect.bottom < vh - 180) continue;
+      checkedCount++;
+      var tText = clean(tn.textContent || '');
+      if (tText.length < 10 || tText.length > 260) continue;
+      if (!APP_UPSELL_BANNER_RE.test(tText) && !(APP_RATINGS_WITH_APP_RE.test(tText) && /\bapp\b/i.test(tText))) continue;
+      var inHdr = Boolean(tn.closest && tn.closest('header, nav'));
+      var txtBanner = findOutermostAppBannerContainer(tn, true, inHdr, vw, vh);
+      if (txtBanner && txtBanner.getAttribute('data-hb-app-banner-hidden') !== '1') {
+        clickSafeBannerDismissButton(txtBanner, null);
+        hideBannerWithSpacer(txtBanner, vw);
+      }
+    }
+
+    // Pass 3: App-upsell bottom sheets & modal dialogs ("Continue in the app" / "Browse faster in the app")
+    var dialogs = document.querySelectorAll('[role="dialog"], [aria-modal="true"]');
+    for (var d = 0; d < dialogs.length; d++) {
+      var dlg = dialogs[d];
+      if (!dlg || dlg.getAttribute('data-hb-app-banner-hidden') === '1' || !isVisible(dlg)) continue;
+      if (dlg.querySelector && dlg.querySelector('form, input, select, textarea')) continue;
+      var dText = clean(dlg.textContent || '');
+      if (dText.length < 14 || dText.length > 440) continue;
+      if (!APP_UPSELL_BANNER_RE.test(dText)) continue;
+      if (APP_BANNER_STRICT_FORBIDDEN_RE.test(dText.replace(APP_UPSELL_BANNER_RE, ' '))) continue;
+      clickSafeBannerDismissButton(dlg, null);
+      hideBannerNode(dlg);
+      var dlgParent = dlg.parentElement;
+      if (dlgParent && dlgParent !== document.body && dlgParent !== document.documentElement && !/^(?:MAIN|HEADER|NAV|FOOTER|FORM)$/i.test(dlgParent.tagName || '')) {
+        var dpCs = window.getComputedStyle(dlgParent);
+        var dpRect = typeof dlgParent.getBoundingClientRect === 'function' ? dlgParent.getBoundingClientRect() : null;
+        var dpProtected = Boolean(dlgParent.querySelector && dlgParent.querySelector('header, nav, main, footer, form, input, select, textarea, h1'));
+        if (!dpProtected && dpCs && dpCs.position === 'fixed' && dpRect && dpRect.width >= vw * 0.9 && dpRect.height >= vh * 0.9 && clean(dlgParent.textContent || '') === dText) {
+          hideBannerNode(dlgParent);
+        }
+      }
+      try {
+        if (document.body && document.body.style && document.body.style.overflow === 'hidden') {
+          document.body.style.overflow = '';
+        }
+      } catch (e) {}
+    }
+
+    // Pass 4: SmartBanner / Branch iframes anchored near top or bottom edge
+    var iframes = document.querySelectorAll('iframe');
+    for (var f = 0; f < iframes.length; f++) {
+      var fr = iframes[f];
+      if (!fr || fr.getAttribute('data-hb-app-banner-hidden') === '1') continue;
+      var fMeta = String(fr.id || '') + ' ' + String(fr.className || '') + ' ' + String(fr.getAttribute('src') || '') + ' ' + String(fr.getAttribute('title') || '') + ' ' + String(fr.getAttribute('aria-label') || '');
+      if (!APP_BANNER_IFRAME_RE.test(fMeta)) continue;
+      var fRect = typeof fr.getBoundingClientRect === 'function' ? fr.getBoundingClientRect() : null;
+      if (fRect && fRect.height >= 30 && fRect.height <= 220 && fRect.width >= vw * 0.55 && (fRect.top <= 180 || fRect.bottom >= vh - 160)) {
+        hideBannerWithSpacer(fr, vw);
+        try {
+          if (document.body && document.body.classList) document.body.classList.remove('branch-banner-is-active');
+          if (document.documentElement && document.documentElement.classList) document.documentElement.classList.remove('branch-banner-is-active');
+        } catch (e) {}
       }
     }
   }

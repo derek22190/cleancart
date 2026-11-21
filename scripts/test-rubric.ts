@@ -7581,6 +7581,21 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
             usdaOrgOatsAlerts.length === 0 &&
             (!vinaigretteSwap ||
               (!/\branch\b/i.test(vinaigretteSwap.title) && !/\begg/i.test(vinaigretteSwap.ingredients || ""))),
+          crossStoreAppBannerAndRedirectSuppression:
+            Boolean(detMatch?.[1]?.includes("hideBannerWithSpacer")) &&
+            Boolean(detMatch?.[1]?.includes("findOutermostAppBannerContainer")) &&
+            Boolean(detMatch?.[1]?.includes("clickSafeBannerDismissButton")) &&
+            Boolean(detMatch?.[1]?.includes("APP_BANNER_IFRAME_RE")) &&
+            liveBrowserKt.includes("isBlockedAppRedirectUrl") &&
+            liveBrowserKt.includes('"drdsh.me"') &&
+            liveBrowserKt.includes('"inst.cr"') &&
+            iosLiveVc.includes("hideBannerWithSpacer") &&
+            iosLiveVc.includes("findOutermostAppBannerContainer") &&
+            iosLiveVc.includes("clickSafeBannerDismissButton") &&
+            iosLiveVc.includes("APP_BANNER_IFRAME_RE") &&
+            iosLiveVc.includes("isBlockedAppRedirectURL") &&
+            iosLiveVc.includes('"drdsh.me"') &&
+            iosLiveVc.includes('"inst.cr"'),
         };
         if (Object.values(androidDualModeMap).some((v) => !v)) {
           console.error("androidDualModeMap failure detail:", androidDualModeMap);

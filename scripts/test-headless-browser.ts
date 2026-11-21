@@ -1187,6 +1187,7 @@ async function main() {
         { urlPattern: "https://www.walmart.com/*", requestStage: "Request" },
         { urlPattern: "https://www.costco.com/*", requestStage: "Request" },
         { urlPattern: "https://www.instacart.com/*", requestStage: "Request" },
+        { urlPattern: "https://www.doordash.com/*", requestStage: "Request" },
         { urlPattern: "https://i5.walmartimages.com/*", requestStage: "Request" },
         { urlPattern: "https://www.heybroc.com/*", requestStage: "Request" },
         ...(offCdnReachable
@@ -1285,7 +1286,8 @@ async function main() {
         reqUrl.startsWith("https://www.walmart.com/search") ||
         reqUrl.startsWith("https://www.walmart.com/cart") ||
         reqUrl.startsWith("https://www.costco.com/CheckoutCartDisplayView") ||
-        reqUrl.startsWith("https://www.instacart.com/")
+        reqUrl.startsWith("https://www.instacart.com/") ||
+        reqUrl.startsWith("https://www.doordash.com/")
       ) {
         const searchFixture = `<!doctype html><html><body><div data-item-id="998877"><h1 data-automation-id="product-title">Primal Kitchen Ranch Dressing &amp; Marinade Made with Avocado Oil, 8 fl oz</h1><button>Add to cart</button></div></body></html>`;
         void storePage.send("Fetch.fulfillRequest", {
@@ -3182,67 +3184,122 @@ async function main() {
     assert(/91/.test(transResolvedText), `Transient card fast-retry did not upgrade to 91: ${transResolvedText}`);
     console.log("   ✓ Option A 🥦 Check pill, blank non-food, PDP score hydration (Check -> 84), and real 2.2s transient fast-retry (91) verified!");
 
-    // 6F: DoorDash Smart App Banner ("Browse faster in the app | $0 delivery fee | 20M ratings | Open") & Header "Open App" Suppression
+    // 6F: DoorDash & Cross-Store Smart App Banner Suppression (Whole-Banner <a> + Spacer, Clickable <div>/<span>, Bottom-Sheet Modal, Branch <iframe> & Header "Open App")
     const doorDashBannerHtml = `
-      <div id="dd-smart-app-banner" style="display:flex; align-items:center; justify-content:space-between; width:390px; height:76px; padding:8px 12px; background:#fff; border-bottom:1px solid #e2e8f0;">
-        <div>
-          <div style="font-weight:700;">Browse faster in the app</div>
-          <div>$0 delivery fee on first order</div>
-          <div>20M ratings</div>
-        </div>
-        <button id="dd-smart-open-btn" type="button">Open</button>
+      <div id="dd-smart-wrapper" style="width:390px; background:#fff; border-bottom:1px solid #e2e8f0;">
+        <a id="dd-smart-app-banner" href="https://www.doordash.com/download" style="display:flex; align-items:center; justify-content:space-between; width:390px; height:84px; padding:8px 12px; text-decoration:none; color:#0f172a;">
+          <div>
+            <div style="font-weight:700;">Browse faster in the app</div>
+            <div>$0 delivery fee on first order</div>
+            <div>★★★★★ 20M ratings</div>
+          </div>
+          <span id="dd-smart-open-pill" style="background:#ef4444; color:#fff; padding:6px 14px; border-radius:999px;">Open</span>
+        </a>
       </div>
-      <header id="dd-main-header" style="display:flex; align-items:center; justify-content:space-between; width:390px; height:54px; padding:0 12px; background:#fff;">
-        <span id="dd-logo">DoorDash</span>
-        <div style="display:flex; gap:8px;">
-          <button id="dd-login-btn" type="button">Login</button>
-          <a id="dd-header-open-app" href="https://doordash.onelink.me/12345">Open App</a>
+      <div id="dd-banner-spacer" style="width:390px; height:76px;"></div>
+      <iframe id="dd-branch-iframe" title="Open in App Banner" src="about:blank" style="width:390px; height:64px; border:0;"></iframe>
+      <header id="dd-main-header" style="width:390px; background:#fff;">
+        <div id="dd-div-only-banner" style="display:flex; align-items:center; justify-content:space-between; width:390px; height:60px; padding:6px 12px; cursor:pointer;">
+          <div><div><div><div><div><div><div><div>
+            <span>Better in the app — switch to the app</span>
+          </div></div></div></div></div></div></div></div>
+          <span>Open</span>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; width:390px; height:54px; padding:0 12px;">
+          <span id="dd-logo">DoorDash</span>
+          <div style="display:flex; gap:8px;">
+            <button id="dd-login-btn" type="button">Login</button>
+            <a id="dd-header-open-app" href="https://doordash.onelink.me/12345">Open App</a>
+          </div>
         </div>
       </header>
+      <div id="dd-modal-backdrop" style="position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.45);">
+        <div id="dd-upsell-modal" role="dialog" aria-modal="true" style="position:fixed; bottom:0; left:0; width:390px; height:180px; background:#fff; padding:16px;">
+          <div>Continue in the DoorDash app for faster ordering</div>
+          <button id="dd-modal-open" type="button">Open in App</button>
+          <button id="dd-modal-dismiss" type="button" onclick="window.__ddModalDismissed = true;">Continue on web</button>
+        </div>
+      </div>
+      <div id="dd-checkout-dialog" role="dialog" aria-modal="true" style="position:fixed; top:260px; left:20px; width:350px; height:140px; background:#fff; padding:12px;">
+        <div>Review checkout delivery address</div>
+        <button type="button">Place order</button>
+      </div>
       <main style="padding:12px;">
         <div id="dd-address-bar">Your Addr...</div>
         <h1>Grocery Delivery</h1>
+        <button id="dd-cart-btn" type="button">View Cart ($42.50)</button>
       </main>
     `;
-    await storePage.navigate("https://www.doordash.com/grocery");
-    await storePage.eval(`
-      if (!document.querySelector('meta[name="viewport"]')) {
-        const mv = document.createElement('meta');
-        mv.name = 'viewport';
-        mv.content = 'width=device-width, initial-scale=1';
-        document.head.appendChild(mv);
-      }
-      document.body.innerHTML = ${JSON.stringify(doorDashBannerHtml)};
-      window.__heybrocBridgeSecret = ${JSON.stringify(androidBridgeSecret)};
-      window.heybrocAndroidBridge = { postMessage: function() {} };
-    `);
-    await storePage.eval(androidDetectorJS, false);
-    await sleep(300);
-    const ddBannerCheck = await storePage.eval<{
-      smartBannerHidden: boolean;
-      headerOpenAppHidden: boolean;
-      loginStillVisible: boolean;
-      headerStillVisible: boolean;
-    }>(`(() => {
-      const sb = document.getElementById("dd-smart-app-banner");
-      const oa = document.getElementById("dd-header-open-app");
-      const login = document.getElementById("dd-login-btn");
-      const hdr = document.getElementById("dd-main-header");
-      return {
-        smartBannerHidden: sb?.getAttribute("data-hb-app-banner-hidden") === "1" || getComputedStyle(sb).display === "none",
-        headerOpenAppHidden: oa?.getAttribute("data-hb-app-banner-hidden") === "1" || getComputedStyle(oa).display === "none",
-        loginStillVisible: getComputedStyle(login).display !== "none" && getComputedStyle(login).visibility !== "hidden",
-        headerStillVisible: getComputedStyle(hdr).display !== "none",
-      };
-    })()`);
-    assert(
-      ddBannerCheck.smartBannerHidden &&
-        ddBannerCheck.headerOpenAppHidden &&
-        ddBannerCheck.loginStillVisible &&
-        ddBannerCheck.headerStillVisible,
-      `DoorDash smart app banner & header Open App suppression failed: ${JSON.stringify(ddBannerCheck)}`,
-    );
-    console.log("   ✓ DoorDash 'Browse faster in the app' smart banner & header 'Open App' pill suppressed while Login/Header stay intact!");
+    for (const surface of ["android", "ios"] as const) {
+      await storePage.navigate(
+        surface === "android"
+          ? "https://www.doordash.com/grocery"
+          : "https://www.doordash.com/grocery?ios_check=1",
+      );
+      await storePage.eval(`
+        if (!document.querySelector('meta[name="viewport"]')) {
+          const mv = document.createElement('meta');
+          mv.name = 'viewport';
+          mv.content = 'width=device-width, initial-scale=1';
+          document.head.appendChild(mv);
+        }
+        document.body.innerHTML = ${JSON.stringify(doorDashBannerHtml)};
+        document.body.style.overflow = "hidden";
+        window.__ddModalDismissed = false;
+        window.__heybrocBridgeSecret = ${JSON.stringify(androidBridgeSecret)};
+        window.heybrocAndroidBridge = { postMessage: function() {} };
+        window.webkit = { messageHandlers: { heybrocStoreBridge: { postMessage: function() {} } } };
+      `);
+      await storePage.eval(surface === "android" ? androidDetectorJS : detectorJS, false);
+      await sleep(300);
+      const ddBannerCheck = await storePage.eval<{
+        smartWrapperHidden: boolean;
+        spacerHidden: boolean;
+        iframeHidden: boolean;
+        divOnlyBannerHidden: boolean;
+        headerOpenAppHidden: boolean;
+        modalHiddenAndDismissed: boolean;
+        backdropHidden: boolean;
+        checkoutDialogStillVisible: boolean;
+        scrollRestored: boolean;
+        loginStillVisible: boolean;
+        headerStillVisible: boolean;
+        cartStillVisible: boolean;
+      }>(`(() => {
+        const isHid = (el) => Boolean(el && (el.getAttribute("data-hb-app-banner-hidden") === "1" || getComputedStyle(el).display === "none"));
+        const isVis = (el) => Boolean(el && getComputedStyle(el).display !== "none" && getComputedStyle(el).visibility !== "hidden");
+        return {
+          smartWrapperHidden: isHid(document.getElementById("dd-smart-wrapper")) || isHid(document.getElementById("dd-smart-app-banner")),
+          spacerHidden: isHid(document.getElementById("dd-banner-spacer")),
+          iframeHidden: isHid(document.getElementById("dd-branch-iframe")),
+          divOnlyBannerHidden: isHid(document.getElementById("dd-div-only-banner")),
+          headerOpenAppHidden: isHid(document.getElementById("dd-header-open-app")),
+          modalHiddenAndDismissed: isHid(document.getElementById("dd-upsell-modal")) && Boolean(window.__ddModalDismissed),
+          backdropHidden: isHid(document.getElementById("dd-modal-backdrop")),
+          checkoutDialogStillVisible: isVis(document.getElementById("dd-checkout-dialog")),
+          scrollRestored: document.body.style.overflow !== "hidden",
+          loginStillVisible: isVis(document.getElementById("dd-login-btn")),
+          headerStillVisible: isVis(document.getElementById("dd-main-header")),
+          cartStillVisible: isVis(document.getElementById("dd-cart-btn")),
+        };
+      })()`);
+      assert(
+        ddBannerCheck.smartWrapperHidden &&
+          ddBannerCheck.spacerHidden &&
+          ddBannerCheck.iframeHidden &&
+          ddBannerCheck.divOnlyBannerHidden &&
+          ddBannerCheck.headerOpenAppHidden &&
+          ddBannerCheck.modalHiddenAndDismissed &&
+          ddBannerCheck.backdropHidden &&
+          ddBannerCheck.checkoutDialogStillVisible &&
+          ddBannerCheck.scrollRestored &&
+          ddBannerCheck.loginStillVisible &&
+          ddBannerCheck.headerStillVisible &&
+          ddBannerCheck.cartStillVisible,
+        `[${surface}] DoorDash/cross-store app banner suppression failed: ${JSON.stringify(ddBannerCheck)}`,
+      );
+    }
+    console.log("   ✓ DoorDash & cross-store app banners (whole-banner <a> + spacer, clickable <div>, upsell modal + backdrop, SmartBanner <iframe>, header Open App) suppressed on Android & iOS while Header/Login/Cart/Checkout dialog stay intact!");
 
     storePage.close();
 
