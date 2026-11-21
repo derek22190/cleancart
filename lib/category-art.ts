@@ -141,7 +141,7 @@ const TITLE_TO_STUDIO_ART: ReadonlyArray<readonly [RegExp, string]> = [
   [/\b(?:bone\s+broth|chicken\s+broth|beef\s+broth|vegetable\s+broth|chicken\s+stock|beef\s+stock|\bbroth\b|\bgravy\b)\b/i, "/swaps/broth.png"],
   [/\b(?:soup|clam\s+chowder|corn\s+chowder|tomato\s+bisque|ramen\s+noodle\s+soup|\bchili\b)\b/i, "/swaps/soup.png"],
   [/\b(?:marinara|pasta\s+sauce|tomato\s+basil\s+sauce|vodka\s+sauce|alfredo\s+sauce|spaghetti\s+sauce|pizza\s+sauce)\b/i, "/swaps/marinara.png"],
-  [/\b(?:salsa|pico\s+de\s+gallo|guacamole|queso(?:\s+dip)?|hummus|tzatziki|(?:french\s+onion|yogurt|spinach|artichoke)\s+dip)\b/i, "/swaps/salsa.png"],
+  [/\b(?:salsa|pico\s+de\s+gallo|guacamole|queso(?:\s+dip)?|hummus|tzatziki|baba\s+ganoush|(?:french\s+onion|yogurt|spinach|artichoke|bean|cheese|buffalo|ranch|veggie|vegetable)\s+dip|\bdip\b)\b/i, "/swaps/salsa.png"],
   [/\b(?:ranch\s+dressing|caesar\s+dressing|italian\s+dressing|vinaigrette|salad\s+dressing|\branch\b)\b/i, "/swaps/ranch.jpg"],
   [/\b(?:mayonnaise|\bmayo\b|vegise|aioli)\b/i, "/swaps/mayo.png"],
   [/\b(?:ketchup|catsup)\b/i, "/swaps/ketchup.png"],
@@ -175,8 +175,8 @@ const TITLE_TO_STUDIO_ART: ReadonlyArray<readonly [RegExp, string]> = [
   [/\b(?:pasta|spaghetti|penne|rotini|fusilli|fettuccine|linguine|macaroni|rigatoni|orzo|gnocchi|ramen|noodles?)\b/i, "/swaps/pasta.png"],
   [/\b(?:olive\s+oil|avocado\s+oil|coconut\s+oil|canola\s+oil|vegetable\s+oil|sesame\s+oil|cooking\s+spray|apple\s+cider\s+vinegar|balsamic\s+vinegar|white\s+vinegar)\b/i, "/swaps/oil-vinegar.png"],
   [/\b(?:seasoning|spice|cinnamon|paprika|turmeric|cumin|oregano|garlic\s+powder|onion\s+powder|black\s+pepper|sea\s+salt|pink\s+salt|taco\s+seasoning|vanilla\s+extract)\b/i, "/swaps/spices.png"],
-  [/\b(?:black\s+beans?|pinto\s+beans?|kidney\s+beans?|garbanzo|chickpeas?|lentils?|refried\s+beans?|baked\s+beans?|quinoa|brown\s+rice|jasmine\s+rice|basmati\s+rice|white\s+rice|couscous|farro|barley|flour|cornmeal)\b/i, "/swaps/beans-grains.png"],
-  [/\b(?:applesauce|fruit\s+crisps?|apples?|peaches?|pears?|plums?|pineapples?|mangos?|mangoes|bananas?|strawberries|blueberries|raspberries|blackberries|grapes?|oranges?|lemons?|limes?|avocados?|tomato(?:es)?|diced\s+tomatoes|corn\b|vegetables?|salad\s+kit|\bsalad\b|spinach|lettuce|romaine|kale|chard|arugula|broccoli|cauliflower|carrots?|potato(?:es)?|sweet\s+potato(?:es)?|onions?|garlic|peppers?|cucumbers?|celery|mushrooms?|berries|produce)\b/i, "/swaps/produce.png"],
+  [/\b(?:green\s+beans?|string\s+beans?|french\s+(?:style\s+)?green\s+beans?|wax\s+beans?|cut\s+green\s+beans?|sweet\s+peas?|green\s+peas?|snow\s+peas?|snap\s+peas?|sugar\s+snap|edamame|peas\b|asparagus|zucchini|squash|butternut\s+squash|brussels\s+sprouts?|cabbage|beets?|artichokes?|eggplant|okra|radish(?:es)?|scallions?|green\s+onions?|mixed\s+vegetables?|canned\s+vegetables?|corn\s+kernels?|creamed\s+corn|applesauce|fruit\s+crisps?|apples?|peaches?|pears?|plums?|pineapples?|mangos?|mangoes|bananas?|strawberries|blueberries|raspberries|blackberries|grapes?|oranges?|lemons?|limes?|avocados?|tomato(?:es)?|diced\s+tomatoes|corn\b|vegetables?|salad\s+kit|\bsalad\b|spinach|lettuce|romaine|kale|chard|arugula|broccoli|cauliflower|carrots?|potato(?:es)?|sweet\s+potato(?:es)?|onions?|garlic|peppers?|cucumbers?|celery|mushrooms?|berries|produce)\b/i, "/swaps/produce.png"],
+  [/\b(?:black\s+beans?|pinto\s+beans?|kidney\s+beans?|cannellini\s+beans?|great\s+northern\s+beans?|navy\s+beans?|butter\s+beans?|lima\s+beans?|white\s+beans?|red\s+beans?|chili\s+beans?|garbanzo|chickpeas?|lentils?|refried\s+beans?|baked\s+beans?|beans\b|quinoa|brown\s+rice|jasmine\s+rice|basmati\s+rice|white\s+rice|rice\b|couscous|farro|barley|flour|cornmeal|tofu|tempeh)\b/i, "/swaps/beans-grains.png"],
 ];
 
 const EXPLICIT_CATEGORY_FALLBACK: Readonly<Record<string, string>> = {
@@ -198,6 +198,11 @@ const EXPLICIT_CATEGORY_FALLBACK: Readonly<Record<string, string>> = {
   "Candy": "/swaps/candy.png",
   "Cookies": "/swaps/cookies.png",
   "Frozen": "/swaps/frozen-meal.png",
+  "Produce": "/swaps/produce.png",
+  "Vegetables": "/swaps/produce.png",
+  "Canned Goods": "/swaps/produce.png",
+  "Pantry": "/swaps/beans-grains.png",
+  "Snacks": "/swaps/snacks.jpg",
 };
 
 /**
@@ -234,6 +239,13 @@ export function resolveCategoryStudioArt(params: {
   if (params.explicitCategory) {
     const mapped = EXPLICIT_CATEGORY_FALLBACK[params.explicitCategory.trim()];
     if (mapped) return mapped;
+  }
+
+  if (ingredients && FOOD_INGREDIENT_SIGNAL_RE.test(ingredients)) {
+    for (const [re, studioPath] of TITLE_TO_STUDIO_ART) {
+      if (re.test(ingredients)) return studioPath;
+    }
+    return "/swaps/produce.png";
   }
 
   return null;

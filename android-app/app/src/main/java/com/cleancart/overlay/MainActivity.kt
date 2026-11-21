@@ -103,7 +103,6 @@ class MainActivity : Activity() {
     private lateinit var contentScroll: ScrollView
     private lateinit var tabContentContainer: LinearLayout
     private lateinit var bottomNavContainer: LinearLayout
-    private lateinit var floatingScanBtn: LinearLayout
 
     private val io = Executors.newSingleThreadExecutor()
     private var activeAuthDialog: AlertDialog? = null
@@ -221,7 +220,7 @@ class MainActivity : Activity() {
         // Scrollable Middle Content Area
         tabContentContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, 0, 0, dp(92))
+            setPadding(0, 0, 0, dp(28))
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -229,6 +228,7 @@ class MainActivity : Activity() {
         }
         contentScroll = ScrollView(this).apply {
             setBackgroundColor(Color.WHITE)
+            clipToPadding = false
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 0,
@@ -252,12 +252,12 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
         })
 
-        // Pinned 4-Tab Bottom Bar (Scans, Top Picks, Swaps, Search)
+        // Pinned Bottom Navigation Bar (Scans, Top Picks, Center Scan CTA, Swaps, Search)
         bottomNavContainer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
+            gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(Color.WHITE)
-            setPadding(dp(8), dp(8), dp(8), dp(24))
+            setPadding(dp(6), dp(8), dp(6), dp(22))
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -265,34 +265,6 @@ class MainActivity : Activity() {
         }
         mainVertical.addView(bottomNavContainer)
         rootFrame.addView(mainVertical)
-
-        // Floating Green "[||| Scan]" Button in bottom-right corner
-        floatingScanBtn = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(18), dp(13), dp(20), dp(13))
-            background = GradientDrawable().apply {
-                setColor(0xFF4CAF6A.toInt())
-                cornerRadius = dp(18).toFloat()
-            }
-            elevation = dp(8).toFloat()
-            addView(label("[|||]", 14f, Color.WHITE, bold = true).apply {
-                setPadding(0, 0, dp(10), 0)
-            })
-            addView(label("Scan", 15.5f, Color.WHITE, bold = true))
-            setOnClickListener {
-                showQuickScanModal()
-            }
-        }
-        val fabParams = FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply {
-            gravity = Gravity.BOTTOM or Gravity.END
-            marginEnd = dp(18)
-            bottomMargin = dp(90)
-        }
-        rootFrame.addView(floatingScanBtn, fabParams)
 
         setContentView(rootFrame)
 
@@ -302,9 +274,7 @@ class MainActivity : Activity() {
                 val sysBars = insets.getInsets(android.view.WindowInsets.Type.systemBars())
                 topBarContainer.setPadding(dp(20), maxOf(dp(16), sysBars.top + dp(10)), dp(16), dp(12))
                 val bottomPad = maxOf(dp(12), sysBars.bottom + dp(6))
-                bottomNavContainer.setPadding(dp(8), dp(8), dp(8), bottomPad)
-                fabParams.bottomMargin = bottomPad + dp(68)
-                floatingScanBtn.layoutParams = fabParams
+                bottomNavContainer.setPadding(dp(6), dp(8), dp(6), bottomPad)
                 insets
             }
         }
@@ -596,8 +566,6 @@ class MainActivity : Activity() {
         renderBottomNav()
         tabContentContainer.removeAllViews()
 
-        floatingScanBtn.visibility = if (activeTab == 3) View.GONE else View.VISIBLE
-
         when (activeTab) {
             0 -> renderHistoryTab()
             1 -> renderTopProductsTab()
@@ -690,13 +658,16 @@ class MainActivity : Activity() {
 
     private fun renderBottomNav() {
         bottomNavContainer.removeAllViews()
-        val tabs = listOf(
+        val leftTabs = listOf(
             Triple(0, "MASCOT", "Scans"),
-            Triple(1, "☰", "Top Picks"),
+            Triple(1, "☰", "Top Picks")
+        )
+        val rightTabs = listOf(
             Triple(2, "⇄", "Swaps"),
             Triple(3, "🔍", "Search")
         )
-        tabs.forEach { (idx, icon, title) ->
+
+        fun addNavTab(idx: Int, icon: String, title: String) {
             val selected = activeTab == idx
             val col = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -714,7 +685,7 @@ class MainActivity : Activity() {
 
             // Soft green pill around the selected icon
             val iconPill = FrameLayout(this).apply {
-                setPadding(dp(18), dp(4), dp(18), dp(4))
+                setPadding(dp(14), dp(4), dp(14), dp(4))
                 if (selected) {
                     background = GradientDrawable().apply {
                         setColor(0xFFE8F5EC.toInt())
@@ -730,21 +701,55 @@ class MainActivity : Activity() {
                 iconPill.addView(ImageView(this).apply {
                     setImageResource(R.drawable.broc_mascot)
                     scaleType = ImageView.ScaleType.FIT_CENTER
-                    layoutParams = FrameLayout.LayoutParams(dp(23), dp(23), Gravity.CENTER)
+                    layoutParams = FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER)
                 })
             } else {
-                iconPill.addView(label(icon, 17f, if (selected) 0xFF2E9E5B.toInt() else 0xFF374151.toInt(), bold = true).apply {
+                iconPill.addView(label(icon, 16.5f, if (selected) 0xFF2E9E5B.toInt() else 0xFF374151.toInt(), bold = true).apply {
                     gravity = Gravity.CENTER
                 })
             }
             col.addView(iconPill)
 
-            col.addView(label(title, 12f, if (selected) 0xFF111814.toInt() else 0xFF4B5563.toInt(), bold = selected).apply {
+            col.addView(label(title, 11.5f, if (selected) 0xFF111814.toInt() else 0xFF4B5563.toInt(), bold = selected).apply {
                 gravity = Gravity.CENTER
+                setSingleLine(true)
                 setPadding(0, dp(3), 0, 0)
             })
             bottomNavContainer.addView(col)
         }
+
+        leftTabs.forEach { (idx, icon, title) -> addNavTab(idx, icon, title) }
+
+        // Prominent green Scan pill anchored cleanly in the center of the bottom bar (zero overlap with history rows)
+        val scanWrap = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.15f)
+        }
+        val scanPill = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(10), dp(14), dp(10))
+            background = GradientDrawable().apply {
+                setColor(0xFF2E9E5B.toInt())
+                cornerRadius = dp(999).toFloat()
+            }
+            elevation = dp(4).toFloat()
+            addView(label("[|||]", 12f, Color.WHITE, bold = true).apply {
+                setPadding(0, 0, dp(5), 0)
+            })
+            addView(label("Scan", 13.5f, Color.WHITE, bold = true))
+            setOnClickListener {
+                showQuickScanModal()
+            }
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER
+            )
+        }
+        scanWrap.addView(scanPill)
+        bottomNavContainer.addView(scanWrap)
+
+        rightTabs.forEach { (idx, icon, title) -> addNavTab(idx, icon, title) }
     }
 
     /* ---------------- TAB 0: MY SCANS ---------------- */
@@ -6643,31 +6648,21 @@ class MainActivity : Activity() {
     private fun buildNeutralPackagePlaceholder(
         wPx: Int,
         hPx: Int,
-        initialText: String = "B"
+        @Suppress("UNUSED_PARAMETER") initialText: String = "B"
     ): View {
-        val palettes = arrayOf(
-            intArrayOf(0xFFECFDF5.toInt(), 0xFFA7F3D0.toInt(), 0xFF065F46.toInt()),
-            intArrayOf(0xFFEFF6FF.toInt(), 0xFFBFDBFE.toInt(), 0xFF1E40AF.toInt()),
-            intArrayOf(0xFFFFFBEB.toInt(), 0xFFFDE68A.toInt(), 0xFF92400E.toInt()),
-            intArrayOf(0xFFF5F3FF.toInt(), 0xFFDDD6FE.toInt(), 0xFF5B21B6.toInt()),
-            intArrayOf(0xFFF0FDFA.toInt(), 0xFF99F6E4.toInt(), 0xFF115E59.toInt()),
-            intArrayOf(0xFFF8FAFC.toInt(), 0xFFCBD5E1.toInt(), 0xFF334155.toInt())
-        )
-        val ch = initialText.trim().ifEmpty { "B" }
-        val idx = (ch[0].code and 0x7FFFFFFF) % palettes.size
-        val pal = palettes[idx]
-        val fontSp = ((minOf(wPx, hPx) / resources.displayMetrics.density) * 0.36f).coerceIn(13f, 24f)
-        return TextView(this).apply {
-            text = ch
-            gravity = Gravity.CENTER
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSp)
-            setTextColor(pal[2])
-            setTypeface(typeface, Typeface.BOLD)
+        val iconSize = (minOf(wPx, hPx) * 0.48f).toInt().coerceIn(dp(20), dp(40))
+        return FrameLayout(this).apply {
             background = GradientDrawable().apply {
-                setColor(pal[0])
+                setColor(0xFFECFDF5.toInt())
                 cornerRadius = dp(10).toFloat()
-                setStroke(dp(1), pal[1])
+                setStroke(dp(1), 0xFFC6F6D5.toInt())
             }
+            addView(ImageView(context).apply {
+                setImageResource(R.drawable.broc_mascot)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                alpha = 0.88f
+                layoutParams = FrameLayout.LayoutParams(iconSize, iconSize, Gravity.CENTER)
+            })
             layoutParams = FrameLayout.LayoutParams(wPx, hPx)
         }
     }

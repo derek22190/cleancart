@@ -445,6 +445,7 @@ class LiveStoreBrowserActivity : Activity() {
     private val storeChipViews = LinkedHashMap<String, StoreBrandIcons.StoreChipHandle>()
 
     private lateinit var floatingBubble: LinearLayout
+    private lateinit var bubbleIconView: ImageView
     private lateinit var bubbleBadgeLabel: TextView
     private lateinit var bubbleSubLabel: TextView
     private var isDockedLeft = false
@@ -457,10 +458,69 @@ class LiveStoreBrowserActivity : Activity() {
     private var userDraggedBubble = false
     private var isImeVisible = false
     private var isWebInputFocused = false
+    private var isPageScrolling = false
+    private var hasActiveBubbleContent = false
+    private var isPillCompact = false
+    private var expandedBadgeText = "HeyBroc Ready"
+    private var compactBadgeText = ""
+    private val pillShrinkRunnable = Runnable {
+        if (!isCleaningUp && !isFinishing && !isDestroyed && hasActiveBubbleContent && latestScanJson != null) {
+            setPillCompact(true)
+        }
+    }
+
+    private fun setPillCompact(compact: Boolean) {
+        if (!::floatingBubble.isInitialized) return
+        isPillCompact = compact
+        if (compact && compactBadgeText.isNotEmpty()) {
+            bubbleBadgeLabel.text = compactBadgeText
+            bubbleSubLabel.visibility = View.GONE
+            floatingBubble.setPadding(dp(10), dp(7), dp(12), dp(7))
+            if (::bubbleIconView.isInitialized) {
+                (bubbleIconView.layoutParams as? LinearLayout.LayoutParams)?.let { ilp ->
+                    ilp.width = dp(20)
+                    ilp.height = dp(20)
+                    ilp.marginEnd = dp(6)
+                    bubbleIconView.layoutParams = ilp
+                }
+            }
+        } else {
+            if (expandedBadgeText.isNotEmpty()) {
+                bubbleBadgeLabel.text = expandedBadgeText
+            }
+            bubbleSubLabel.visibility = View.VISIBLE
+            floatingBubble.setPadding(dp(12), dp(9), dp(14), dp(9))
+            if (::bubbleIconView.isInitialized) {
+                (bubbleIconView.layoutParams as? LinearLayout.LayoutParams)?.let { ilp ->
+                    ilp.width = dp(24)
+                    ilp.height = dp(24)
+                    ilp.marginEnd = dp(8)
+                    bubbleIconView.layoutParams = ilp
+                }
+            }
+        }
+    }
+
+    private fun schedulePillAutoShrink() {
+        mainHandler.removeCallbacks(pillShrinkRunnable)
+        mainHandler.postDelayed(pillShrinkRunnable, 2600L)
+    }
 
     private fun updateFloatingBubbleVisibility() {
         if (!::floatingBubble.isInitialized) return
-        floatingBubble.visibility = if (isImeVisible || isWebInputFocused) View.GONE else View.VISIBLE
+        val shouldHide = isImeVisible || isWebInputFocused || isPageScrolling || !hasActiveBubbleContent
+        if (shouldHide) {
+            mainHandler.removeCallbacks(pillShrinkRunnable)
+            if (floatingBubble.visibility == View.VISIBLE) {
+                floatingBubble.animate().cancel()
+                floatingBubble.visibility = View.GONE
+                floatingBubble.alpha = 0f
+            }
+        } else if (floatingBubble.visibility != View.VISIBLE || floatingBubble.alpha < 0.99f) {
+            floatingBubble.animate().cancel()
+            floatingBubble.visibility = View.VISIBLE
+            floatingBubble.animate().alpha(1f).setDuration(140L).start()
+        }
     }
 
     private var currentBridgeSecret: String = ""
@@ -796,12 +856,13 @@ class LiveStoreBrowserActivity : Activity() {
                 updateFloatingBubbleVisibility()
             }
             if (!userDraggedBubble) {
-                val maxSafeTop = if (root.height > dp(220)) (root.height - dp(120)) else (dp(248) + topInset)
-                val targetTop = (dp(248) + topInset).coerceAtMost(maxSafeTop)
-                bubbleTopPx = targetTop
+                val targetBottom = bottomInset + dp(72)
                 (floatingBubble.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
-                    if (lp.topMargin != targetTop) {
-                        lp.topMargin = targetTop
+                    if (lp.gravity != (Gravity.BOTTOM or Gravity.END) || lp.bottomMargin != targetBottom) {
+                        lp.gravity = Gravity.BOTTOM or Gravity.END
+                        lp.topMargin = 0
+                        lp.bottomMargin = targetBottom
+                        lp.marginEnd = dp(12)
                         floatingBubble.layoutParams = lp
                     }
                 }
@@ -1594,20 +1655,22 @@ class LiveStoreBrowserActivity : Activity() {
 
     @SuppressLint("ClickableViewAccessibility")
     private fun setupFloatingBubble(root: FrameLayout) {
-        bubbleTopPx = dp(248) + topSystemInsetPx
         floatingBubble = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(12), dp(9), dp(14), dp(9))
             elevation = dp(10).toFloat()
             background = pillBackground(0xF20F172A.toInt())
+            visibility = View.GONE
+            alpha = 0f
         }
 
-        floatingBubble.addView(ImageView(this).apply {
+        bubbleIconView = ImageView(this).apply {
             setImageResource(R.drawable.broc_mascot)
             scaleType = ImageView.ScaleType.FIT_CENTER
-            layoutParams = LinearLayout.LayoutParams(dp(26), dp(26)).apply { marginEnd = dp(8) }
-        })
+            layoutParams = LinearLayout.LayoutParams(dp(24), dp(24)).apply { marginEnd = dp(8) }
+        }
+        floatingBubble.addView(bubbleIconView)
 
         val textStack = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1615,12 +1678,12 @@ class LiveStoreBrowserActivity : Activity() {
         bubbleBadgeLabel = label("HeyBroc Ready", 13.5f, Color.WHITE, bold = true).apply {
             setSingleLine(true)
             ellipsize = TextUtils.TruncateAt.END
-            maxWidth = dp(190)
+            maxWidth = dp(185)
         }
         bubbleSubLabel = label("Open any food or tap to inspect", 10.5f, 0xE0FFFFFF.toInt(), bold = true).apply {
             setSingleLine(true)
             ellipsize = TextUtils.TruncateAt.END
-            maxWidth = dp(190)
+            maxWidth = dp(185)
         }
         textStack.addView(bubbleBadgeLabel)
         textStack.addView(bubbleSubLabel)
@@ -1629,9 +1692,9 @@ class LiveStoreBrowserActivity : Activity() {
         val lp = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
-            Gravity.TOP or Gravity.END
+            Gravity.BOTTOM or Gravity.END
         ).apply {
-            topMargin = bubbleTopPx
+            bottomMargin = bottomSystemInsetPx + dp(72)
             marginEnd = dp(12)
             marginStart = dp(12)
         }
@@ -1669,7 +1732,7 @@ class LiveStoreBrowserActivity : Activity() {
                     downRawX = e.rawX
                     downRawY = e.rawY
                     startLeft = v.left
-                    startTop = (v.layoutParams as FrameLayout.LayoutParams).topMargin
+                    startTop = v.top
                     moved = false
                     true
                 }
@@ -1679,6 +1742,7 @@ class LiveStoreBrowserActivity : Activity() {
                     if (!moved && (abs(dx) > slop || abs(dy) > slop)) {
                         moved = true
                         userDraggedBubble = true
+                        mainHandler.removeCallbacks(pillShrinkRunnable)
                     }
                     if (moved) {
                         val parentW = root.width.coerceAtLeast(dp(320))
@@ -1693,6 +1757,7 @@ class LiveStoreBrowserActivity : Activity() {
                         curLp.gravity = Gravity.TOP or Gravity.START
                         curLp.marginStart = 0
                         curLp.marginEnd = 0
+                        curLp.bottomMargin = 0
                         curLp.leftMargin = nextLeft
                         curLp.topMargin = nextTop
                         bubbleLeftPx = nextLeft
@@ -1707,6 +1772,9 @@ class LiveStoreBrowserActivity : Activity() {
                     v.translationX = 0f
                     if (moved) {
                         v.post { syncBubbleYToWebView(triggerRescan = true, clearPinned = true) }
+                        if (hasActiveBubbleContent && latestScanJson != null) {
+                            schedulePillAutoShrink()
+                        }
                     } else if (e.actionMasked == MotionEvent.ACTION_UP) {
                         onFloatingBubbleTapped()
                     }
@@ -1724,15 +1792,32 @@ class LiveStoreBrowserActivity : Activity() {
     }
 
     private fun setBubbleIdleState() {
+        mainHandler.removeCallbacks(pillShrinkRunnable)
+        hasActiveBubbleContent = false
+        expandedBadgeText = "HeyBroc Ready"
+        compactBadgeText = ""
         floatingBubble.background = pillBackground(0xF20F172A.toInt())
-        bubbleBadgeLabel.text = "HeyBroc Ready"
+        bubbleBadgeLabel.text = expandedBadgeText
         bubbleSubLabel.text = "Scroll or open any food item"
+        setPillCompact(false)
+        updateFloatingBubbleVisibility()
     }
 
     private fun setBubbleScanningState() {
+        mainHandler.removeCallbacks(pillShrinkRunnable)
+        if (lastDetectedIsCard) {
+            // Avoid flashing "Scanning Label…" while scrolling browse grids; wait for resolved score
+            return
+        }
+        hasActiveBubbleContent = true
+        isPageScrolling = false
+        expandedBadgeText = "Scanning Label…"
+        compactBadgeText = ""
         floatingBubble.background = pillBackground(0xF20F7A4A.toInt())
-        bubbleBadgeLabel.text = "Scanning Label…"
+        bubbleBadgeLabel.text = expandedBadgeText
         bubbleSubLabel.text = "Checking 0–100 score"
+        setPillCompact(false)
+        updateFloatingBubbleVisibility()
     }
 
     private fun applyJsonToBubble(scanJson: JSONObject) {
@@ -1759,12 +1844,15 @@ class LiveStoreBrowserActivity : Activity() {
             else -> 0xF5DC2626.toInt()
         }
 
+        hasActiveBubbleContent = true
+        isPageScrolling = false
         if (alerts.isNotEmpty()) {
             val bubbleBg = if (severity == "allergen") 0xF5DC2626.toInt() else scoreBg
             val bubbleStroke = if (severity == "allergen") 0x44FFFFFF else 0xFFFBBF24.toInt()
             val alertEmoji = if (alerts.all { it.id == "pesticide_risk" }) "🌱" else "⚠️"
             floatingBubble.background = pillBackground(bubbleBg, bubbleStroke)
-            bubbleBadgeLabel.text = "$alertEmoji ${alerts.first().shortBadge} • $score/100"
+            expandedBadgeText = "$alertEmoji ${alerts.first().shortBadge} • $score/100"
+            compactBadgeText = "$alertEmoji $score"
             bubbleSubLabel.text = if (lastDetectedIsCard && shortTitle.isNotEmpty()) {
                 "$shortTitle • Tap"
             } else if (hasSwap) {
@@ -1772,54 +1860,72 @@ class LiveStoreBrowserActivity : Activity() {
             } else {
                 "Tap to inspect alert"
             }
+            setPillCompact(false)
+            updateFloatingBubbleVisibility()
+            schedulePillAutoShrink()
             return
         }
 
         floatingBubble.background = pillBackground(scoreBg)
-        bubbleBadgeLabel.text = "$score/100 • $rating"
+        expandedBadgeText = "$score/100 • $rating"
+        compactBadgeText = "$score"
         bubbleSubLabel.text = when {
             lastDetectedIsCard && shortTitle.isNotEmpty() -> "$shortTitle • Tap"
             hasSwap -> "Tap for 1-Tap Clean Swap"
             else -> "Tap to inspect ingredients"
         }
+        setPillCompact(false)
+        updateFloatingBubbleVisibility()
+        schedulePillAutoShrink()
     }
 
     private fun syncBubbleYToWebView(triggerRescan: Boolean, clearPinned: Boolean = false) {
         val wv = storeWebView ?: return
         if (isCleaningUp || wv.height <= 40) return
-        val wvLoc = IntArray(2)
-        val bubLoc = IntArray(2)
-        wv.getLocationOnScreen(wvLoc)
-        floatingBubble.getLocationOnScreen(bubLoc)
         val density = resources.displayMetrics.density.coerceAtLeast(1f)
-        val centerCssY = (((bubLoc[1] + floatingBubble.height * 0.5f) - wvLoc[1]) / density).toInt().coerceAtLeast(50)
-        val wvCssW = (wv.width / density).coerceAtLeast(280f)
-        val bubLeftCss = (bubLoc[0] - wvLoc[0]) / density
-        val bubW = (floatingBubble.width / density).coerceAtLeast(48f)
-        val aimCssX = if (userDraggedBubble) {
-            when {
+        val centerCssY: Int
+        val aimCssX: Int
+        if (userDraggedBubble) {
+            val wvLoc = IntArray(2)
+            val bubLoc = IntArray(2)
+            wv.getLocationOnScreen(wvLoc)
+            floatingBubble.getLocationOnScreen(bubLoc)
+            centerCssY = (((bubLoc[1] + floatingBubble.height * 0.5f) - wvLoc[1]) / density).toInt().coerceAtLeast(50)
+            val wvCssW = (wv.width / density).coerceAtLeast(280f)
+            val bubLeftCss = (bubLoc[0] - wvLoc[0]) / density
+            val bubW = (floatingBubble.width / density).coerceAtLeast(48f)
+            aimCssX = when {
                 bubLeftCss <= 24f -> (bubLeftCss + minOf(bubW * 0.34f, 64f)).toInt().coerceAtLeast(24)
                 (bubLeftCss + bubW) >= (wvCssW - 24f) -> (bubLeftCss + bubW - minOf(bubW * 0.34f, 64f)).toInt().coerceAtMost((wvCssW - 24f).toInt())
                 else -> (bubLeftCss + bubW * 0.5f).toInt().coerceIn(24, (wvCssW - 24f).toInt())
             }
         } else {
-            -1
+            // When docked cleanly at the bottom edge, let detectorJS aim at the natural mid-screen reading zone
+            centerCssY = -1
+            aimCssX = -1
         }
         if (!triggerRescan && !clearPinned && abs(centerCssY - lastSyncedBubbleY) < 6 && abs(aimCssX - lastSyncedBubbleX) < 6) return
         lastSyncedBubbleY = centerCssY
         lastSyncedBubbleX = aimCssX
+        val yAssign = if (centerCssY > 0) "window.__heybrocBubbleCenterY = $centerCssY;" else "window.__heybrocBubbleCenterY = null;"
         val xAssign = if (aimCssX > 0) "window.__heybrocBubbleCenterX = $aimCssX;" else "window.__heybrocBubbleCenterX = null;"
         val clearPinCall = if (clearPinned) "if (typeof window.__heybrocClearPinnedCard === 'function') { window.__heybrocClearPinnedCard(); }" else ""
         val rescanCall = if (triggerRescan) {
             "if (typeof window.__heybrocScheduleCheck === 'function') { window.__heybrocScheduleCheck(false); }"
         } else ""
-        wv.evaluateJavascript("window.__heybrocBubbleCenterY = $centerCssY; $xAssign $clearPinCall $rescanCall", null)
+        wv.evaluateJavascript("$yAssign $xAssign $clearPinCall $rescanCall", null)
     }
 
     private fun setBubbleFailureState(sub: String = "Tap to retry scan") {
+        mainHandler.removeCallbacks(pillShrinkRunnable)
+        hasActiveBubbleContent = !lastDetectedIsCard
+        expandedBadgeText = "Scan Unavailable"
+        compactBadgeText = ""
         floatingBubble.background = pillBackground(0xF2475569.toInt())
-        bubbleBadgeLabel.text = "Scan Unavailable"
+        bubbleBadgeLabel.text = expandedBadgeText
         bubbleSubLabel.text = sub
+        setPillCompact(false)
+        updateFloatingBubbleVisibility()
     }
 
     private fun showNoVisibleCardsToast() {
@@ -2037,7 +2143,15 @@ class LiveStoreBrowserActivity : Activity() {
                             updateFloatingBubbleVisibility()
                         }
                     }
+                    "scrolling" -> {
+                        val active = obj.optBoolean("active", true)
+                        if (isPageScrolling != active) {
+                            isPageScrolling = active
+                            updateFloatingBubbleVisibility()
+                        }
+                    }
                     "product", "card" -> {
+                        isPageScrolling = false
                         val title = obj.optString("title").trim()
                         if (title.isEmpty()) return@post
                         val ingredients = obj.optString("ingredients").trim()
@@ -2089,6 +2203,7 @@ class LiveStoreBrowserActivity : Activity() {
                         )
                     }
                     "browse" -> {
+                        isPageScrolling = false
                         scanGeneration++
                         lastDetectedIsCard = false
                         lastDetectedCardId = ""

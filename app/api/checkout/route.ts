@@ -655,7 +655,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+    let res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${stripeKey}`,
@@ -664,7 +664,25 @@ export async function POST(req: NextRequest) {
       body: params.toString(),
     });
 
-    const session = await res.json();
+    let session = await res.json();
+    if (
+      (!res.ok || !session?.url) &&
+      /managed[\s_]+payments|product\s+tax\s+code|tax_code/i.test(
+        String(session?.error?.message || "")
+      )
+    ) {
+      params.set("managed_payments[enabled]", "false");
+      res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${stripeKey}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: params.toString(),
+      });
+      session = await res.json();
+    }
+
     if (!res.ok || !session.url) {
       return NextResponse.json(
         {

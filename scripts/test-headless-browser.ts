@@ -3499,6 +3499,99 @@ async function main() {
     );
     console.log("   ✓ Amazon Fresh ALM storefront carousel (90 below photo + Check -> /dp/B09BUTTER1) & Garlic PDP ('Garlic' extracted, 0 hero badges) verified!");
 
+    // 6H: Native App Fixes #8 & #9 — Immediate scroll-start hide signal, promo-banner non-hijack, and in-view card re-anchoring (Android & iOS)
+    const walmartPromoScrollHtml = `
+      <main style="margin:0; padding:0; width:390px;">
+        <section id="wm-easy-appetizers-hero" style="height:640px; width:390px; background:#fef3c7; padding:24px; box-sizing:border-box;">
+          <h2>Easy appetizers</h2>
+          <p>Shop party trays and game-day platters</p>
+        </section>
+        <div id="wm-hillshire-card" data-testid="item-card" style="height:260px; width:190px; margin:20px auto; padding:10px; box-sizing:border-box; border:1px solid #e2e8f0; display:flex; flex-direction:column;">
+          <img src="https://i5.walmartimages.com/asr/hillshire.jpg" width="140" height="140" alt="Hillshire Farm Beef Summer Sausage" style="width:140px;height:140px;display:block;" />
+          <a href="/ip/hillshire-farm-beef-summer-sausage/774411">Hillshire Farm Hard Salami &amp; Beef Summer Sausage, 9 oz</a>
+        </div>
+        <div style="height:700px;"></div>
+      </main>
+    `;
+    for (const surface of ["android", "ios"] as const) {
+      await storePage.navigate(
+        surface === "android"
+          ? "https://www.walmart.com/search?q=easy+appetizers"
+          : "https://www.walmart.com/search?q=easy+appetizers&ios=1",
+      );
+      await storePage.eval(`
+        if (!document.querySelector('meta[name="viewport"]')) {
+          const mv = document.createElement('meta');
+          mv.name = 'viewport';
+          mv.content = 'width=device-width, initial-scale=1';
+          document.head.appendChild(mv);
+        }
+        document.body.innerHTML = ${JSON.stringify(walmartPromoScrollHtml)};
+        window.scrollTo(0, 0);
+        window.__heybrocBubbleCenterY = null;
+        window.__heybrocBubbleCenterX = null;
+        window.__heybrocBridgeSecret = ${JSON.stringify(androidBridgeSecret)};
+        window.__uxEvents = [];
+        window.heybrocAndroidBridge = {
+          postMessage: function(raw) {
+            try {
+              const m = JSON.parse(raw);
+              if (m && m.kind) window.__uxEvents.push(m);
+            } catch (_) {}
+          }
+        };
+        window.webkit = {
+          messageHandlers: {
+            heybrocStoreBridge: {
+              postMessage: function(m) {
+                if (m && m.kind) window.__uxEvents.push(m);
+              }
+            }
+          }
+        };
+      `);
+      await storePage.eval(surface === "android" ? androidDetectorJS : detectorJS, false);
+      await sleep(320);
+      const promoCheck = await storePage.eval<{ sawCardOnPromo: boolean; sawBrowseOnPromo: boolean }>(`(() => {
+        const evs = (window.__uxEvents || []).filter((e) => e.kind === "card" || e.kind === "browse");
+        return {
+          sawCardOnPromo: evs.some((e) => e.kind === "card"),
+          sawBrowseOnPromo: evs.some((e) => e.kind === "browse"),
+        };
+      })()`);
+      assert(
+        !promoCheck.sawCardOnPromo && promoCheck.sawBrowseOnPromo,
+        `[${surface}] Peeking product below Walmart promo banner must emit browse (hide pill), not card: ${JSON.stringify(promoCheck)}`,
+      );
+
+      // Now scroll down so Hillshire Farm card enters the mid-viewport reading zone;
+      // verify immediate {kind:'scrolling', active:true} fires before settle, then kind:'card' fires after settle.
+      await storePage.eval(`
+        window.__uxEvents = [];
+        window.scrollTo(0, 460);
+        document.dispatchEvent(new Event("scroll", { bubbles: true }));
+      `);
+      await sleep(40);
+      const midScrollCheck = await storePage.eval<{ sawImmediateScrolling: boolean }>(`({
+        sawImmediateScrolling: (window.__uxEvents || []).some((e) => e.kind === "scrolling" && e.active === true)
+      })`);
+      assert(
+        midScrollCheck.sawImmediateScrolling,
+        `[${surface}] Scroll start must immediately emit {kind:'scrolling', active:true} to hide pill with zero lag`,
+      );
+      await sleep(280);
+      const settledCardCheck = await storePage.eval<{ lastKind: string; lastTitle: string }>(`(() => {
+        const evs = (window.__uxEvents || []).filter((e) => e.kind === "card" || e.kind === "browse");
+        const last = evs[evs.length - 1] || {};
+        return { lastKind: String(last.kind || ""), lastTitle: String(last.title || "") };
+      })()`);
+      assert(
+        settledCardCheck.lastKind === "card" && /hillshire farm/i.test(settledCardCheck.lastTitle),
+        `[${surface}] Settled scroll with Hillshire Farm card in view must emit card: ${JSON.stringify(settledCardCheck)}`,
+      );
+    }
+    console.log("   ✓ Native UX #8/#9 verified on Android & iOS: promo banner stays clean (browse), scroll immediately hides pill (scrolling), and settled in-view card re-anchors cleanly!");
+
     storePage.close();
 
     // =========================================================================

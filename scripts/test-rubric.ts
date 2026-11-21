@@ -7596,6 +7596,32 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
             iosLiveVc.includes("isBlockedAppRedirectURL") &&
             iosLiveVc.includes('"drdsh.me"') &&
             iosLiveVc.includes('"inst.cr"'),
+          nativeUxFixes8_9_10AndCheckoutFallback: await (async () => {
+            const fsUx = await import("node:fs");
+            const catArtMod = await import("../lib/category-art");
+            const checkoutRouteTs = fsUx.readFileSync("app/api/checkout/route.ts", "utf8");
+            const scanHistoryKt = fsUx.readFileSync(
+              "android-app/app/src/main/java/com/cleancart/overlay/ScanHistoryStore.kt",
+              "utf8",
+            );
+            return (
+              catArtMod.resolveCategoryStudioArt({ title: "Amazon Grocery, Cut Green Beans" }) === "/swaps/produce.png" &&
+              catArtMod.resolveCategoryStudioArt({ title: "Good Foods Feta Cucumber Tzatziki Dip" }) === "/swaps/salsa.png" &&
+              liveBrowserKt.includes("Gravity.BOTTOM or Gravity.END") &&
+              liveBrowserKt.includes("pillShrinkRunnable") &&
+              liveBrowserKt.includes('"scrolling" ->') &&
+              liveBrowserKt.includes("isPageScrolling || !hasActiveBubbleContent") &&
+              iosLiveVc.includes("bubbleBottomConstraint") &&
+              iosLiveVc.includes("pillShrinkWorkItem") &&
+              iosLiveVc.includes('kind == "scrolling"') &&
+              iosLiveVc.includes("isPageScrolling || !hasActiveBubbleContent") &&
+              !mainActivityKt.includes("floatingScanBtn") &&
+              mainActivityKt.includes("scanWrap.addView(scanPill)") &&
+              scanHistoryKt.includes("STORE_PREFIX_FOR_IMAGE_QUERY_RE") &&
+              scanHistoryKt.includes("green\\\\s+beans?") &&
+              checkoutRouteTs.includes('params.set("managed_payments[enabled]", "false")')
+            );
+          })(),
         };
         if (Object.values(androidDualModeMap).some((v) => !v)) {
           console.error("androidDualModeMap failure detail:", androidDualModeMap);
@@ -11876,7 +11902,8 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         androidBrowserSrc.includes("WindowInsets.Type.ime()") &&
         androidBrowserSrc.includes('"inputFocus"') &&
         androidBrowserSrc.includes("hb-sams-search-fix") &&
-        androidBrowserSrc.includes("dp(248)") &&
+        androidBrowserSrc.includes("Gravity.BOTTOM or Gravity.END") &&
+        androidBrowserSrc.includes("dp(72)") &&
         androidManifestSrc.includes('android:windowSoftInputMode="adjustResize"') &&
         androidDetectorSrc.includes("hb-sams-search-fix") &&
         androidDetectorSrc.includes("kind: 'inputFocus'") &&
@@ -11890,7 +11917,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         iosBrowserSrc.includes("hb-sams-search-fix") &&
         iosBrowserSrc.includes('kind == "inputFocus"') &&
         iosBrowserSrc.includes("cr.right < 24 || cr.left > vw - 24") &&
-        iosBrowserSrc.includes("constant: 236") &&
+        iosBrowserSrc.includes("constant: -72") &&
         simulatorSrc.includes("applyPesticideScoreAdjustment") &&
         simulatorSrc.includes("computePesticidePenalty") &&
         scanTsSrc.includes("usda fooddata central"),

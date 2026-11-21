@@ -101,10 +101,19 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     private let bubbleBadgeLabel = UILabel()
     private let bubbleSubLabel = UILabel()
     private var bubbleTopConstraint: NSLayoutConstraint?
+    private var bubbleBottomConstraint: NSLayoutConstraint?
     private var bubbleTrailingConstraint: NSLayoutConstraint?
     private var bubbleLeadingConstraint: NSLayoutConstraint?
+    private var bubbleHeightConstraint: NSLayoutConstraint?
     private var isDockedLeft = false
     private var userDraggedBubble = false
+    private var isWebInputFocused = false
+    private var isPageScrolling = false
+    private var hasActiveBubbleContent = false
+    private var isPillCompact = false
+    private var expandedBadgeText: String = "HeyBroc Ready"
+    private var compactBadgeText: String = ""
+    private var pillShrinkWorkItem: DispatchWorkItem?
 
     private var lastDetectedTitle: String = ""
     private var lastDetectedIngredients: String = ""
@@ -1671,7 +1680,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               var pinnedOwner = hbOwnerCardById[hbPinnedCardId];
               if (pinnedOwner && pinnedOwner.isConnected && isVisible(pinnedOwner)) {
                 var pr = pinnedOwner.getBoundingClientRect();
-                if (pr.bottom > 60 && pr.top < vh - 24 && pr.right > 16 && pr.left < vw - 16) {
+                var pinnedVisH = Math.max(0, Math.min(pr.bottom, vh - 56) - Math.max(pr.top, 84));
+                if (pr.bottom > 90 && pr.top < vh - 60 && pr.right > 16 && pr.left < vw - 16 && (pr.height <= 0 || (pinnedVisH / pr.height) >= 0.30)) {
                   var pSt = hbCardState ? hbCardState.get(pinnedOwner) : null;
                   var pTitle = (pSt && pSt.title) ? pSt.title : recoverFromCardLinks(pinnedOwner, extractBestCardTitle(pinnedOwner, CARD_TITLE_SELS)).title;
                   if (pTitle && !isNonFoodGridTitle(pTitle)) {
@@ -1703,9 +1713,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 if (anc && rawCards.indexOf(anc) === -1) rawCards.push(anc);
               }
             }
-            var targetY = (typeof window.__heybrocBubbleCenterY === 'number' && window.__heybrocBubbleCenterY > 40)
-              ? window.__heybrocBubbleCenterY
-              : (vh * 0.38);
+            var hasCustomY = typeof window.__heybrocBubbleCenterY === 'number' && window.__heybrocBubbleCenterY > 40;
+            var targetY = hasCustomY ? window.__heybrocBubbleCenterY : (vh * 0.36);
             var hasCustomX = typeof window.__heybrocBubbleCenterX === 'number' && window.__heybrocBubbleCenterX > 10;
             var targetX = hasCustomX ? window.__heybrocBubbleCenterX : (vw * 0.5);
             var bestTitle = '';
@@ -1720,8 +1729,10 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               if (isCartDrawer(card.closest('[role="dialog"], aside, section'))) continue;
               var cr = card.getBoundingClientRect();
               if (cr.height < 64 || cr.height > vh * 0.94 || cr.width < 100) continue;
-              if (cr.bottom < 105 || cr.top > vh - 55) continue;
+              if (cr.bottom < 105 || cr.top > vh - 85) continue;
               if (cr.right < 24 || cr.left > vw - 24) continue;
+              var visH = Math.max(0, Math.min(cr.bottom, vh - 56) - Math.max(cr.top, 0));
+              if (cr.height > 0 && (visH / cr.height) < 0.35) continue;
 
               var visTitle = extractBestCardTitle(card, CARD_TITLE_SELS);
               var rec = recoverFromCardLinks(card, visTitle);
@@ -1745,7 +1756,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               var clipPenalty = (cr.width > 0 && (visW / cr.width) < 0.65) ? 45 : 0;
 
               var dist = distY + (distX * (hasCustomX ? 0.95 : 0.28)) + clipPenalty;
-              if (cr.top < 72) dist += 180;
+              if (cr.top < 48) dist += 40;
               if (dist < bestDist) {
                 bestDist = dist;
                 bestTitle = candTitle;
@@ -1753,7 +1764,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 bestCard = card;
               }
             }
-            if (bestDist > 280 || !bestTitle) return { title: '', storeImageUrl: '', barcode: '', cardId: '', batchPending: false };
+            var maxAllowedDist = (hasCustomX || hasCustomY) ? 260 : 195;
+            if (bestDist > maxAllowedDist || !bestTitle) return { title: '', storeImageUrl: '', barcode: '', cardId: '', batchPending: false };
             var cardImgUrl = '';
             var cardId = '';
             var batchPending = false;
@@ -3395,6 +3407,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           var timer = null;
           var settleTimer = null;
           var scrollTimer = null;
+          var hbIsScrolling = false;
           function scheduleCheck(withSettle) {
             if (timer) clearTimeout(timer);
             timer = setTimeout(extractProductData, 260);
@@ -3415,14 +3428,24 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 shifted = true;
               } else if (pinnedEl.getBoundingClientRect) {
                 var prNow = pinnedEl.getBoundingClientRect();
-                if (Math.abs(prNow.left - hbPinnedRectLeft) > 28 || Math.abs(prNow.top - hbPinnedRectTop) > 28) {
+                if (Math.abs(prNow.left - hbPinnedRectLeft) > 24 || Math.abs(prNow.top - hbPinnedRectTop) > 24) {
                   shifted = true;
                 }
               }
-              if (dy > 28 || dx > 28 || shifted) hbPinnedCardId = '';
+              if (dy > 24 || dx > 24 || shifted) hbPinnedCardId = '';
+            }
+            var onPdpNow = Boolean(findOpenProductModal()) || looksLikeProductUrl(location.href);
+            if (!onPdpNow && !hbIsScrolling) {
+              hbIsScrolling = true;
+              try {
+                window.webkit.messageHandlers.heybrocStoreBridge.postMessage({ kind: 'scrolling', active: true, url: location.href });
+              } catch (e) {}
             }
             if (scrollTimer) clearTimeout(scrollTimer);
-            scrollTimer = setTimeout(extractProductData, 200);
+            scrollTimer = setTimeout(function() {
+              hbIsScrolling = false;
+              extractProductData();
+            }, 180);
           }, { capture: true, passive: true });
           document.addEventListener('load', function(e) {
             var t = e && e.target;
@@ -3593,11 +3616,13 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
     private func setupFloatingBubble() {
         floatingBubble.translatesAutoresizingMaskIntoConstraints = false
-        floatingBubble.layer.cornerRadius = 25
+        floatingBubble.layer.cornerRadius = 24
         floatingBubble.layer.shadowColor = UIColor.black.cgColor
         floatingBubble.layer.shadowOpacity = 0.24
         floatingBubble.layer.shadowOffset = CGSize(width: 0, height: 6)
         floatingBubble.layer.shadowRadius = 12
+        floatingBubble.isHidden = true
+        floatingBubble.alpha = 0
         floatingBubble.addTarget(self, action: #selector(tapFloatingBubble), for: .touchUpInside)
 
         let pan = UIPanGestureRecognizer(target: self, action: #selector(handleBubblePan(_:)))
@@ -3607,12 +3632,12 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         hStack.translatesAutoresizingMaskIntoConstraints = false
         hStack.axis = .horizontal
         hStack.alignment = .center
-        hStack.spacing = 8
+        hStack.spacing = 7
         hStack.isUserInteractionEnabled = false
 
         let brocIcon = UILabel()
         brocIcon.text = "🥦"
-        brocIcon.font = UIFont.systemFont(ofSize: 20)
+        brocIcon.font = UIFont.systemFont(ofSize: 19)
 
         let vStack = UIStackView()
         vStack.axis = .vertical
@@ -3634,41 +3659,110 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         view.addSubview(floatingBubble)
 
         let topC = floatingBubble.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 236)
+        topC.isActive = false
+        let bottomC = floatingBubble.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -72)
         let trailingC = floatingBubble.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12)
         let leadingC = floatingBubble.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12)
         leadingC.priority = .defaultHigh
         leadingC.isActive = false
+        let heightC = floatingBubble.heightAnchor.constraint(equalToConstant: 48)
         self.bubbleTopConstraint = topC
+        self.bubbleBottomConstraint = bottomC
         self.bubbleTrailingConstraint = trailingC
         self.bubbleLeadingConstraint = leadingC
+        self.bubbleHeightConstraint = heightC
 
         NSLayoutConstraint.activate([
-            topC,
+            bottomC,
             trailingC,
+            heightC,
             floatingBubble.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -8),
-            floatingBubble.heightAnchor.constraint(equalToConstant: 50),
-            floatingBubble.widthAnchor.constraint(lessThanOrEqualToConstant: 235),
+            floatingBubble.widthAnchor.constraint(lessThanOrEqualToConstant: 230),
 
-            hStack.leadingAnchor.constraint(equalTo: floatingBubble.leadingAnchor, constant: 13),
-            hStack.trailingAnchor.constraint(equalTo: floatingBubble.trailingAnchor, constant: -14),
+            hStack.leadingAnchor.constraint(equalTo: floatingBubble.leadingAnchor, constant: 12),
+            hStack.trailingAnchor.constraint(equalTo: floatingBubble.trailingAnchor, constant: -13),
             hStack.centerYAnchor.constraint(equalTo: floatingBubble.centerYAnchor)
         ])
     }
 
+    private func setPillCompact(_ compact: Bool) {
+        isPillCompact = compact
+        if compact && !compactBadgeText.isEmpty {
+            bubbleBadgeLabel.text = compactBadgeText
+            bubbleSubLabel.isHidden = true
+            bubbleHeightConstraint?.constant = 38
+            floatingBubble.layer.cornerRadius = 19
+        } else {
+            if !expandedBadgeText.isEmpty {
+                bubbleBadgeLabel.text = expandedBadgeText
+            }
+            bubbleSubLabel.isHidden = false
+            bubbleHeightConstraint?.constant = 48
+            floatingBubble.layer.cornerRadius = 24
+        }
+        UIView.animate(withDuration: 0.18) {
+            self.view.layoutIfNeeded()
+        }
+    }
+
+    private func schedulePillAutoShrink() {
+        pillShrinkWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self, !self.isCleaningUp, self.hasActiveBubbleContent, self.latestSummary != nil else { return }
+            self.setPillCompact(true)
+        }
+        pillShrinkWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.6, execute: work)
+    }
+
+    private func updateFloatingBubbleVisibility() {
+        let shouldHide = isWebInputFocused || isPageScrolling || !hasActiveBubbleContent
+        if shouldHide {
+            pillShrinkWorkItem?.cancel()
+            if !floatingBubble.isHidden {
+                floatingBubble.alpha = 0
+                floatingBubble.isHidden = true
+            }
+        } else if floatingBubble.isHidden || floatingBubble.alpha < 0.99 {
+            floatingBubble.isHidden = false
+            UIView.animate(withDuration: 0.14) {
+                self.floatingBubble.alpha = 1
+            }
+        }
+    }
+
     private func setBubbleIdleState() {
+        pillShrinkWorkItem?.cancel()
+        hasActiveBubbleContent = false
+        expandedBadgeText = "HeyBroc Ready"
+        compactBadgeText = ""
         floatingBubble.backgroundColor = UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 0.95)
-        bubbleBadgeLabel.text = "HeyBroc Ready"
+        bubbleBadgeLabel.text = expandedBadgeText
         bubbleSubLabel.text = "Open any food or tap to scan"
+        setPillCompact(false)
+        updateFloatingBubbleVisibility()
     }
 
     private func setBubbleScanningState() {
+        pillShrinkWorkItem?.cancel()
+        if lastDetectedIsCard {
+            return
+        }
+        hasActiveBubbleContent = true
+        isPageScrolling = false
+        expandedBadgeText = "Scanning Label…"
+        compactBadgeText = ""
         floatingBubble.backgroundColor = UIColor(red: 0.059, green: 0.478, blue: 0.290, alpha: 0.96)
-        bubbleBadgeLabel.text = "Scanning Label…"
+        bubbleBadgeLabel.text = expandedBadgeText
         bubbleSubLabel.text = "Checking 0–100 score"
+        setPillCompact(false)
+        updateFloatingBubbleVisibility()
     }
 
     private func applySummaryToBubble(_ summary: HeyBrocNativeScanSummary) {
         self.latestSummary = summary
+        self.hasActiveBubbleContent = true
+        self.isPageScrolling = false
         let shortItemTitle: String = {
             let cleanT = summary.title.trimmingCharacters(in: .whitespacesAndNewlines)
             if cleanT.count <= 20 { return cleanT }
@@ -3685,29 +3779,38 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
         if let firstAlert = summary.dietaryAlerts.first {
             let alertEmoji = summary.dietaryAlerts.allSatisfy({ $0.id == "pesticide_risk" }) ? "🌱" : "⚠️"
-            bubbleBadgeLabel.text = "\(alertEmoji) \(firstAlert.shortBadge) • \(summary.score)/100"
+            expandedBadgeText = "\(alertEmoji) \(firstAlert.shortBadge) • \(summary.score)/100"
+            compactBadgeText = "\(alertEmoji) \(summary.score)"
             bubbleSubLabel.text = lastDetectedIsCard
                 ? "\(shortItemTitle) • Tap"
                 : (summary.swap != nil ? "Tap for Organic / Clean Swap" : "Tap to inspect alert")
+            setPillCompact(false)
+            updateFloatingBubbleVisibility()
+            schedulePillAutoShrink()
             return
         }
 
-        bubbleBadgeLabel.text = "\(summary.score)/100 • \(summary.rating)"
+        expandedBadgeText = "\(summary.score)/100 • \(summary.rating)"
+        compactBadgeText = "\(summary.score)"
         if lastDetectedIsCard {
             bubbleSubLabel.text = "\(shortItemTitle) • Tap"
         } else {
             bubbleSubLabel.text = summary.swap != nil ? "Tap for 1-Tap Clean Swap" : "Tap to inspect ingredients"
         }
+        setPillCompact(false)
+        updateFloatingBubbleVisibility()
+        schedulePillAutoShrink()
     }
 
     private func syncBubbleYToWebView(triggerRescan: Bool, clearPinned: Bool = false) {
         guard !isCleaningUp, let wv = storeWebView, wv.bounds.height > 40 else { return }
-        let frameInWv = wv.convert(floatingBubble.frame, from: view)
-        let centerY = max(60, Int(frameInWv.midY.rounded()))
-        let wvW = max(280, wv.bounds.width)
-        let bubW = max(48, frameInWv.width)
+        let centerY: Int
         let aimX: Int
         if userDraggedBubble {
+            let frameInWv = wv.convert(floatingBubble.frame, from: view)
+            centerY = max(60, Int(frameInWv.midY.rounded()))
+            let wvW = max(280, wv.bounds.width)
+            let bubW = max(48, frameInWv.width)
             if frameInWv.minX <= 24 {
                 aimX = max(24, Int((frameInWv.minX + min(bubW * 0.34, 64)).rounded()))
             } else if frameInWv.maxX >= (wvW - 24) {
@@ -3716,38 +3819,47 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 aimX = max(24, min(Int(wvW - 24), Int(frameInWv.midX.rounded())))
             }
         } else {
+            centerY = -1
             aimX = -1
         }
         if !triggerRescan && !clearPinned && abs(centerY - lastSyncedBubbleY) < 6 && abs(aimX - lastSyncedBubbleX) < 6 { return }
         lastSyncedBubbleY = centerY
         lastSyncedBubbleX = aimX
+        let yAssign = centerY > 0 ? "window.__heybrocBubbleCenterY = \(centerY);" : "window.__heybrocBubbleCenterY = null;"
         let xAssign = aimX > 0 ? "window.__heybrocBubbleCenterX = \(aimX);" : "window.__heybrocBubbleCenterX = null;"
         let clearPinJS = clearPinned ? "if (typeof window.__heybrocClearPinnedCard === 'function') { window.__heybrocClearPinnedCard(); }" : ""
         let rescanJS = triggerRescan
             ? "if (typeof window.__heybrocScheduleCheck === 'function') { window.__heybrocScheduleCheck(false); }"
             : ""
-        wv.evaluateJavaScript("window.__heybrocBubbleCenterY = \(centerY); \(xAssign) \(clearPinJS) \(rescanJS)", completionHandler: nil)
+        wv.evaluateJavaScript("\(yAssign) \(xAssign) \(clearPinJS) \(rescanJS)", completionHandler: nil)
     }
 
     @objc private func handleBubblePan(_ gesture: UIPanGestureRecognizer) {
         let translation = gesture.translation(in: view)
         gesture.setTranslation(.zero, in: view)
 
-        if gesture.state == .began && !userDraggedBubble {
-            userDraggedBubble = true
-            let curMinX = floatingBubble.frame.minX
-            bubbleTrailingConstraint?.isActive = false
-            bubbleLeadingConstraint?.constant = max(8, curMinX)
-            bubbleLeadingConstraint?.isActive = true
+        if gesture.state == .began {
+            pillShrinkWorkItem?.cancel()
+            if !userDraggedBubble {
+                userDraggedBubble = true
+                let curMinX = floatingBubble.frame.minX
+                let curTopOffset = max(95, floatingBubble.frame.minY - view.safeAreaInsets.top)
+                bubbleBottomConstraint?.isActive = false
+                bubbleTrailingConstraint?.isActive = false
+                bubbleTopConstraint?.constant = curTopOffset
+                bubbleTopConstraint?.isActive = true
+                bubbleLeadingConstraint?.constant = max(8, curMinX)
+                bubbleLeadingConstraint?.isActive = true
+            }
         }
 
         let minTop: CGFloat = 95
         let maxTop: CGFloat = max(minTop + 40, view.bounds.height - view.safeAreaInsets.bottom - 70)
-        if let topC = bubbleTopConstraint {
+        if let topC = bubbleTopConstraint, topC.isActive {
             topC.constant = min(maxTop, max(minTop, topC.constant + translation.y))
         }
         let minLeft: CGFloat = 8
-        let maxLeft: CGFloat = max(minLeft, view.bounds.width - max(120, floatingBubble.bounds.width) - 8)
+        let maxLeft: CGFloat = max(minLeft, view.bounds.width - max(80, floatingBubble.bounds.width) - 8)
         if let leadC = bubbleLeadingConstraint, leadC.isActive {
             let nextLeft = min(maxLeft, max(minLeft, leadC.constant + translation.x))
             leadC.constant = nextLeft
@@ -3757,6 +3869,9 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         if gesture.state == .ended || gesture.state == .cancelled {
             view.layoutIfNeeded()
             syncBubbleYToWebView(triggerRescan: true, clearPinned: true)
+            if hasActiveBubbleContent && latestSummary != nil {
+                schedulePillAutoShrink()
+            }
         }
     }
 
@@ -4094,17 +4209,27 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         let pageToken = (body["pageToken"] as? String) ?? ""
         let rawBatchItems = (body["items"] as? [[String: Any]]) ?? []
         let inputFocused = (body["focused"] as? Bool) ?? false
+        let scrollActive = (body["active"] as? Bool) ?? true
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self, !self.isCleaningUp else { return }
             if kind == "inputFocus" {
-                self.floatingBubble.isHidden = inputFocused
+                self.isWebInputFocused = inputFocused
+                self.updateFloatingBubbleVisibility()
+                return
+            }
+            if kind == "scrolling" {
+                if self.isPageScrolling != scrollActive {
+                    self.isPageScrolling = scrollActive
+                    self.updateFloatingBubbleVisibility()
+                }
                 return
             }
             if !instacartSlug.isEmpty || self.activeStore.apiStoreKey != "instacart" {
                 self.lastDetectedInstacartSlug = instacartSlug
             }
             if kind == "product" || kind == "card" {
+                self.isPageScrolling = false
                 guard !title.isEmpty else { return }
                 let isPassiveCard = (kind == "card")
                 if title.caseInsensitiveCompare(self.lastDetectedTitle) != .orderedSame || barcode != self.lastDetectedBarcode {
@@ -4138,6 +4263,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                     isPassiveCard: isPassiveCard
                 )
             } else if kind == "browse" {
+                self.isPageScrolling = false
                 self.scanGeneration += 1
                 self.isScanning = false
                 self.lastDetectedIsCard = false

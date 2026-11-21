@@ -1137,7 +1137,8 @@
       var pinnedOwner = hbOwnerCardById[hbPinnedCardId];
       if (pinnedOwner && pinnedOwner.isConnected && isVisible(pinnedOwner)) {
         var pr = pinnedOwner.getBoundingClientRect();
-        if (pr.bottom > 60 && pr.top < vh - 24 && pr.right > 16 && pr.left < vw - 16) {
+        var pinnedVisH = Math.max(0, Math.min(pr.bottom, vh - 56) - Math.max(pr.top, 84));
+        if (pr.bottom > 90 && pr.top < vh - 60 && pr.right > 16 && pr.left < vw - 16 && (pr.height <= 0 || (pinnedVisH / pr.height) >= 0.30)) {
           var pSt = hbCardState ? hbCardState.get(pinnedOwner) : null;
           var pTitle = (pSt && pSt.title) ? pSt.title : recoverFromCardLinks(pinnedOwner, extractBestCardTitle(pinnedOwner, CARD_TITLE_SELS)).title;
           if (pTitle && !isNonFoodGridTitle(pTitle)) {
@@ -1169,9 +1170,8 @@
         if (anc && rawCards.indexOf(anc) === -1) rawCards.push(anc);
       }
     }
-    var targetY = (typeof window.__heybrocBubbleCenterY === 'number' && window.__heybrocBubbleCenterY > 40)
-      ? window.__heybrocBubbleCenterY
-      : (vh * 0.38);
+    var hasCustomY = typeof window.__heybrocBubbleCenterY === 'number' && window.__heybrocBubbleCenterY > 40;
+    var targetY = hasCustomY ? window.__heybrocBubbleCenterY : (vh * 0.36);
     var hasCustomX = typeof window.__heybrocBubbleCenterX === 'number' && window.__heybrocBubbleCenterX > 10;
     var targetX = hasCustomX ? window.__heybrocBubbleCenterX : (vw * 0.5);
     var bestTitle = '';
@@ -1186,8 +1186,10 @@
       if (isCartDrawer(card.closest('[role="dialog"], aside, section'))) continue;
       var cr = card.getBoundingClientRect();
       if (cr.height < 64 || cr.height > vh * 0.94 || cr.width < 100) continue;
-      if (cr.bottom < 95 || cr.top > vh - 45) continue;
+      if (cr.bottom < 105 || cr.top > vh - 85) continue;
       if (cr.right < 24 || cr.left > vw - 24) continue;
+      var visH = Math.max(0, Math.min(cr.bottom, vh - 56) - Math.max(cr.top, 0));
+      if (cr.height > 0 && (visH / cr.height) < 0.35) continue;
 
       var visTitle = extractBestCardTitle(card, CARD_TITLE_SELS);
       var rec = recoverFromCardLinks(card, visTitle);
@@ -1208,7 +1210,7 @@
       var clipPenalty = (cr.width > 0 && (visW / cr.width) < 0.65) ? 45 : 0;
 
       var dist = distY + (distX * (hasCustomX ? 0.95 : 0.28)) + clipPenalty;
-      if (cr.top < 72) dist += 180;
+      if (cr.top < 48) dist += 40;
       if (dist < bestDist) {
         bestDist = dist;
         bestTitle = candTitle;
@@ -1216,7 +1218,8 @@
         bestCard = card;
       }
     }
-    if (bestDist > 280 || !bestTitle) return { title: '', storeImageUrl: '', barcode: '', cardId: '', batchPending: false };
+    var maxAllowedDist = (hasCustomX || hasCustomY) ? 260 : 195;
+    if (bestDist > maxAllowedDist || !bestTitle) return { title: '', storeImageUrl: '', barcode: '', cardId: '', batchPending: false };
     var cardImgUrl = '';
     var cardId = '';
     var batchPending = false;
@@ -2857,6 +2860,7 @@
   var timer = null;
   var settleTimer = null;
   var scrollTimer = null;
+  var hbIsScrolling = false;
   function scheduleCheck(withSettle) {
     if (timer) clearTimeout(timer);
     timer = setTimeout(extractProductData, 240);
@@ -2877,14 +2881,22 @@
         shifted = true;
       } else if (pinnedEl.getBoundingClientRect) {
         var prNow = pinnedEl.getBoundingClientRect();
-        if (Math.abs(prNow.left - hbPinnedRectLeft) > 28 || Math.abs(prNow.top - hbPinnedRectTop) > 28) {
+        if (Math.abs(prNow.left - hbPinnedRectLeft) > 24 || Math.abs(prNow.top - hbPinnedRectTop) > 24) {
           shifted = true;
         }
       }
-      if (dy > 28 || dx > 28 || shifted) hbPinnedCardId = '';
+      if (dy > 24 || dx > 24 || shifted) hbPinnedCardId = '';
+    }
+    var onPdpNow = Boolean(findOpenProductModal()) || looksLikeProductUrl(location.href);
+    if (!onPdpNow && !hbIsScrolling) {
+      hbIsScrolling = true;
+      postBridge({ kind: 'scrolling', active: true, url: location.href });
     }
     if (scrollTimer) clearTimeout(scrollTimer);
-    scrollTimer = setTimeout(extractProductData, 200);
+    scrollTimer = setTimeout(function() {
+      hbIsScrolling = false;
+      extractProductData();
+    }, 180);
   }, { capture: true, passive: true });
 
   document.addEventListener('load', function(e) {

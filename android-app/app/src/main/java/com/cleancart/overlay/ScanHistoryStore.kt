@@ -570,7 +570,7 @@ object ScanHistoryStore {
         Regex("\\b(?:bone\\s+broth|chicken\\s+broth|beef\\s+broth|vegetable\\s+broth|chicken\\s+stock|beef\\s+stock|broth|gravy)\\b", RegexOption.IGNORE_CASE) to "/swaps/broth.png",
         Regex("\\b(?:soup|clam\\s+chowder|corn\\s+chowder|tomato\\s+bisque|ramen\\s+noodle\\s+soup|chili)\\b", RegexOption.IGNORE_CASE) to "/swaps/soup.png",
         Regex("\\b(?:marinara|pasta\\s+sauce|tomato\\s+basil\\s+sauce|vodka\\s+sauce|alfredo\\s+sauce|spaghetti\\s+sauce|pizza\\s+sauce)\\b", RegexOption.IGNORE_CASE) to "/swaps/marinara.png",
-        Regex("\\b(?:salsa|pico\\s+de\\s+gallo|guacamole|queso\\s+dip|hummus)\\b", RegexOption.IGNORE_CASE) to "/swaps/salsa.png",
+        Regex("\\b(?:salsa|pico\\s+de\\s+gallo|guacamole|queso(?:\\s+dip)?|hummus|tzatziki|baba\\s+ganoush|(?:french\\s+onion|yogurt|spinach|artichoke|bean|cheese|buffalo|ranch|veggie|vegetable)\\s+dip|dip)\\b", RegexOption.IGNORE_CASE) to "/swaps/salsa.png",
         Regex("\\b(?:ranch\\s+dressing|caesar\\s+dressing|italian\\s+dressing|vinaigrette|salad\\s+dressing|ranch)\\b", RegexOption.IGNORE_CASE) to "/swaps/ranch.jpg",
         Regex("\\b(?:mayonnaise|mayo|aioli)\\b", RegexOption.IGNORE_CASE) to "/swaps/mayo.png",
         Regex("\\b(?:ketchup|catsup)\\b", RegexOption.IGNORE_CASE) to "/swaps/ketchup.png",
@@ -604,8 +604,8 @@ object ScanHistoryStore {
         Regex("\\b(?:pasta|spaghetti|penne|rotini|fusilli|fettuccine|linguine|macaroni|rigatoni|orzo|gnocchi|ramen|noodles?)\\b", RegexOption.IGNORE_CASE) to "/swaps/pasta.png",
         Regex("\\b(?:olive\\s+oil|avocado\\s+oil|coconut\\s+oil|canola\\s+oil|vegetable\\s+oil|sesame\\s+oil|cooking\\s+spray|apple\\s+cider\\s+vinegar|balsamic\\s+vinegar|white\\s+vinegar)\\b", RegexOption.IGNORE_CASE) to "/swaps/oil-vinegar.png",
         Regex("\\b(?:seasoning|spice|cinnamon|paprika|turmeric|cumin|oregano|garlic\\s+powder|onion\\s+powder|black\\s+pepper|sea\\s+salt|pink\\s+salt|taco\\s+seasoning|vanilla\\s+extract)\\b", RegexOption.IGNORE_CASE) to "/swaps/spices.png",
-        Regex("\\b(?:black\\s+beans?|pinto\\s+beans?|kidney\\s+beans?|garbanzo|chickpeas?|lentils?|refried\\s+beans?|baked\\s+beans?|quinoa|brown\\s+rice|jasmine\\s+rice|basmati\\s+rice|white\\s+rice|couscous|farro|barley|flour|cornmeal)\\b", RegexOption.IGNORE_CASE) to "/swaps/beans-grains.png",
-        Regex("\\b(?:applesauce|fruit\\s+crisps?|apples?|peaches?|pears?|plums?|pineapples?|mangos?|mangoes|bananas?|strawberries|blueberries|raspberries|blackberries|grapes?|oranges?|lemons?|limes?|avocados?|tomato(?:es)?|diced\\s+tomatoes|corn|vegetables?|salad\\s+kit|salad|spinach|lettuce|romaine|kale|chard|arugula|broccoli|cauliflower|carrots?|potato(?:es)?|sweet\\s+potato(?:es)?|onions?|garlic|peppers?|cucumbers?|celery|mushrooms?|berries|produce)\\b", RegexOption.IGNORE_CASE) to "/swaps/produce.png"
+        Regex("\\b(?:green\\s+beans?|string\\s+beans?|french\\s+(?:style\\s+)?green\\s+beans?|wax\\s+beans?|cut\\s+green\\s+beans?|sweet\\s+peas?|green\\s+peas?|snow\\s+peas?|snap\\s+peas?|sugar\\s+snap|edamame|peas|asparagus|zucchini|squash|butternut\\s+squash|brussels\\s+sprouts?|cabbage|beets?|artichokes?|eggplant|okra|radish(?:es)?|scallions?|green\\s+onions?|mixed\\s+vegetables?|canned\\s+vegetables?|corn\\s+kernels?|creamed\\s+corn|applesauce|fruit\\s+crisps?|apples?|peaches?|pears?|plums?|pineapples?|mangos?|mangoes|bananas?|strawberries|blueberries|raspberries|blackberries|grapes?|oranges?|lemons?|limes?|avocados?|tomato(?:es)?|diced\\s+tomatoes|corn|vegetables?|salad\\s+kit|salad|spinach|lettuce|romaine|kale|chard|arugula|broccoli|cauliflower|carrots?|potato(?:es)?|sweet\\s+potato(?:es)?|onions?|garlic|peppers?|cucumbers?|celery|mushrooms?|berries|produce)\\b", RegexOption.IGNORE_CASE) to "/swaps/produce.png",
+        Regex("\\b(?:black\\s+beans?|pinto\\s+beans?|kidney\\s+beans?|cannellini\\s+beans?|great\\s+northern\\s+beans?|navy\\s+beans?|butter\\s+beans?|lima\\s+beans?|white\\s+beans?|red\\s+beans?|chili\\s+beans?|garbanzo|chickpeas?|lentils?|refried\\s+beans?|baked\\s+beans?|beans|quinoa|brown\\s+rice|jasmine\\s+rice|basmati\\s+rice|white\\s+rice|rice|couscous|farro|barley|flour|cornmeal|tofu|tempeh)\\b", RegexOption.IGNORE_CASE) to "/swaps/beans-grains.png"
     )
 
     private val EXPLICIT_CATEGORY_ART_MAP: Map<String, String> = mapOf(
@@ -627,7 +627,17 @@ object ScanHistoryStore {
         "beverages" to "/swaps/drink.png",
         "candy" to "/swaps/candy.png",
         "cookies" to "/swaps/cookies.png",
-        "frozen" to "/swaps/frozen-meal.png"
+        "frozen" to "/swaps/frozen-meal.png",
+        "produce" to "/swaps/produce.png",
+        "vegetables" to "/swaps/produce.png",
+        "canned goods" to "/swaps/produce.png",
+        "pantry" to "/swaps/beans-grains.png",
+        "snacks" to "/swaps/snacks.jpg"
+    )
+
+    private val STORE_PREFIX_FOR_IMAGE_QUERY_RE = Regex(
+        "^(?:amazon\\s+grocery|amazon\\s+fresh|whole\\s+foods\\s+market|365\\s+by\\s+whole\\s+foods(?:\\s+market)?|walmart|target|kroger|costco|instacart)\\s*[,:\\-–—]\\s*",
+        RegexOption.IGNORE_CASE
     )
 
     fun sanitizeApiBrand(rawBrand: String): String {
@@ -677,7 +687,17 @@ object ScanHistoryStore {
                 if (re.containsMatchIn(normCat)) return "https://www.heybroc.com$path"
             }
         }
-        return ""
+        val cleanIng = ingredients.trim()
+        if (cleanIng.isNotEmpty()) {
+            for ((re, path) in STUDIO_ART_RULES) {
+                if (re.containsMatchIn(cleanIng)) return "https://www.heybroc.com$path"
+            }
+            if (FOOD_INGREDIENT_SIGNAL_RE.containsMatchIn(cleanIng)) {
+                return "https://www.heybroc.com/swaps/produce.png"
+            }
+        }
+        // Any scanned grocery item that is not an appliance/non-food gets clean studio art rather than a grey letter tile
+        return if (cleanTitle.isNotEmpty()) "https://www.heybroc.com/swaps/produce.png" else ""
     }
 
     fun isCategoryArtUrl(rawUrl: String): Boolean {
@@ -723,13 +743,19 @@ object ScanHistoryStore {
     }
 
     fun productImageApiFallbackUrl(title: String, brand: String = "", code: String = ""): String {
-        val cleanTitle = title.trim()
+        val rawTitle = title.trim()
+        val strippedTitle = STORE_PREFIX_FOR_IMAGE_QUERY_RE.replace(rawTitle, "").trim()
+        val cleanTitle = if (strippedTitle.length >= 4) strippedTitle else rawTitle
         val cleanCode = code.filter { it.isDigit() }.take(14)
         if (cleanTitle.isEmpty() && cleanCode.length < 8) return ""
         if (cleanCode.length < 8 && isLikelyNonFoodOrAppliance(cleanTitle)) return ""
         val sb = StringBuilder("https://www.heybroc.com/api/product-image?q=")
         sb.append(java.net.URLEncoder.encode(cleanTitle, "UTF-8"))
-        val cleanBrand = sanitizeApiBrand(brand)
+        val rawBrand = sanitizeApiBrand(brand)
+        val cleanBrand = if (
+            rawBrand.equals("amazon grocery", ignoreCase = true) ||
+            rawBrand.equals("amazon fresh", ignoreCase = true)
+        ) "" else rawBrand
         if (cleanBrand.isNotEmpty()) {
             sb.append("&brand=").append(java.net.URLEncoder.encode(cleanBrand, "UTF-8"))
         }
